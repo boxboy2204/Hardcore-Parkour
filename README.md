@@ -16,15 +16,16 @@ python3 -m http.server 8000
 Open `http://localhost:8000`.
 
 ## Prototype features
-- Auto-runner physics loop
-- 0.2 second landing shout window (`Enter`) for HARDCORE boost
+- Conference Room level-select scene with Polaroid world cards
+- Scene system: `menu`, `run`, `shop` (placeholder), `annex` (placeholder)
+- Persistent save scaffold (`localStorage`) for world unlocks, currencies, and achievements
+- Auto-runner physics loop with jump, hold-to-slide, and hit action
+- 0.2 second landing shout window (`J`) for HARDCORE boost
 - Character differences for Michael, Dwight, and Andy
-- Style multiplier + score + injury system
-- Five themed world phases during a run
 - End-of-level "Performance Review" with stars and currency rewards
 
 ## Next implementation targets
-- Conference Room level select scene
-- Break Room shop + Pam quest lock/unlock flow
-- Annex outfit system + Dundies unlock tracking
-- Real level data files, cutscenes, and boss encounters
+- Break Room shop item catalog + buy logic + Jim/Pam gating behavior
+- Warehouse stealth mission to unlock Jim's Desk Key / shop top row
+- Annex outfit equip flow + Kelly comments + Dundie shelf UI
+- Real level data files, cutscenes, and finale boss encounters

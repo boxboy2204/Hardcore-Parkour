@@ -7,6 +7,8 @@ const retryBtn = document.getElementById("retryBtn");
 const summaryPanel = document.getElementById("summaryPanel");
 const summaryText = document.getElementById("summaryText");
 
+const SAVE_KEY = "hardcore_parkour_save_v1";
+
 const CHARACTER_PRESETS = {
   michael: {
     label: "Michael",
@@ -60,10 +62,37 @@ const GAME = {
   slideScorePerObstacle: 80,
 };
 
+const WORLDS = [
+  { id: "bullpen", label: "The Bullpen", subtitle: "Jump desks, dodge cats" },
+  { id: "warehouse", label: "The Warehouse", subtitle: "Belts + stealth setup" },
+  { id: "streets", label: "Scranton Streets", subtitle: "Work bus rooftop run" },
+  { id: "corporate", label: "NYC Corporate", subtitle: "Folders and elevators" },
+  { id: "pursuit", label: "Final Pursuit", subtitle: "High-speed car roofs" },
+];
+
+const THEME_OBSTACLE_POOLS = {
+  bullpen: ["desk", "cat", "intern"],
+  warehouse: ["intern", "weak_floorboard", "desk"],
+  streets: ["cat", "snowball", "intern"],
+  corporate: ["folder", "desk", "intern"],
+  pursuit: ["snowball", "folder", "cat"],
+};
+
+const THEME_LABELS = {
+  bullpen: "The Bullpen",
+  warehouse: "The Warehouse",
+  streets: "Scranton Streets",
+  corporate: "NYC Corporate",
+  pursuit: "Final Pursuit",
+};
+
 const state = {
+  scene: "menu",
   running: false,
   paused: false,
   gameOver: false,
+  runWorldId: "bullpen",
+  selectedWorldId: "bullpen",
   worldTimeSec: 0,
   score: 0,
   style: 0,
@@ -83,11 +112,10 @@ const state = {
   floatingText: [],
   particles: [],
   stars: 0,
-  schruteBucks: 0,
-  stanleyNickels: 0,
+  earnedSchruteBucks: 0,
+  earnedStanleyNickels: 0,
   elapsedSec: 0,
   spawnTimerSec: 1.1,
-  cameraOffset: 0,
   screenShake: 0,
   theme: "bullpen",
   worldBannerText: "",
@@ -95,88 +123,56 @@ const state = {
   audioCtx: null,
   player: null,
   obstacles: [],
+  menuCards: [],
+  menuDialogue: "Pick a Polaroid so we can go, now.",
+  saveData: null,
 };
 
-const THEME_OBSTACLE_POOLS = {
-  bullpen: ["desk", "cat", "intern"],
-  warehouse: ["intern", "weak_floorboard", "desk"],
-  streets: ["cat", "snowball", "intern"],
-  corporate: ["folder", "desk", "intern"],
-  pursuit: ["snowball", "folder", "cat"],
-};
-
-const THEME_LABELS = {
-  bullpen: "The Bullpen",
-  warehouse: "The Warehouse",
-  streets: "Scranton Streets",
-  corporate: "NYC Corporate",
-  pursuit: "Final Pursuit",
-};
-
-function resetState() {
-  const preset = CHARACTER_PRESETS[characterSelect.value];
-  state.running = true;
-  state.paused = false;
-  state.gameOver = false;
-  state.worldTimeSec = 0;
-  state.score = 0;
-  state.style = 0;
-  state.multiplier = 1;
-  state.bestChain = 0;
-  state.landingWindowLeft = 0;
-  state.pendingLanding = false;
-  state.speedBoostLeft = 0;
-  state.stumbleLeft = 0;
-  state.attackLeft = 0;
-  state.attackCooldownLeft = 0;
-  state.slideActive = false;
-  state.slideSpeed = 0;
-  state.spaceHeld = false;
-  state.spaceHoldSec = 0;
-  state.pendingSpaceTapJump = false;
-  state.floatingText = [];
-  state.particles = [];
-  state.stars = 0;
-  state.schruteBucks = 0;
-  state.stanleyNickels = 0;
-  state.elapsedSec = 0;
-  state.spawnTimerSec = 0.7;
-  state.cameraOffset = 0;
-  state.screenShake = 0;
-  state.theme = "bullpen";
-  state.worldBannerText = "";
-  state.worldBannerLeft = 0;
-  state.obstacles = [];
-
-  state.player = {
-    preset,
-    x: 180,
-    y: GAME.groundY,
-    width: 42,
-    height: 62,
-    vy: 0,
-    grounded: true,
-    jumpsUsed: 0,
-    hp: 4,
+function createDefaultSave() {
+  return {
+    unlockedWorldIndex: 0,
+    currencies: {
+      schruteBucks: 0,
+      stanleyNickels: 0,
+    },
+    unlocks: {
+      pamFound: false,
+      jimDeskKey: false,
+      shopUnlocked: false,
+      outfitsUnlocked: [],
+    },
+    achievements: {
+      bushiestBeaver: false,
+      whitestSneakers: false,
+      dontGoInThere: false,
+    },
+    stats: {
+      bestHardcoreChain: 0,
+      lifetimeRuns: 0,
+    },
   };
 }
 
-function addFloatingText(text, x, y, color) {
-  state.floatingText.push({ text, x, y, color, age: 0, ttl: 0.8 });
+function loadSave() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return createDefaultSave();
+    const parsed = JSON.parse(raw);
+    return {
+      ...createDefaultSave(),
+      ...parsed,
+      currencies: { ...createDefaultSave().currencies, ...(parsed.currencies || {}) },
+      unlocks: { ...createDefaultSave().unlocks, ...(parsed.unlocks || {}) },
+      achievements: { ...createDefaultSave().achievements, ...(parsed.achievements || {}) },
+      stats: { ...createDefaultSave().stats, ...(parsed.stats || {}) },
+    };
+  } catch {
+    return createDefaultSave();
+  }
 }
 
-function addHitParticles(x, y, color) {
-  for (let i = 0; i < 7; i += 1) {
-    state.particles.push({
-      x,
-      y,
-      vx: 130 + Math.random() * 220,
-      vy: -180 + Math.random() * 240,
-      color,
-      age: 0,
-      ttl: 0.35 + Math.random() * 0.2,
-    });
-  }
+function persistSave() {
+  localStorage.setItem(SAVE_KEY, JSON.stringify(state.saveData));
 }
 
 function ensureAudioContext() {
@@ -207,6 +203,124 @@ function playThemeSwitchCue() {
     osc.start(now + idx * 0.09);
     osc.stop(now + idx * 0.09 + 0.12);
   });
+}
+
+function isWorldUnlocked(worldId) {
+  const idx = WORLDS.findIndex((w) => w.id === worldId);
+  return idx !== -1 && idx <= state.saveData.unlockedWorldIndex;
+}
+
+function setMenuDialogue() {
+  const runner = characterSelect.value;
+  const selected = WORLDS.find((w) => w.id === state.selectedWorldId) || WORLDS[0];
+
+  if (runner === "michael") {
+    state.menuDialogue = `Michael: Pick ${selected.label}! Meeting adjourned energy.`;
+  } else if (runner === "dwight") {
+    state.menuDialogue = `Dwight: ${selected.label}. Tactical route confirmed.`;
+  } else {
+    state.menuDialogue = `Andy: ${selected.label} gets a cappella hype from me.`;
+  }
+}
+
+function switchScene(sceneId) {
+  state.scene = sceneId;
+  state.paused = false;
+  summaryPanel.hidden = true;
+  updateUiForScene();
+  if (sceneId === "menu") setMenuDialogue();
+}
+
+function updateUiForScene() {
+  if (state.scene === "menu") {
+    startBtn.textContent = "Launch Level";
+    retryBtn.textContent = "Shop";
+    retryBtn.hidden = false;
+  } else if (state.scene === "run") {
+    startBtn.textContent = "Back To Menu";
+    retryBtn.textContent = "Run It Back";
+    retryBtn.hidden = false;
+  } else if (state.scene === "shop") {
+    startBtn.textContent = "Back To Menu";
+    retryBtn.textContent = "Go Annex";
+    retryBtn.hidden = false;
+  } else {
+    startBtn.textContent = "Back To Menu";
+    retryBtn.textContent = "Go Shop";
+    retryBtn.hidden = false;
+  }
+}
+
+function resetRunState(worldId = state.selectedWorldId) {
+  const preset = CHARACTER_PRESETS[characterSelect.value];
+  state.scene = "run";
+  state.running = true;
+  state.paused = false;
+  state.gameOver = false;
+  state.runWorldId = worldId;
+  state.theme = worldId;
+  state.worldTimeSec = 0;
+  state.score = 0;
+  state.style = 0;
+  state.multiplier = 1;
+  state.bestChain = 0;
+  state.landingWindowLeft = 0;
+  state.pendingLanding = false;
+  state.speedBoostLeft = 0;
+  state.stumbleLeft = 0;
+  state.attackLeft = 0;
+  state.attackCooldownLeft = 0;
+  state.slideActive = false;
+  state.slideSpeed = 0;
+  state.spaceHeld = false;
+  state.spaceHoldSec = 0;
+  state.pendingSpaceTapJump = false;
+  state.floatingText = [];
+  state.particles = [];
+  state.stars = 0;
+  state.earnedSchruteBucks = 0;
+  state.earnedStanleyNickels = 0;
+  state.elapsedSec = 0;
+  state.spawnTimerSec = 0.7;
+  state.screenShake = 0;
+  state.worldBannerText = THEME_LABELS[worldId] || worldId;
+  state.worldBannerLeft = 1.2;
+  state.obstacles = [];
+
+  state.player = {
+    preset,
+    x: 180,
+    y: GAME.groundY,
+    width: 42,
+    height: 62,
+    vy: 0,
+    grounded: true,
+    jumpsUsed: 0,
+    hp: 4,
+  };
+
+  state.saveData.stats.lifetimeRuns += 1;
+  persistSave();
+  playThemeSwitchCue();
+  updateUiForScene();
+}
+
+function addFloatingText(text, x, y, color) {
+  state.floatingText.push({ text, x, y, color, age: 0, ttl: 0.8 });
+}
+
+function addHitParticles(x, y, color) {
+  for (let i = 0; i < 7; i += 1) {
+    state.particles.push({
+      x,
+      y,
+      vx: 130 + Math.random() * 220,
+      vy: -180 + Math.random() * 240,
+      color,
+      age: 0,
+      ttl: 0.35 + Math.random() * 0.2,
+    });
+  }
 }
 
 function spawnObstacle() {
@@ -245,23 +359,41 @@ function calculateStars() {
   return 5;
 }
 
-function endRun() {
+function endRun(reason = "time") {
   state.running = false;
   state.gameOver = true;
   state.stars = calculateStars();
-  state.schruteBucks = Math.floor(state.style / 15 + state.stars * 90);
-  state.stanleyNickels = Math.floor(state.score / 80 + state.stars * 8);
+  state.earnedSchruteBucks = Math.floor(state.style / 15 + state.stars * 90);
+  state.earnedStanleyNickels = Math.floor(state.score / 80 + state.stars * 8);
+
+  state.saveData.currencies.schruteBucks += state.earnedSchruteBucks;
+  state.saveData.currencies.stanleyNickels += state.earnedStanleyNickels;
+  state.saveData.stats.bestHardcoreChain = Math.max(state.saveData.stats.bestHardcoreChain, state.bestChain);
+
+  if (reason === "time") {
+    const worldIdx = WORLDS.findIndex((w) => w.id === state.runWorldId);
+    if (worldIdx !== -1) {
+      state.saveData.unlockedWorldIndex = Math.max(state.saveData.unlockedWorldIndex, worldIdx + 1);
+      state.saveData.unlockedWorldIndex = Math.min(state.saveData.unlockedWorldIndex, WORLDS.length - 1);
+    }
+  }
+
+  persistSave();
 
   const saturdayLine =
     state.stars === 1
       ? "David Wallace: I am going to need to see you on Saturday."
       : "David Wallace approves this performance review.";
 
-  summaryText.textContent = `${state.player.preset.label} finished with ${state.stars}/5 stars. Score ${Math.floor(
-    state.score
-  )}, Style ${Math.floor(state.style)}, Best Hardcore chain ${state.bestChain}. Rewards: ${
-    state.schruteBucks
-  } Schrute Bucks, ${state.stanleyNickels} Stanley Nickels. ${saturdayLine}`;
+  summaryText.textContent = `${state.player.preset.label} finished ${THEME_LABELS[state.runWorldId]} with ${
+    state.stars
+  }/5 stars. Score ${Math.floor(state.score)}, Style ${Math.floor(state.style)}, Best Hardcore chain ${
+    state.bestChain
+  }. Rewards: +${state.earnedSchruteBucks} Schrute Bucks, +${
+    state.earnedStanleyNickels
+  } Stanley Nickels. Total Wallet: ${state.saveData.currencies.schruteBucks} SB / ${
+    state.saveData.currencies.stanleyNickels
+  } SN. ${saturdayLine}`;
   summaryPanel.hidden = false;
 }
 
@@ -318,17 +450,6 @@ function intersects(a, b) {
   return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 }
 
-function updateWorldTheme() {
-  const prevTheme = state.theme;
-  const t = state.worldTimeSec;
-  if (t < 16) state.theme = "bullpen";
-  else if (t < 32) state.theme = "warehouse";
-  else if (t < 48) state.theme = "streets";
-  else if (t < 60) state.theme = "corporate";
-  else state.theme = "pursuit";
-  return prevTheme !== state.theme;
-}
-
 function handleObstacleCollision(obstacle) {
   if (obstacle.hit) return;
   obstacle.hit = true;
@@ -349,7 +470,7 @@ function handleObstacleCollision(obstacle) {
   addFloatingText("Injury", state.player.x + 4, state.player.y - 28, "#ff7062");
   addHitParticles(state.player.x + state.player.width, state.player.y - 16, "#ff8f7d");
 
-  if (state.player.hp <= 0) endRun();
+  if (state.player.hp <= 0) endRun("defeat");
 }
 
 function handleAttackHits(playerBox) {
@@ -374,25 +495,15 @@ function handleAttackHits(playerBox) {
   }
 }
 
-function update(dt) {
+function updateRun(dt) {
   if (!state.running || state.paused) return;
 
   state.elapsedSec += dt;
   state.worldTimeSec += dt;
 
   if (state.worldTimeSec >= GAME.runTimeSec) {
-    endRun();
+    endRun("time");
     return;
-  }
-
-  const themeChanged = updateWorldTheme();
-  if (themeChanged) {
-    state.obstacles = [];
-    state.spawnTimerSec = 0.15;
-    state.worldBannerText = THEME_LABELS[state.theme] || state.theme;
-    state.worldBannerLeft = 1.6;
-    addFloatingText(`Now: ${state.theme.toUpperCase()}`, 350, 95, "#ffe08f");
-    playThemeSwitchCue();
   }
 
   const player = state.player;
@@ -510,7 +621,7 @@ function update(dt) {
   state.worldBannerLeft = Math.max(0, state.worldBannerLeft - dt);
 }
 
-function drawBackground() {
+function drawRunBackground() {
   const palettes = {
     bullpen: ["#9ec7e7", "#d8d9d0", "#8aa3b5", "#a9bed4"],
     warehouse: ["#8d9ca6", "#ced2cb", "#728087", "#95a3ae"],
@@ -656,7 +767,7 @@ function drawObstacles() {
 
 function drawHud() {
   ctx.fillStyle = "rgba(15,20,30,0.74)";
-  ctx.fillRect(12, 12, 390, 128);
+  ctx.fillRect(12, 12, 450, 136);
 
   ctx.fillStyle = "#fff";
   ctx.font = "16px Trebuchet MS";
@@ -664,41 +775,32 @@ function drawHud() {
   ctx.fillText(`HP: ${state.player.hp}`, 20, 56);
   ctx.fillText(`Score: ${Math.floor(state.score)}`, 20, 78);
   ctx.fillText(`Style: ${Math.floor(state.style)}`, 20, 100);
+  ctx.fillText(`Wallet: ${state.saveData.currencies.schruteBucks} SB / ${state.saveData.currencies.stanleyNickels} SN`, 20, 122);
 
   ctx.fillStyle = "#ffd54d";
-  ctx.fillText(`x${state.multiplier} Hardcore`, 190, 56);
+  ctx.fillText(`x${state.multiplier} Hardcore`, 210, 56);
 
   const timeLeft = Math.max(0, GAME.runTimeSec - state.worldTimeSec);
   ctx.fillStyle = "#d4e6ff";
-  ctx.fillText(`Time: ${timeLeft.toFixed(1)}s`, 190, 78);
-  ctx.fillText(`World: ${state.theme}`, 190, 100);
-  ctx.fillText(`Hit: K`, 300, 34);
-  ctx.fillText(`Parkour: J`, 300, 78);
-  ctx.fillText(`Start/Pause: Enter`, 420, 100);
+  ctx.fillText(`Time: ${timeLeft.toFixed(1)}s`, 210, 78);
+  ctx.fillText(`World: ${THEME_LABELS[state.theme] || state.theme}`, 210, 100);
+  ctx.fillText(`Parkour: J  Hit: K  Pause: Enter`, 210, 122);
+
   if (state.slideActive) {
-    ctx.fillText(`Slide: ${Math.ceil(state.slideSpeed)}`, 300, 56);
+    ctx.fillStyle = "#8fdcff";
+    ctx.fillText(`Slide: ${Math.ceil(state.slideSpeed)}`, 338, 56);
   }
 
   if (state.pendingLanding && state.landingWindowLeft > 0) {
     const pct = state.landingWindowLeft / GAME.parkourWindowSec;
     ctx.fillStyle = "rgba(255,255,255,0.15)";
-    ctx.fillRect(420, 22, 250, 26);
+    ctx.fillRect(480, 22, 250, 26);
     ctx.fillStyle = "#ffd54d";
-    ctx.fillRect(420, 22, 250 * pct, 26);
+    ctx.fillRect(480, 22, 250 * pct, 26);
     ctx.strokeStyle = "#111";
-    ctx.strokeRect(420, 22, 250, 26);
+    ctx.strokeRect(480, 22, 250, 26);
     ctx.fillStyle = "#111";
-    ctx.fillText("PARKOUR NOW (J)", 448, 40);
-  }
-
-  if (state.attackCooldownLeft > 0) {
-    const pct = state.attackCooldownLeft / GAME.attackCooldownSec;
-    ctx.fillStyle = "rgba(255,255,255,0.15)";
-    ctx.fillRect(420, 54, 180, 12);
-    ctx.fillStyle = "#78d7ff";
-    ctx.fillRect(420, 54, 180 * (1 - pct), 12);
-    ctx.strokeStyle = "#1a1d22";
-    ctx.strokeRect(420, 54, 180, 12);
+    ctx.fillText("PARKOUR NOW (J)", 508, 40);
   }
 }
 
@@ -723,30 +825,166 @@ function drawParticles() {
   }
 }
 
-function drawIdleScreen() {
-  drawBackground();
-  ctx.fillStyle = "rgba(15,20,30,0.75)";
-  ctx.fillRect(154, 150, 650, 230);
-  ctx.fillStyle = "#f5ead6";
-  ctx.font = "bold 32px Trebuchet MS";
-  ctx.fillText("Hardcore Parkour Prototype", 240, 220);
-  ctx.font = "20px Trebuchet MS";
-  ctx.fillText("Enter starts the run. Tap Space to jump, hold Space to slide.", 170, 272);
-  ctx.fillText("Press J for PARKOUR timing and K to hit obstacles.", 230, 306);
-}
+function drawMenuScene() {
+  const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  grad.addColorStop(0, "#1c3048");
+  grad.addColorStop(1, "#243958");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-function render() {
-  if (!state.running && !state.gameOver) {
-    drawIdleScreen();
-    return;
+  ctx.fillStyle = "#313f52";
+  ctx.fillRect(70, 70, 820, 380);
+  ctx.fillStyle = "#f4f2e7";
+  ctx.fillRect(92, 92, 776, 336);
+
+  ctx.strokeStyle = "#8b2e2e";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(116, 116);
+  ctx.lineTo(832, 390);
+  ctx.moveTo(130, 365);
+  ctx.lineTo(780, 148);
+  ctx.stroke();
+
+  ctx.fillStyle = "#1f2938";
+  ctx.font = "bold 20px Trebuchet MS";
+  ctx.fillText("Conference Room - Choose a Polaroid", 286, 60);
+
+  state.menuCards = [];
+  for (let i = 0; i < WORLDS.length; i += 1) {
+    const col = i % 3;
+    const row = Math.floor(i / 3);
+    const x = 125 + col * 245 + (row === 1 ? 125 : 0);
+    const y = 128 + row * 165;
+    const w = 190;
+    const h = 130;
+    const world = WORLDS[i];
+    const selected = state.selectedWorldId === world.id;
+    const unlocked = isWorldUnlocked(world.id);
+
+    ctx.fillStyle = selected ? "#f7f0d0" : "#fffaf0";
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = selected ? "#d3a324" : "#8f8a80";
+    ctx.lineWidth = selected ? 4 : 2;
+    ctx.strokeRect(x, y, w, h);
+
+    ctx.fillStyle = unlocked ? "#2a3343" : "#6e6e6e";
+    ctx.font = "bold 18px Trebuchet MS";
+    ctx.fillText(world.label, x + 12, y + 28);
+    ctx.font = "14px Trebuchet MS";
+    ctx.fillText(unlocked ? world.subtitle : "Locked", x + 12, y + 50);
+
+    if (!unlocked) {
+      ctx.fillStyle = "rgba(40,40,45,0.45)";
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = "#f4e8cc";
+      ctx.font = "bold 22px Trebuchet MS";
+      ctx.fillText("LOCKED", x + 55, y + 76);
+    }
+
+    state.menuCards.push({ x, y, w, h, worldId: world.id, unlocked });
   }
 
+  const anim = Math.sin(state.elapsedSec * 5);
+  const player = CHARACTER_PRESETS[characterSelect.value];
+  const px = 64;
+  const py = 470;
+
+  ctx.fillStyle = "rgba(0,0,0,0.24)";
+  ctx.beginPath();
+  ctx.ellipse(px + 24, py + 6, 24, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#f3d6b3";
+  ctx.fillRect(px + 10, py - 62, 28, 12);
+  ctx.fillStyle = player.color;
+  ctx.fillRect(px + 8, py - 50, 34, 36);
+  ctx.fillStyle = player.tieColor;
+  ctx.fillRect(px + 23, py - 45, 4, 18);
+  ctx.fillStyle = "#1c2431";
+  ctx.fillRect(px + 13, py - 14, 9, 15 + Math.abs(anim * 2));
+  ctx.fillRect(px + 27, py - 14, 9, 15 + Math.abs(anim * 2));
+
+  ctx.fillStyle = "rgba(15,20,30,0.75)";
+  ctx.fillRect(20, 490, 920, 38);
+  ctx.fillStyle = "#f5ead6";
+  ctx.font = "18px Trebuchet MS";
+  ctx.fillText(state.menuDialogue, 34, 515);
+
+  ctx.fillStyle = "#d5e5ff";
+  ctx.font = "15px Trebuchet MS";
+  ctx.fillText("Enter: Launch selected level. Click a Polaroid to switch level.", 520, 515);
+}
+
+function drawShopScene() {
+  const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  grad.addColorStop(0, "#2f2b22");
+  grad.addColorStop(1, "#4e3d2d");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = "rgba(14,17,21,0.7)";
+  ctx.fillRect(140, 90, 680, 360);
+  ctx.strokeStyle = "#f1b864";
+  ctx.strokeRect(140, 90, 680, 360);
+
+  ctx.fillStyle = "#ffd480";
+  ctx.font = "bold 34px Trebuchet MS";
+  ctx.fillText("Break Room Shop", 350, 150);
+
+  ctx.fillStyle = "#f4ead7";
+  ctx.font = "20px Trebuchet MS";
+  const questLine = state.saveData.unlocks.pamFound
+    ? "Pam rescued: Jim's Desk Key acquired. Top row unlocked."
+    : "Quest lock active: Find Pam in Warehouse (mission not built yet).";
+  ctx.fillText(questLine, 170, 215);
+  ctx.fillText(`Wallet: ${state.saveData.currencies.schruteBucks} Schrute Bucks`, 170, 255);
+  ctx.fillText(`Wallet: ${state.saveData.currencies.stanleyNickels} Stanley Nickels`, 170, 285);
+
+  ctx.fillStyle = "#c5d9f2";
+  ctx.font = "18px Trebuchet MS";
+  ctx.fillText("Placeholder scene scaffold complete. Next: item catalog + purchase logic.", 170, 345);
+  ctx.fillText("Press Enter for Menu or use top buttons.", 170, 375);
+}
+
+function drawAnnexScene() {
+  const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  grad.addColorStop(0, "#3a2145");
+  grad.addColorStop(1, "#5a2a4a");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = "rgba(14,17,21,0.7)";
+  ctx.fillRect(140, 90, 680, 360);
+  ctx.strokeStyle = "#ff9fd7";
+  ctx.strokeRect(140, 90, 680, 360);
+
+  ctx.fillStyle = "#ffc5e8";
+  ctx.font = "bold 34px Trebuchet MS";
+  ctx.fillText("Annex Boutique", 338, 150);
+
+  ctx.fillStyle = "#f4ead7";
+  ctx.font = "20px Trebuchet MS";
+  ctx.fillText(`Outfits unlocked: ${state.saveData.unlocks.outfitsUnlocked.length}`, 170, 220);
+  ctx.fillText(
+    `Dundies: ${Object.values(state.saveData.achievements).filter(Boolean).length}/3 unlocked`,
+    170,
+    255
+  );
+  ctx.fillText("Kelly commentary + outfit toggles are scaffolded next.", 170, 300);
+
+  ctx.fillStyle = "#c5d9f2";
+  ctx.font = "18px Trebuchet MS";
+  ctx.fillText("Press Enter for Menu or use top buttons.", 170, 355);
+}
+
+function drawRunScene() {
   const shakeX = state.screenShake > 0 ? (Math.random() - 0.5) * 10 * state.screenShake : 0;
   const shakeY = state.screenShake > 0 ? (Math.random() - 0.5) * 8 * state.screenShake : 0;
 
   ctx.save();
   ctx.translate(shakeX, shakeY);
-  drawBackground();
+  drawRunBackground();
   drawObstacles();
   drawPlayer();
   drawParticles();
@@ -773,7 +1011,7 @@ function render() {
     ctx.strokeRect(245, 136, 470, 86);
     ctx.fillStyle = "#ffd66e";
     ctx.font = "bold 18px Trebuchet MS";
-    ctx.fillText("LEVEL SWITCH", 418, 166);
+    ctx.fillText("LEVEL START", 428, 166);
     ctx.fillStyle = "#f5ead6";
     ctx.font = "bold 32px Trebuchet MS";
     ctx.fillText(state.worldBannerText, 312, 202);
@@ -783,6 +1021,31 @@ function render() {
   if (state.gameOver) {
     ctx.fillStyle = "rgba(15,20,30,0.66)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+}
+
+function render() {
+  if (state.scene === "menu") drawMenuScene();
+  else if (state.scene === "run") drawRunScene();
+  else if (state.scene === "shop") drawShopScene();
+  else drawAnnexScene();
+}
+
+function update(dt) {
+  state.elapsedSec += dt;
+  if (state.scene === "run") updateRun(dt);
+}
+
+function selectWorldByCanvasPoint(x, y) {
+  for (const card of state.menuCards) {
+    if (x < card.x || x > card.x + card.w || y < card.y || y > card.y + card.h) continue;
+    if (!card.unlocked) {
+      addFloatingText("LOCKED", card.x + 44, card.y + 88, "#ffe7ab");
+      return;
+    }
+    state.selectedWorldId = card.worldId;
+    setMenuDialogue();
+    return;
   }
 }
 
@@ -797,6 +1060,32 @@ function loop(ts) {
 
 function handlePress(ev) {
   ensureAudioContext();
+
+  if (ev.code === "Enter") {
+    ev.preventDefault();
+    if (state.scene === "menu") {
+      if (isWorldUnlocked(state.selectedWorldId)) {
+        resetRunState(state.selectedWorldId);
+        summaryPanel.hidden = true;
+      }
+      return;
+    }
+    if (state.scene === "run" && !state.gameOver) {
+      state.paused = !state.paused;
+      return;
+    }
+    if (state.scene === "shop" || state.scene === "annex") {
+      switchScene("menu");
+      return;
+    }
+  }
+
+  if (state.scene !== "run") {
+    if (ev.code === "KeyS") switchScene("shop");
+    if (ev.code === "KeyA") switchScene("annex");
+    return;
+  }
+
   if (ev.code === "ArrowUp") {
     ev.preventDefault();
     jump();
@@ -807,18 +1096,6 @@ function handlePress(ev) {
       state.spaceHeld = true;
       state.spaceHoldSec = 0;
       state.pendingSpaceTapJump = true;
-    }
-  }
-  if (ev.code === "Enter") {
-    ev.preventDefault();
-    if (!state.running && !state.gameOver) {
-      resetState();
-      summaryPanel.hidden = true;
-      return;
-    }
-    if (state.running && !state.gameOver) {
-      state.paused = !state.paused;
-      return;
     }
   }
   if (ev.code === "KeyJ") {
@@ -841,25 +1118,67 @@ window.addEventListener("keyup", (ev) => {
   state.pendingSpaceTapJump = false;
   state.spaceHoldSec = 0;
 });
-canvas.addEventListener("pointerdown", () => jump());
+
+canvas.addEventListener("pointerdown", (ev) => {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const x = (ev.clientX - rect.left) * scaleX;
+  const y = (ev.clientY - rect.top) * scaleY;
+
+  if (state.scene === "menu") {
+    selectWorldByCanvasPoint(x, y);
+    return;
+  }
+
+  if (state.scene === "run") {
+    jump();
+  }
+});
 
 startBtn.addEventListener("click", () => {
   ensureAudioContext();
-  resetState();
-  summaryPanel.hidden = true;
+  if (state.scene === "menu") {
+    if (isWorldUnlocked(state.selectedWorldId)) {
+      resetRunState(state.selectedWorldId);
+      summaryPanel.hidden = true;
+    }
+    return;
+  }
+
+  if (state.scene === "run") {
+    switchScene("menu");
+    return;
+  }
+
+  switchScene("menu");
 });
 
 retryBtn.addEventListener("click", () => {
-  resetState();
-  summaryPanel.hidden = true;
+  if (state.scene === "run") {
+    resetRunState(state.runWorldId);
+    summaryPanel.hidden = true;
+    return;
+  }
+
+  if (state.scene === "menu") {
+    switchScene("shop");
+    return;
+  }
+
+  if (state.scene === "shop") {
+    switchScene("annex");
+  } else {
+    switchScene("shop");
+  }
 });
 
 characterSelect.addEventListener("change", () => {
-  if (!state.running) render();
+  setMenuDialogue();
 });
 
-resetState();
-state.running = false;
-state.paused = false;
-state.gameOver = false;
+state.saveData = loadSave();
+setMenuDialogue();
+updateUiForScene();
+summaryPanel.hidden = true;
 requestAnimationFrame(loop);
