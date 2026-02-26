@@ -1397,6 +1397,20 @@ function drawShopScene() {
     const badge = owned ? "OWNED" : lockedByKey ? "LOCKED" : `BUY ${shopPriceLabel(item)}`;
     ctx.fillText(badge, x + 10, y + 80);
 
+    // Top row is visually encased in yellow Jell-O.
+    if (row === 0) {
+      const wobble = Math.sin(state.elapsedSec * 4 + col * 0.8) * 2;
+      ctx.fillStyle = lockedByKey ? "rgba(255, 213, 82, 0.42)" : "rgba(255, 222, 108, 0.26)";
+      ctx.fillRect(x + 2, y + 2, cardW - 4, cardH - 4);
+      ctx.fillStyle = "rgba(255, 236, 150, 0.55)";
+      ctx.fillRect(x + 8, y + 8 + wobble, cardW - 18, 7);
+      ctx.fillRect(x + 12, y + 24 - wobble, cardW - 24, 5);
+      ctx.fillStyle = "rgba(255, 200, 60, 0.45)";
+      ctx.fillRect(x + 16, y + cardH - 22 + wobble, cardW - 32, 9);
+      ctx.fillRect(x + 28, y + cardH - 12, 14, 4);
+      ctx.fillRect(x + cardW - 42, y + cardH - 12, 12, 4);
+    }
+
     state.shopCards.push({ x, y, w: cardW, h: cardH, itemId: item.id, lockedByKey, owned });
   }
 
