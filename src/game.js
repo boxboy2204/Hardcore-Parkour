@@ -16,7 +16,7 @@ const CHARACTER_PRESETS = {
     color: "#1f4f9b",
     tieColor: "#a11d2f",
     baseSpeed: 300,
-    jumpPower: 760,
+    jumpPower: 720,
     styleGain: 1.8,
     maxJumps: 1,
     hitboxScale: 1.0,
@@ -27,7 +27,7 @@ const CHARACTER_PRESETS = {
     color: "#b07a2f",
     tieColor: "#654531",
     baseSpeed: 280,
-    jumpPower: 710,
+    jumpPower: 675,
     styleGain: 1.45,
     maxJumps: 1,
     hitboxScale: 0.92,
@@ -38,7 +38,7 @@ const CHARACTER_PRESETS = {
     color: "#952f2f",
     tieColor: "#f4d76b",
     baseSpeed: 305,
-    jumpPower: 735,
+    jumpPower: 700,
     styleGain: 1.6,
     maxJumps: 2,
     hitboxScale: 1.18,
@@ -47,7 +47,7 @@ const CHARACTER_PRESETS = {
 };
 
 const GAME = {
-  gravity: 1800,
+  gravity: 1920,
   groundY: 430,
   floorTop: 455,
   parkourWindowSec: 0.2,
@@ -64,19 +64,19 @@ const GAME = {
 };
 
 const WORLDS = [
-  { id: "bullpen", label: "The Bullpen", subtitle: "Jump desks, dodge cats" },
-  { id: "warehouse", label: "The Warehouse", subtitle: "Belts + stealth setup" },
-  { id: "streets", label: "Scranton Streets", subtitle: "Work bus rooftop run" },
-  { id: "corporate", label: "NYC Corporate", subtitle: "Folders and elevators" },
-  { id: "pursuit", label: "Final Pursuit", subtitle: "High-speed car roofs" },
+  { id: "bullpen", label: "The Bullpen", subtitle: "Desks, flying cats, chili spills" },
+  { id: "warehouse", label: "The Warehouse", subtitle: "Paper piles, shelves, ladders" },
+  { id: "streets", label: "Scranton Streets", subtitle: "Lightpoles, snowballs, hydrants" },
+  { id: "corporate", label: "NYC Corporate", subtitle: "Desks, folders, bystanders" },
+  { id: "pursuit", label: "Final Pursuit", subtitle: "Catch Toby's car at x5 Hardcore" },
 ];
 
 const THEME_OBSTACLE_POOLS = {
-  bullpen: ["desk", "cat", "intern"],
-  warehouse: ["intern", "weak_floorboard", "desk"],
-  streets: ["cat", "snowball", "intern"],
-  corporate: ["folder", "desk", "intern"],
-  pursuit: ["snowball", "folder", "cat"],
+  bullpen: ["desk", "angela_cat", "chili_spill"],
+  warehouse: ["paper_pile", "shelf", "ladder"],
+  streets: ["lightpole", "jim_snowball", "hydrant"],
+  corporate: ["desk", "jan_folder", "bystander"],
+  pursuit: ["folder", "paper_ream", "mung_beans"],
 };
 
 const THEME_LABELS = {
@@ -139,6 +139,7 @@ const state = {
   theme: "bullpen",
   worldBannerText: "",
   worldBannerLeft: 0,
+  tobyDistance: 100,
   audioCtx: null,
   player: null,
   obstacles: [],
@@ -306,6 +307,7 @@ function resetRunState(worldId = state.selectedWorldId) {
   state.screenShake = 0;
   state.worldBannerText = THEME_LABELS[worldId] || worldId;
   state.worldBannerLeft = 1.2;
+  state.tobyDistance = 100;
   state.obstacles = [];
 
   state.player = {
@@ -351,11 +353,19 @@ function spawnObstacle() {
 
   const size = {
     desk: { w: 52, h: 46, topOffset: 0, hp: 1 },
-    cat: { w: 34, h: 24, topOffset: -2, hp: 1 },
-    intern: { w: 40, h: 58, topOffset: 0, hp: 1 },
-    weak_floorboard: { w: 58, h: 20, topOffset: 14, hp: 1 },
-    snowball: { w: 24, h: 24, topOffset: -8, hp: 1 },
-    folder: { w: 34, h: 18, topOffset: -28, hp: 1 },
+    angela_cat: { w: 34, h: 24, topOffset: -40, hp: 1 },
+    chili_spill: { w: 66, h: 12, topOffset: 12, hp: 1 },
+    paper_pile: { w: 46, h: 30, topOffset: 8, hp: 1 },
+    shelf: { w: 58, h: 54, topOffset: 0, hp: 1 },
+    ladder: { w: 64, h: 48, topOffset: -22, hp: 1 },
+    lightpole: { w: 24, h: 76, topOffset: -20, hp: 1 },
+    jim_snowball: { w: 24, h: 24, topOffset: -24, hp: 1 },
+    hydrant: { w: 36, h: 40, topOffset: 4, hp: 1 },
+    jan_folder: { w: 34, h: 18, topOffset: -36, hp: 1 },
+    bystander: { w: 34, h: 56, topOffset: 2, hp: 1 },
+    folder: { w: 34, h: 18, topOffset: -36, hp: 1 },
+    paper_ream: { w: 38, h: 24, topOffset: -6, hp: 1 },
+    mung_beans: { w: 22, h: 22, topOffset: -18, hp: 1 },
   }[type];
 
   const top = GAME.groundY - size.h + size.topOffset;
@@ -401,10 +411,13 @@ function endRun(reason = "time") {
 
   persistSave();
 
-  const saturdayLine =
+  let endingLine =
     state.stars === 1
       ? "David Wallace: I am going to need to see you on Saturday."
       : "David Wallace approves this performance review.";
+  if (reason === "toby_caught") {
+    endingLine = "Finale unlocked: You caught Toby's car. The Scranton Strangler was Toby.";
+  }
 
   summaryText.textContent = `${state.player.preset.label} finished ${THEME_LABELS[state.runWorldId]} with ${
     state.stars
@@ -414,7 +427,7 @@ function endRun(reason = "time") {
     state.earnedStanleyNickels
   } Stanley Nickels. Total Wallet: ${state.saveData.currencies.schruteBucks} SB / ${
     state.saveData.currencies.stanleyNickels
-  } SN. ${saturdayLine}`;
+  } SN. ${endingLine}`;
   summaryPanel.hidden = false;
 }
 
@@ -479,7 +492,7 @@ function handleObstacleCollision(obstacle) {
   if (obstacle.hit) return;
   obstacle.hit = true;
 
-  if (obstacle.type === "weak_floorboard" && state.player.preset.canBreakWeakFloorboard) {
+  if (obstacle.type === "shelf" && state.player.preset.canBreakWeakFloorboard) {
     state.score += 85;
     addFloatingText("Shortcut!", state.player.x + 14, state.player.y - 34, "#9cd67a");
     addHitParticles(obstacle.x + obstacle.width * 0.5, obstacle.y + obstacle.height * 0.5, "#bfaa75");
@@ -509,7 +522,7 @@ function handleAttackHits(playerBox) {
   };
 
   for (const obstacle of state.obstacles) {
-    if (obstacle.hit || obstacle.type === "weak_floorboard") continue;
+    if (obstacle.hit || obstacle.type === "ladder") continue;
     if (!intersects(attackBox, obstacle)) continue;
 
     obstacle.hit = true;
@@ -538,7 +551,8 @@ function updateRun(dt) {
   state.elapsedSec += dt;
   state.worldTimeSec += dt;
 
-  if (state.worldTimeSec >= GAME.runTimeSec) {
+  const runHasTimer = state.runWorldId !== "pursuit";
+  if (runHasTimer && state.worldTimeSec >= GAME.runTimeSec) {
     endRun("time");
     return;
   }
@@ -605,6 +619,18 @@ function updateRun(dt) {
 
   const runSpeed = state.slideActive ? movementSpeed + state.slideSpeed : movementSpeed;
 
+  if (state.runWorldId === "pursuit") {
+    if (state.multiplier >= 5) {
+      state.tobyDistance = Math.max(0, state.tobyDistance - 30 * dt);
+    } else {
+      state.tobyDistance = Math.min(100, state.tobyDistance + 8 * dt);
+    }
+    if (state.tobyDistance <= 0) {
+      endRun("toby_caught");
+      return;
+    }
+  }
+
   state.score += runSpeed * dt * 0.1;
   state.style += 20 * dt * state.multiplier * player.preset.styleGain;
 
@@ -630,6 +656,17 @@ function updateRun(dt) {
     obstacle.x -= runSpeed * dt * obstacle.speedFactor;
     if (obstacle.hit) continue;
     if (!intersects(playerBox, obstacle)) continue;
+
+    if (obstacle.type === "ladder") {
+      if (state.slideActive) {
+        obstacle.hit = true;
+        state.style += 18;
+        addFloatingText("UNDER!", obstacle.x + 6, obstacle.y - 10, "#a7ecff");
+        continue;
+      }
+      handleObstacleCollision(obstacle);
+      continue;
+    }
 
     if (state.slideActive) {
       obstacle.hit = true;
@@ -778,7 +815,7 @@ function drawObstacleSprite(obs) {
     ctx.fillStyle = "#c4a58c";
     ctx.fillRect(obs.x + 7, obs.y + 22, 14, 8);
     ctx.fillRect(obs.x + 30, obs.y + 22, 14, 8);
-  } else if (obs.type === "cat") {
+  } else if (obs.type === "angela_cat") {
     ctx.fillStyle = "#dfc09d";
     ctx.fillRect(obs.x + 4, obs.y + 6, obs.width - 8, obs.height - 8);
     ctx.fillRect(obs.x, obs.y + 2, 8, 8);
@@ -786,26 +823,66 @@ function drawObstacleSprite(obs) {
     ctx.fillStyle = "#2b2b2b";
     ctx.fillRect(obs.x + 10, obs.y + 11, 4, 4);
     ctx.fillRect(obs.x + obs.width - 14, obs.y + 11, 4, 4);
-  } else if (obs.type === "intern") {
-    ctx.fillStyle = "#2d5a8f";
-    ctx.fillRect(obs.x + 6, obs.y + 16, obs.width - 12, obs.height - 16);
-    ctx.fillStyle = "#efcfab";
-    ctx.fillRect(obs.x + 10, obs.y, obs.width - 20, 16);
-    ctx.fillStyle = "#162635";
-    ctx.fillRect(obs.x + 12, obs.y + 30, 6, 18);
-    ctx.fillRect(obs.x + 22, obs.y + 30, 6, 18);
-  } else if (obs.type === "snowball") {
+  } else if (obs.type === "chili_spill") {
+    ctx.fillStyle = "#8f3328";
+    ctx.fillRect(obs.x, obs.y + 6, obs.width, 6);
+    ctx.fillStyle = "#bd5740";
+    ctx.fillRect(obs.x + 8, obs.y + 3, obs.width - 14, 5);
+  } else if (obs.type === "paper_pile") {
+    ctx.fillStyle = "#f0f3f8";
+    ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+    ctx.fillStyle = "#d8deea";
+    for (let i = 0; i < 3; i += 1) ctx.fillRect(obs.x + 4, obs.y + 6 + i * 7, obs.width - 8, 2);
+  } else if (obs.type === "shelf") {
+    ctx.fillStyle = "#6f4e36";
+    ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+    ctx.fillStyle = "#9d7659";
+    ctx.fillRect(obs.x + 4, obs.y + 14, obs.width - 8, 4);
+    ctx.fillRect(obs.x + 4, obs.y + 30, obs.width - 8, 4);
+  } else if (obs.type === "ladder") {
+    ctx.fillStyle = "#c89e58";
+    ctx.fillRect(obs.x + 6, obs.y, 6, obs.height);
+    ctx.fillRect(obs.x + obs.width - 12, obs.y, 6, obs.height);
+    for (let i = 0; i < 4; i += 1) ctx.fillRect(obs.x + 12, obs.y + 8 + i * 10, obs.width - 24, 4);
+  } else if (obs.type === "lightpole") {
+    ctx.fillStyle = "#49546a";
+    ctx.fillRect(obs.x + 8, obs.y, 8, obs.height);
+    ctx.fillStyle = "#ffe78a";
+    ctx.fillRect(obs.x + 3, obs.y, 18, 8);
+  } else if (obs.type === "jim_snowball") {
     ctx.fillStyle = "#f2f7ff";
     ctx.beginPath();
     ctx.arc(obs.x + obs.width * 0.5, obs.y + obs.height * 0.5, obs.width * 0.45, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = "#dbe5f2";
     ctx.fillRect(obs.x + 8, obs.y + 6, 4, 3);
-  } else if (obs.type === "folder") {
+  } else if (obs.type === "hydrant") {
+    ctx.fillStyle = "#d34136";
+    ctx.fillRect(obs.x + 8, obs.y + 4, obs.width - 16, obs.height - 4);
+    ctx.fillRect(obs.x, obs.y + 14, obs.width, 8);
+  } else if (obs.type === "jan_folder" || obs.type === "folder") {
     ctx.fillStyle = "#d6a95c";
     ctx.fillRect(obs.x, obs.y + 3, obs.width, obs.height - 3);
     ctx.fillStyle = "#e8c480";
     ctx.fillRect(obs.x + 4, obs.y, 12, 4);
+  } else if (obs.type === "bystander") {
+    ctx.fillStyle = "#3d6ca3";
+    ctx.fillRect(obs.x + 4, obs.y + 16, obs.width - 8, obs.height - 16);
+    ctx.fillStyle = "#efcfab";
+    ctx.fillRect(obs.x + 9, obs.y, obs.width - 18, 16);
+  } else if (obs.type === "paper_ream") {
+    ctx.fillStyle = "#f1f6ff";
+    ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+    ctx.fillStyle = "#d1dae8";
+    ctx.fillRect(obs.x + 4, obs.y + 6, obs.width - 8, 2);
+    ctx.fillRect(obs.x + 4, obs.y + 12, obs.width - 8, 2);
+  } else if (obs.type === "mung_beans") {
+    ctx.fillStyle = "#8db34c";
+    ctx.beginPath();
+    ctx.arc(obs.x + 6, obs.y + 10, 5, 0, Math.PI * 2);
+    ctx.arc(obs.x + 14, obs.y + 8, 5, 0, Math.PI * 2);
+    ctx.arc(obs.x + 11, obs.y + 15, 5, 0, Math.PI * 2);
+    ctx.fill();
   } else {
     ctx.fillStyle = "#b79e6a";
     ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
@@ -835,13 +912,20 @@ function drawHud() {
 
   const timeLeft = Math.max(0, GAME.runTimeSec - state.worldTimeSec);
   ctx.fillStyle = "#d4e6ff";
-  ctx.fillText(`Time: ${timeLeft.toFixed(1)}s`, 210, 78);
+  if (state.runWorldId === "pursuit") ctx.fillText("Time: -- (Chase Mode)", 210, 78);
+  else ctx.fillText(`Time: ${timeLeft.toFixed(1)}s`, 210, 78);
   ctx.fillText(`World: ${THEME_LABELS[state.theme] || state.theme}`, 210, 100);
   ctx.fillText(`Parkour: J  Hit: K  Pause: Enter`, 210, 122);
 
   if (state.slideActive) {
     ctx.fillStyle = "#8fdcff";
     ctx.fillText(`Slide: ${Math.ceil(state.slideSpeed)}`, 338, 56);
+  }
+
+  if (state.runWorldId === "pursuit") {
+    ctx.fillStyle = "#ffe38f";
+    ctx.fillText(`Catch Toby: ${Math.ceil(state.tobyDistance)}m`, 480, 78);
+    ctx.fillText(`Goal: reach x5 Hardcore`, 480, 100);
   }
 
   if (state.pendingLanding && state.landingWindowLeft > 0) {
@@ -855,6 +939,35 @@ function drawHud() {
     ctx.fillStyle = "#111";
     ctx.fillText("PARKOUR NOW (J)", 508, 40);
   }
+}
+
+function drawPursuitTarget() {
+  if (state.runWorldId !== "pursuit") return;
+
+  const t = Math.max(0, Math.min(1, 1 - state.tobyDistance / 100));
+  const carX = 760 + t * 120;
+  const carY = 365 - t * 30;
+
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
+  ctx.beginPath();
+  ctx.ellipse(carX + 38, carY + 34, 46, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#2f3139";
+  ctx.fillRect(carX, carY + 10, 76, 20);
+  ctx.fillRect(carX + 12, carY, 44, 14);
+  ctx.fillStyle = "#9dc4ff";
+  ctx.fillRect(carX + 16, carY + 2, 16, 8);
+  ctx.fillRect(carX + 34, carY + 2, 16, 8);
+  ctx.fillStyle = "#111";
+  ctx.fillRect(carX + 8, carY + 26, 14, 8);
+  ctx.fillRect(carX + 54, carY + 26, 14, 8);
+
+  ctx.fillStyle = "#f4d5b3";
+  ctx.fillRect(carX + 41, carY + 3, 7, 6);
+  ctx.fillStyle = "#f1e6c2";
+  ctx.font = "bold 12px Trebuchet MS";
+  ctx.fillText("T", carX + 43, carY + 9);
 }
 
 function drawFloatingText() {
@@ -1043,6 +1156,7 @@ function drawRunScene() {
   ctx.save();
   ctx.translate(shakeX, shakeY);
   drawRunBackground();
+  drawPursuitTarget();
   drawObstacles();
   drawPlayer();
   drawParticles();
