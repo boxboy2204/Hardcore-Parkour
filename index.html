@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hardcore Parkour - Prototype</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <section class="hud">
+        <h1>Hardcore Parkour</h1>
+        <div class="controls">
+          <label for="characterSelect">Runner</label>
+          <select id="characterSelect" aria-label="Runner select">
+            <option value="michael">Michael</option>
+            <option value="dwight">Dwight</option>
+            <option value="andy">Andy</option>
+          </select>
+          <button id="startBtn">Start Run</button>
+        </div>
+        <p class="help">Jump: <kbd>Space</kbd> or tap screen. Shout PARKOUR: <kbd>Enter</kbd> right after landing.</p>
+      </section>
+
+      <canvas id="game" width="960" height="540" aria-label="Hardcore Parkour game area"></canvas>
+
+      <section class="panel" id="summaryPanel" hidden>
+        <h2>Performance Review</h2>
+        <p id="summaryText"></p>
+        <button id="retryBtn">Run It Back</button>
+      </section>
+    </main>
+
+    <script type="module" src="./src/game.js"></script>
+  </body>
+</html>

@@ -1,0 +1,104 @@
+:root {
+  --bg-top: #0b1a2a;
+  --bg-bottom: #263247;
+  --paper: #f5ead6;
+  --ink: #10151f;
+  --accent: #f6c04f;
+  --danger: #d96b60;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  color: var(--paper);
+  background: radial-gradient(circle at top, #3c5a7e 0%, var(--bg-top) 40%, var(--bg-bottom) 100%);
+}
+
+.app {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 20px;
+  display: grid;
+  gap: 14px;
+}
+
+.hud {
+  background: rgba(16, 21, 31, 0.72);
+  border: 2px solid #fff3;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.hud h1 {
+  margin: 0 0 10px;
+  color: var(--accent);
+  letter-spacing: 0.08em;
+}
+
+.controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+select,
+button {
+  font: inherit;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #fff5;
+}
+
+button {
+  background: #273447;
+  color: var(--paper);
+  cursor: pointer;
+}
+
+button:hover {
+  background: #32445d;
+}
+
+.help {
+  margin: 10px 0 0;
+  color: #d4dcec;
+}
+
+kbd {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #111a27;
+  border: 1px solid #fff3;
+}
+
+#game {
+  width: 100%;
+  height: auto;
+  border: 2px solid #fff4;
+  border-radius: 10px;
+  background: linear-gradient(#8fb7dc 0%, #afcbe6 40%, #d7d8cf 40%, #d7d8cf 100%);
+}
+
+.panel {
+  background: rgba(16, 21, 31, 0.8);
+  border: 2px solid #fff4;
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.panel h2 {
+  margin: 0 0 8px;
+  color: var(--accent);
+}
+
+@media (max-width: 740px) {
+  .app {
+    padding: 12px;
+  }
+}
