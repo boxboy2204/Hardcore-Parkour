@@ -11,6 +11,7 @@ const CHARACTER_PRESETS = {
   michael: {
     label: "Michael",
     color: "#1f4f9b",
+    tieColor: "#a11d2f",
     baseSpeed: 300,
     jumpPower: 760,
     styleGain: 1.8,
@@ -21,6 +22,7 @@ const CHARACTER_PRESETS = {
   dwight: {
     label: "Dwight",
     color: "#b07a2f",
+    tieColor: "#654531",
     baseSpeed: 280,
     jumpPower: 710,
     styleGain: 1.45,
@@ -31,6 +33,7 @@ const CHARACTER_PRESETS = {
   andy: {
     label: "Andy",
     color: "#952f2f",
+    tieColor: "#f4d76b",
     baseSpeed: 305,
     jumpPower: 735,
     styleGain: 1.6,
@@ -49,6 +52,8 @@ const GAME = {
   speedBoostValue: 120,
   stumbleSec: 0.45,
   runTimeSec: 70,
+  attackDurationSec: 0.14,
+  attackCooldownSec: 0.24,
 };
 
 const state = {
@@ -63,13 +68,17 @@ const state = {
   pendingLanding: false,
   speedBoostLeft: 0,
   stumbleLeft: 0,
+  attackLeft: 0,
+  attackCooldownLeft: 0,
   floatingText: [],
+  particles: [],
   stars: 0,
   schruteBucks: 0,
   stanleyNickels: 0,
   elapsedSec: 0,
   spawnTimerSec: 1.1,
   cameraOffset: 0,
+  screenShake: 0,
   theme: "bullpen",
   player: null,
   obstacles: [],
@@ -88,13 +97,17 @@ function resetState() {
   state.pendingLanding = false;
   state.speedBoostLeft = 0;
   state.stumbleLeft = 0;
+  state.attackLeft = 0;
+  state.attackCooldownLeft = 0;
   state.floatingText = [];
+  state.particles = [];
   state.stars = 0;
   state.schruteBucks = 0;
   state.stanleyNickels = 0;
   state.elapsedSec = 0;
   state.spawnTimerSec = 0.7;
   state.cameraOffset = 0;
+  state.screenShake = 0;
   state.theme = "bullpen";
   state.obstacles = [];
 
@@ -107,7 +120,7 @@ function resetState() {
     vy: 0,
     grounded: true,
     jumpsUsed: 0,
-    hp: 3,
+    hp: 4,
   };
 }
 
@@ -115,25 +128,43 @@ function addFloatingText(text, x, y, color) {
   state.floatingText.push({ text, x, y, color, age: 0, ttl: 0.8 });
 }
 
+function addHitParticles(x, y, color) {
+  for (let i = 0; i < 7; i += 1) {
+    state.particles.push({
+      x,
+      y,
+      vx: 130 + Math.random() * 220,
+      vy: -180 + Math.random() * 240,
+      color,
+      age: 0,
+      ttl: 0.35 + Math.random() * 0.2,
+    });
+  }
+}
+
 function spawnObstacle() {
-  const distanceFactor = Math.min(1.7, 1 + state.worldTimeSec / 80);
+  const distanceFactor = Math.min(1.75, 1 + state.worldTimeSec / 75);
   const roll = Math.random();
   let type = "desk";
-  if (roll < 0.2) type = "cat";
-  if (roll > 0.72) type = "weak_floorboard";
+  if (roll < 0.18) type = "cat";
+  else if (roll < 0.36) type = "intern";
+  else if (roll > 0.76) type = "weak_floorboard";
 
   const size = {
-    desk: { w: 52, h: 46, y: GAME.groundY + 16 },
-    cat: { w: 34, h: 24, y: GAME.groundY + 36 },
-    weak_floorboard: { w: 58, h: 20, y: GAME.groundY + 40 },
+    desk: { w: 52, h: 46, topOffset: 0, hp: 1 },
+    cat: { w: 34, h: 24, topOffset: -2, hp: 1 },
+    intern: { w: 40, h: 58, topOffset: 0, hp: 1 },
+    weak_floorboard: { w: 58, h: 20, topOffset: 14, hp: 1 },
   }[type];
 
+  const top = GAME.groundY - size.h + size.topOffset;
   state.obstacles.push({
     type,
     x: canvas.width + 20,
-    y: size.y,
+    y: top,
     width: size.w,
     height: size.h,
+    hp: size.hp,
     hit: false,
     speedFactor: distanceFactor,
   });
@@ -180,6 +211,12 @@ function doParkourShout() {
   }
 }
 
+function attack() {
+  if (!state.running || state.attackCooldownLeft > 0) return;
+  state.attackLeft = GAME.attackDurationSec;
+  state.attackCooldownLeft = GAME.attackCooldownSec;
+}
+
 function stumbleFail() {
   state.pendingLanding = false;
   state.landingWindowLeft = 0;
@@ -221,6 +258,7 @@ function handleObstacleCollision(obstacle) {
   if (obstacle.type === "weak_floorboard" && state.player.preset.canBreakWeakFloorboard) {
     state.score += 85;
     addFloatingText("Shortcut!", state.player.x + 14, state.player.y - 34, "#9cd67a");
+    addHitParticles(obstacle.x + obstacle.width * 0.5, obstacle.y + obstacle.height * 0.5, "#bfaa75");
     return;
   }
 
@@ -229,10 +267,32 @@ function handleObstacleCollision(obstacle) {
   state.score = Math.max(0, state.score - 80);
   state.speedBoostLeft = 0;
   state.stumbleLeft = 0.6;
+  state.screenShake = 0.22;
   addFloatingText("Injury", state.player.x + 4, state.player.y - 28, "#ff7062");
+  addHitParticles(state.player.x + state.player.width, state.player.y - 16, "#ff8f7d");
 
-  if (state.player.hp <= 0) {
-    endRun();
+  if (state.player.hp <= 0) endRun();
+}
+
+function handleAttackHits(playerBox) {
+  if (state.attackLeft <= 0) return;
+
+  const attackBox = {
+    x: playerBox.x + playerBox.width - 4,
+    y: playerBox.y + 8,
+    width: 68,
+    height: playerBox.height - 12,
+  };
+
+  for (const obstacle of state.obstacles) {
+    if (obstacle.hit || obstacle.type === "weak_floorboard") continue;
+    if (!intersects(attackBox, obstacle)) continue;
+
+    obstacle.hit = true;
+    state.score += 120;
+    state.style += 36 * state.multiplier;
+    addFloatingText("SMACK", obstacle.x + 8, obstacle.y - 10, "#ffe28a");
+    addHitParticles(obstacle.x + obstacle.width * 0.5, obstacle.y + obstacle.height * 0.45, "#f9e2a5");
   }
 }
 
@@ -272,13 +332,14 @@ function update(dt) {
 
   if (state.landingWindowLeft > 0) {
     state.landingWindowLeft -= dt;
-    if (state.landingWindowLeft <= 0 && state.pendingLanding) {
-      stumbleFail();
-    }
+    if (state.landingWindowLeft <= 0 && state.pendingLanding) stumbleFail();
   }
 
   state.speedBoostLeft = Math.max(0, state.speedBoostLeft - dt);
   state.stumbleLeft = Math.max(0, state.stumbleLeft - dt);
+  state.attackLeft = Math.max(0, state.attackLeft - dt);
+  state.attackCooldownLeft = Math.max(0, state.attackCooldownLeft - dt);
+  state.screenShake = Math.max(0, state.screenShake - dt);
 
   const baseSpeed = player.preset.baseSpeed;
   const speedModifier = state.speedBoostLeft > 0 ? GAME.speedBoostValue : 0;
@@ -291,8 +352,8 @@ function update(dt) {
   state.spawnTimerSec -= dt;
   if (state.spawnTimerSec <= 0) {
     spawnObstacle();
-    const spawnGap = 0.65 + Math.random() * 0.8;
-    state.spawnTimerSec = Math.max(0.35, spawnGap - state.worldTimeSec * 0.004);
+    const spawnGap = 0.62 + Math.random() * 0.8;
+    state.spawnTimerSec = Math.max(0.34, spawnGap - state.worldTimeSec * 0.004);
   }
 
   const hitboxW = player.width * player.preset.hitboxScale;
@@ -304,11 +365,11 @@ function update(dt) {
     height: hitboxH,
   };
 
+  handleAttackHits(playerBox);
+
   for (const obstacle of state.obstacles) {
     obstacle.x -= runSpeed * dt * obstacle.speedFactor;
-    if (!obstacle.hit && intersects(playerBox, obstacle)) {
-      handleObstacleCollision(obstacle);
-    }
+    if (!obstacle.hit && intersects(playerBox, obstacle)) handleObstacleCollision(obstacle);
   }
 
   state.obstacles = state.obstacles.filter((obs) => obs.x + obs.width > -20 && !obs.hit);
@@ -318,61 +379,145 @@ function update(dt) {
     text.y -= 24 * dt;
   }
   state.floatingText = state.floatingText.filter((t) => t.age < t.ttl);
+
+  for (const p of state.particles) {
+    p.age += dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 880 * dt;
+  }
+  state.particles = state.particles.filter((p) => p.age < p.ttl);
 }
 
 function drawBackground() {
   const palettes = {
-    bullpen: ["#99c4e4", "#d8d9d0", "#8aa3b5"],
-    warehouse: ["#8f9ea8", "#ced2cb", "#728087"],
-    streets: ["#9aabb3", "#d5d4ce", "#76848b"],
-    corporate: ["#a6bad4", "#dddcd5", "#8896ab"],
-    pursuit: ["#6f8bb1", "#bec8d0", "#4f637d"],
+    bullpen: ["#9ec7e7", "#d8d9d0", "#8aa3b5", "#a9bed4"],
+    warehouse: ["#8d9ca6", "#ced2cb", "#728087", "#95a3ae"],
+    streets: ["#9caeb8", "#d5d4ce", "#76848b", "#abb8c1"],
+    corporate: ["#a6bad4", "#dddcd5", "#8896ab", "#bccbe0"],
+    pursuit: ["#6f8bb1", "#bec8d0", "#4f637d", "#8ca5c6"],
   };
-  const [sky, floor, mid] = palettes[state.theme];
+  const [sky, floor, mid, haze] = palettes[state.theme];
+  const xShift = state.worldTimeSec * 50;
 
-  ctx.fillStyle = sky;
+  const grad = ctx.createLinearGradient(0, 0, 0, GAME.floorTop);
+  grad.addColorStop(0, sky);
+  grad.addColorStop(1, haze);
+  ctx.fillStyle = grad;
   ctx.fillRect(0, 0, canvas.width, GAME.floorTop);
 
+  ctx.fillStyle = "rgba(255,255,255,0.35)";
+  for (let i = 0; i < 4; i += 1) {
+    const x = (i * 260 - (xShift * 0.22) % 1100) - 120;
+    ctx.beginPath();
+    ctx.ellipse(x, 90 + (i % 2) * 24, 86, 24, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   ctx.fillStyle = mid;
-  for (let i = 0; i < 8; i += 1) {
-    const w = 130;
-    const x = (i * 160 - ((state.worldTimeSec * 40) % 160)) - 10;
-    const h = 80 + (i % 3) * 16;
-    ctx.fillRect(x, 280 - h, w, h);
+  for (let i = 0; i < 10; i += 1) {
+    const w = 110 + (i % 3) * 28;
+    const x = (i * 140 - (xShift * 0.6) % 1400) - 20;
+    const h = 70 + (i % 4) * 18;
+    ctx.fillRect(x, 292 - h, w, h);
   }
 
   ctx.fillStyle = floor;
   ctx.fillRect(0, GAME.floorTop, canvas.width, canvas.height - GAME.floorTop);
+
+  ctx.fillStyle = "rgba(0,0,0,0.12)";
+  for (let i = 0; i < 24; i += 1) {
+    const x = (i * 54 - (xShift * 1.3) % 1200) - 10;
+    ctx.fillRect(x, GAME.floorTop + 24, 28, 4);
+  }
 }
 
 function drawPlayer() {
   const player = state.player;
   const x = player.x;
   const y = player.y - player.height;
+  const runCycle = Math.sin(state.worldTimeSec * 14);
 
-  ctx.fillStyle = player.preset.color;
-  ctx.fillRect(x, y, player.width, player.height);
-
-  ctx.fillStyle = "#111";
-  ctx.fillRect(x + 8, y + 12, 8, 8);
-  ctx.fillRect(x + 25, y + 12, 8, 8);
+  ctx.fillStyle = "rgba(0,0,0,0.2)";
+  ctx.beginPath();
+  ctx.ellipse(x + 21, GAME.groundY + 4, 22, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
 
   ctx.fillStyle = "#f3d6b3";
-  ctx.fillRect(x + 6, y + 2, 30, 10);
+  ctx.fillRect(x + 7, y + 2, 28, 12);
+
+  ctx.fillStyle = player.preset.color;
+  ctx.fillRect(x + 4, y + 14, 34, 34);
+
+  ctx.fillStyle = player.preset.tieColor;
+  ctx.fillRect(x + 19, y + 18, 4, 20);
+
+  const armY = y + 20 + runCycle * 2;
+  ctx.fillStyle = "#d9ba97";
+  ctx.fillRect(x - 1, armY, 8, 16);
+  if (state.attackLeft > 0) {
+    ctx.fillRect(x + 34, y + 18, 14, 8);
+    ctx.fillStyle = "#ffe189";
+    ctx.fillRect(x + 48, y + 20, 18, 4);
+  } else {
+    ctx.fillRect(x + 35, armY, 8, 16);
+  }
+
+  const legOffset = player.grounded ? runCycle * 4 : 0;
+  ctx.fillStyle = "#1c2431";
+  ctx.fillRect(x + 10, y + 48, 9, 14 + Math.abs(legOffset));
+  ctx.fillRect(x + 24, y + 48, 9, 14 + Math.abs(legOffset));
+
+  ctx.fillStyle = "#111";
+  ctx.fillRect(x + 12, y + 6, 6, 4);
+  ctx.fillRect(x + 24, y + 6, 6, 4);
 }
 
-function drawObstacles() {
-  for (const obs of state.obstacles) {
-    if (obs.type === "desk") ctx.fillStyle = "#6c4b34";
-    if (obs.type === "cat") ctx.fillStyle = "#e1c5a5";
-    if (obs.type === "weak_floorboard") ctx.fillStyle = "#b79e6a";
-    ctx.fillRect(obs.x, obs.y - obs.height, obs.width, obs.height);
+function drawObstacleSprite(obs) {
+  ctx.fillStyle = "rgba(0,0,0,0.2)";
+  ctx.beginPath();
+  ctx.ellipse(obs.x + obs.width * 0.5, GAME.groundY + 4, obs.width * 0.48, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (obs.type === "desk") {
+    ctx.fillStyle = "#6b4b31";
+    ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+    ctx.fillStyle = "#8d6649";
+    ctx.fillRect(obs.x + 6, obs.y + 7, obs.width - 12, 10);
+    ctx.fillStyle = "#c4a58c";
+    ctx.fillRect(obs.x + 7, obs.y + 22, 14, 8);
+    ctx.fillRect(obs.x + 30, obs.y + 22, 14, 8);
+  } else if (obs.type === "cat") {
+    ctx.fillStyle = "#dfc09d";
+    ctx.fillRect(obs.x + 4, obs.y + 6, obs.width - 8, obs.height - 8);
+    ctx.fillRect(obs.x, obs.y + 2, 8, 8);
+    ctx.fillRect(obs.x + obs.width - 8, obs.y + 2, 8, 8);
+    ctx.fillStyle = "#2b2b2b";
+    ctx.fillRect(obs.x + 10, obs.y + 11, 4, 4);
+    ctx.fillRect(obs.x + obs.width - 14, obs.y + 11, 4, 4);
+  } else if (obs.type === "intern") {
+    ctx.fillStyle = "#2d5a8f";
+    ctx.fillRect(obs.x + 6, obs.y + 16, obs.width - 12, obs.height - 16);
+    ctx.fillStyle = "#efcfab";
+    ctx.fillRect(obs.x + 10, obs.y, obs.width - 20, 16);
+    ctx.fillStyle = "#162635";
+    ctx.fillRect(obs.x + 12, obs.y + 30, 6, 18);
+    ctx.fillRect(obs.x + 22, obs.y + 30, 6, 18);
+  } else {
+    ctx.fillStyle = "#b79e6a";
+    ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+    ctx.fillStyle = "#d9c38b";
+    ctx.fillRect(obs.x + 6, obs.y + 5, obs.width - 12, 4);
   }
 }
 
+function drawObstacles() {
+  for (const obs of state.obstacles) drawObstacleSprite(obs);
+}
+
 function drawHud() {
-  ctx.fillStyle = "rgba(15,20,30,0.7)";
-  ctx.fillRect(12, 12, 336, 120);
+  ctx.fillStyle = "rgba(15,20,30,0.74)";
+  ctx.fillRect(12, 12, 390, 128);
 
   ctx.fillStyle = "#fff";
   ctx.font = "16px Trebuchet MS";
@@ -388,17 +533,28 @@ function drawHud() {
   ctx.fillStyle = "#d4e6ff";
   ctx.fillText(`Time: ${timeLeft.toFixed(1)}s`, 190, 78);
   ctx.fillText(`World: ${state.theme}`, 190, 100);
+  ctx.fillText(`Hit: K`, 300, 34);
 
   if (state.pendingLanding && state.landingWindowLeft > 0) {
     const pct = state.landingWindowLeft / GAME.parkourWindowSec;
     ctx.fillStyle = "rgba(255,255,255,0.15)";
-    ctx.fillRect(365, 22, 250, 26);
+    ctx.fillRect(420, 22, 250, 26);
     ctx.fillStyle = "#ffd54d";
-    ctx.fillRect(365, 22, 250 * pct, 26);
+    ctx.fillRect(420, 22, 250 * pct, 26);
     ctx.strokeStyle = "#111";
-    ctx.strokeRect(365, 22, 250, 26);
+    ctx.strokeRect(420, 22, 250, 26);
     ctx.fillStyle = "#111";
-    ctx.fillText("PARKOUR NOW (ENTER)", 378, 40);
+    ctx.fillText("PARKOUR NOW (ENTER)", 433, 40);
+  }
+
+  if (state.attackCooldownLeft > 0) {
+    const pct = state.attackCooldownLeft / GAME.attackCooldownSec;
+    ctx.fillStyle = "rgba(255,255,255,0.15)";
+    ctx.fillRect(420, 54, 180, 12);
+    ctx.fillStyle = "#78d7ff";
+    ctx.fillRect(420, 54, 180 * (1 - pct), 12);
+    ctx.strokeStyle = "#1a1d22";
+    ctx.strokeRect(420, 54, 180, 12);
   }
 }
 
@@ -413,16 +569,26 @@ function drawFloatingText() {
   }
 }
 
+function drawParticles() {
+  for (const p of state.particles) {
+    const alpha = 1 - p.age / p.ttl;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x, p.y, 4, 4);
+    ctx.globalAlpha = 1;
+  }
+}
+
 function drawIdleScreen() {
   drawBackground();
   ctx.fillStyle = "rgba(15,20,30,0.75)";
-  ctx.fillRect(180, 160, 600, 210);
+  ctx.fillRect(154, 150, 650, 230);
   ctx.fillStyle = "#f5ead6";
   ctx.font = "bold 32px Trebuchet MS";
   ctx.fillText("Hardcore Parkour Prototype", 240, 220);
   ctx.font = "20px Trebuchet MS";
-  ctx.fillText("Press Start Run, then jump with Space/tap.", 250, 268);
-  ctx.fillText("Hit Enter within 0.2s after landing for HARDCORE boost.", 202, 304);
+  ctx.fillText("Space/tap to jump. Enter after landing for HARDCORE.", 190, 272);
+  ctx.fillText("Press K to hit obstacles before they hit you.", 262, 306);
 }
 
 function render() {
@@ -431,11 +597,18 @@ function render() {
     return;
   }
 
+  const shakeX = state.screenShake > 0 ? (Math.random() - 0.5) * 10 * state.screenShake : 0;
+  const shakeY = state.screenShake > 0 ? (Math.random() - 0.5) * 8 * state.screenShake : 0;
+
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
   drawBackground();
   drawObstacles();
   drawPlayer();
+  drawParticles();
   drawFloatingText();
   drawHud();
+  ctx.restore();
 
   if (state.gameOver) {
     ctx.fillStyle = "rgba(15,20,30,0.66)";
@@ -460,6 +633,10 @@ function handlePress(ev) {
   if (ev.code === "Enter") {
     ev.preventDefault();
     doParkourShout();
+  }
+  if (ev.code === "KeyK") {
+    ev.preventDefault();
+    attack();
   }
 }
 
