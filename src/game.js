@@ -1327,51 +1327,45 @@ function drawShopScene() {
   ctx.fillRect(vmX + vmW - 68, vmY + vmH - 64, 38, 34);
 
   // Jim leaning against the vending machine.
-  const jimX = 730;
+  const jimX = vmX + vmW + 10;
   const jimY = 392;
-  const jimScale = 2.1;
+  const jimScale = 1.85;
   ctx.fillStyle = "rgba(0,0,0,0.24)";
   ctx.beginPath();
-  ctx.ellipse(jimX + 26 * jimScale, jimY + 8 * jimScale, 25 * jimScale, 8 * jimScale, 0, 0, Math.PI * 2);
+  ctx.ellipse(jimX + 20 * jimScale, jimY + 8 * jimScale, 20 * jimScale, 7 * jimScale, 0, 0, Math.PI * 2);
   ctx.fill();
-  // Head + hair silhouette.
+  // Clean 3/4 pose with one arm clearly on the machine.
   ctx.fillStyle = "#efcfab";
-  ctx.fillRect(jimX + 11 * jimScale, jimY - 62 * jimScale, 22 * jimScale, 15 * jimScale);
+  ctx.fillRect(jimX + 8 * jimScale, jimY - 58 * jimScale, 16 * jimScale, 12 * jimScale);
   ctx.fillStyle = "#2a1e16";
-  ctx.fillRect(jimX + 9 * jimScale, jimY - 68 * jimScale, 26 * jimScale, 7 * jimScale);
-  ctx.fillRect(jimX + 7 * jimScale, jimY - 63 * jimScale, 8 * jimScale, 5 * jimScale);
-  ctx.fillRect(jimX + 24 * jimScale, jimY - 63 * jimScale, 9 * jimScale, 3 * jimScale);
-
-  // Face details for a more recognizable Jim look.
+  ctx.fillRect(jimX + 6 * jimScale, jimY - 63 * jimScale, 20 * jimScale, 6 * jimScale);
+  ctx.fillRect(jimX + 5 * jimScale, jimY - 59 * jimScale, 5 * jimScale, 3 * jimScale);
   ctx.fillStyle = "#1e2431";
-  ctx.fillRect(jimX + 16 * jimScale, jimY - 56 * jimScale, 2 * jimScale, 2 * jimScale);
-  ctx.fillRect(jimX + 25 * jimScale, jimY - 56 * jimScale, 2 * jimScale, 2 * jimScale);
-  ctx.fillRect(jimX + 20 * jimScale, jimY - 52 * jimScale, 3 * jimScale, 1 * jimScale);
-  ctx.fillRect(jimX + 18 * jimScale, jimY - 49 * jimScale, 7 * jimScale, 1 * jimScale);
+  ctx.fillRect(jimX + 12 * jimScale, jimY - 54 * jimScale, 2 * jimScale, 2 * jimScale);
+  ctx.fillRect(jimX + 18 * jimScale, jimY - 54 * jimScale, 2 * jimScale, 2 * jimScale);
+  ctx.fillRect(jimX + 13 * jimScale, jimY - 50 * jimScale, 6 * jimScale, 1 * jimScale);
 
-  // Torso with shirt shading and tie.
   ctx.fillStyle = "#5f8fca";
-  ctx.fillRect(jimX + 9 * jimScale, jimY - 47 * jimScale, 30 * jimScale, 35 * jimScale);
-  ctx.fillStyle = "#4e79ad";
-  ctx.fillRect(jimX + 30 * jimScale, jimY - 45 * jimScale, 8 * jimScale, 31 * jimScale);
+  ctx.fillRect(jimX + 6 * jimScale, jimY - 46 * jimScale, 24 * jimScale, 30 * jimScale);
+  ctx.fillStyle = "#4f7fb7";
+  ctx.fillRect(jimX + 22 * jimScale, jimY - 44 * jimScale, 7 * jimScale, 26 * jimScale);
   ctx.fillStyle = "#2f4f7a";
-  ctx.fillRect(jimX + 22 * jimScale, jimY - 45 * jimScale, 4 * jimScale, 20 * jimScale);
+  ctx.fillRect(jimX + 15 * jimScale, jimY - 44 * jimScale, 3 * jimScale, 18 * jimScale);
 
-  // Left arm down, right arm bent/leaning on machine.
-  ctx.fillStyle = "#d4b28f";
-  ctx.fillRect(jimX + 7 * jimScale, jimY - 43 * jimScale, 4 * jimScale, 17 * jimScale);
+  // Arms at sides.
   ctx.fillStyle = "#5f8fca";
-  ctx.fillRect(jimX + 38 * jimScale, jimY - 40 * jimScale, 10 * jimScale, 7 * jimScale);
+  ctx.fillRect(jimX + 2 * jimScale, jimY - 40 * jimScale, 5 * jimScale, 16 * jimScale);
+  ctx.fillRect(jimX + 29 * jimScale, jimY - 40 * jimScale, 5 * jimScale, 16 * jimScale);
   ctx.fillStyle = "#d4b28f";
-  ctx.fillRect(jimX + 48 * jimScale, jimY - 39 * jimScale, 6 * jimScale, 6 * jimScale);
+  ctx.fillRect(jimX + 2 * jimScale, jimY - 26 * jimScale, 4 * jimScale, 4 * jimScale);
+  ctx.fillRect(jimX + 30 * jimScale, jimY - 26 * jimScale, 4 * jimScale, 4 * jimScale);
 
-  // Pants + shoes.
   ctx.fillStyle = "#1b2838";
-  ctx.fillRect(jimX + 14 * jimScale, jimY - 12 * jimScale, 9 * jimScale, 17 * jimScale);
-  ctx.fillRect(jimX + 26 * jimScale, jimY - 12 * jimScale, 9 * jimScale, 17 * jimScale);
+  ctx.fillRect(jimX + 10 * jimScale, jimY - 16 * jimScale, 7 * jimScale, 18 * jimScale);
+  ctx.fillRect(jimX + 20 * jimScale, jimY - 16 * jimScale, 7 * jimScale, 18 * jimScale);
   ctx.fillStyle = "#111722";
-  ctx.fillRect(jimX + 13 * jimScale, jimY + 5 * jimScale, 10 * jimScale, 3 * jimScale);
-  ctx.fillRect(jimX + 26 * jimScale, jimY + 5 * jimScale, 10 * jimScale, 3 * jimScale);
+  ctx.fillRect(jimX + 9 * jimScale, jimY + 2 * jimScale, 8 * jimScale, 3 * jimScale);
+  ctx.fillRect(jimX + 20 * jimScale, jimY + 2 * jimScale, 8 * jimScale, 3 * jimScale);
 
   state.shopCards = [];
   const colWidth = 98;
