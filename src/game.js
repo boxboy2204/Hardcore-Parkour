@@ -974,46 +974,86 @@ function drawPlayer() {
   const runCycle = Math.sin(state.worldTimeSec * 18);
   const runCycleOpp = Math.sin(state.worldTimeSec * 18 + Math.PI);
   const bob = player.grounded ? Math.abs(Math.sin(state.worldTimeSec * 18)) * 2 : -2;
+  const bodyY = y + (state.slideActive ? 10 : 14) + bob;
 
   ctx.fillStyle = "rgba(0,0,0,0.2)";
   ctx.beginPath();
   ctx.ellipse(x + 21, GAME.groundY + 4, 22, 7, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = "#f3d6b3";
+  // Head + hair.
+  ctx.fillStyle = "#efcfab";
   ctx.fillRect(x + 7, y + 2 + bob, 28, state.slideActive ? 9 : 12);
+  ctx.fillStyle = "#2a1e16";
+  ctx.fillRect(x + 6, y - 2 + bob, 30, 5);
+  ctx.fillRect(x + 5, y + 1 + bob, 6, 3);
+  if (player.preset.label === "Dwight") {
+    // Dwight hair part.
+    ctx.fillStyle = "#efcfab";
+    ctx.fillRect(x + 20, y - 2 + bob, 2, 5);
+    ctx.fillRect(x + 20, y + 1 + bob, 1, 2);
+  }
 
+  // Face details.
+  ctx.fillStyle = "#1b2230";
+  if (player.preset.label === "Dwight") {
+    ctx.strokeStyle = "#c2ccd8";
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x + 11.5, y + 4.5 + bob, 6, 5);
+    ctx.strokeRect(x + 23.5, y + 4.5 + bob, 6, 5);
+    ctx.beginPath();
+    ctx.moveTo(x + 17.5, y + 7 + bob);
+    ctx.lineTo(x + 23.5, y + 7 + bob);
+    ctx.stroke();
+  }
+  ctx.fillRect(x + 13, y + 6 + bob, 2, 2);
+  ctx.fillRect(x + 25, y + 6 + bob, 2, 2);
+  ctx.fillRect(x + 17, y + 10 + bob, 8, 1);
+
+  // Torso base + shading.
   ctx.fillStyle = player.preset.color;
-  ctx.fillRect(x + 4, y + (state.slideActive ? 10 : 14) + bob, 34, state.slideActive ? 22 : 34);
+  ctx.fillRect(x + 4, bodyY, 34, state.slideActive ? 22 : 34);
+  ctx.fillStyle = "rgba(255,255,255,0.12)";
+  ctx.fillRect(x + 24, bodyY + 1, 11, state.slideActive ? 20 : 32);
+  ctx.fillStyle = "rgba(0,0,0,0.12)";
+  ctx.fillRect(x + 4, bodyY + 1, 5, state.slideActive ? 20 : 32);
 
+  // Collar + tie.
+  ctx.fillStyle = "#f4ead9";
+  ctx.fillRect(x + 16, bodyY + 2, 10, 3);
   ctx.fillStyle = player.preset.tieColor;
-  ctx.fillRect(x + 19, y + (state.slideActive ? 12 : 18) + bob, 4, state.slideActive ? 11 : 20);
+  ctx.fillRect(x + 19, bodyY + 4, 4, state.slideActive ? 11 : 20);
+  if (!state.slideActive) ctx.fillRect(x + 18, bodyY + 22, 6, 4);
 
   const armFrontY = y + 21 + runCycle * 3 + bob;
   const armBackY = y + 21 + runCycleOpp * 3 + bob;
-  ctx.fillStyle = "#d9ba97";
+  // Back arm first for depth.
+  ctx.fillStyle = "#c9a682";
   ctx.fillRect(x - 1, state.slideActive ? y + 16 : armBackY, 8, state.slideActive ? 8 : 16);
   if (state.attackLeft > 0) {
-    ctx.fillRect(x + 34, y + (state.slideActive ? 15 : 18), 14, 8);
+    ctx.fillRect(x + 34, y + (state.slideActive ? 15 : 18) + bob, 14, 8);
     ctx.fillStyle = "#ffe189";
-    ctx.fillRect(x + 48, y + (state.slideActive ? 17 : 20), 18, 4);
+    ctx.fillRect(x + 48, y + (state.slideActive ? 17 : 20) + bob, 18, 4);
   } else {
+    ctx.fillStyle = "#d9ba97";
     ctx.fillRect(x + 35, state.slideActive ? y + 16 : armFrontY, 8, state.slideActive ? 8 : 16);
   }
 
   const legFront = player.grounded ? runCycle * 5 : 0;
   const legBack = player.grounded ? runCycleOpp * 5 : 0;
-  ctx.fillStyle = "#1c2431";
+  ctx.fillStyle = "#202a39";
   if (state.slideActive) {
     ctx.fillRect(x + 12, y + 28, 17, 7);
+    ctx.fillStyle = "#141a25";
+    ctx.fillRect(x + 11, y + 34, 8, 3);
+    ctx.fillRect(x + 22, y + 34, 8, 3);
   } else {
     ctx.fillRect(x + 10, y + 48 + Math.max(0, -legBack), 9, 14 + Math.abs(legBack));
     ctx.fillRect(x + 24, y + 48 + Math.max(0, -legFront), 9, 14 + Math.abs(legFront));
+    ctx.fillStyle = "#141a25";
+    ctx.fillRect(x + 9, y + 62 + Math.max(0, -legBack), 10, 3);
+    ctx.fillRect(x + 24, y + 62 + Math.max(0, -legFront), 10, 3);
   }
-
-  ctx.fillStyle = "#111";
-  ctx.fillRect(x + 12, y + 6 + bob, 6, 4);
-  ctx.fillRect(x + 24, y + 6 + bob, 6, 4);
 }
 
 function drawObstacleSprite(obs) {
@@ -1407,9 +1447,25 @@ function drawMenuScene() {
   ctx.fillStyle = "#2a1e16";
   ctx.fillRect(headX - 1 * menuScale, headY - 4 * menuScale, 30 * menuScale, 5 * menuScale);
   ctx.fillRect(headX - 2 * menuScale, headY, 5 * menuScale, 3 * menuScale);
+  if (player.label === "Dwight") {
+    // Dwight hair part.
+    ctx.fillStyle = "#efcfab";
+    ctx.fillRect(headX + 13 * menuScale, headY - 4 * menuScale, 2 * menuScale, 5 * menuScale);
+    ctx.fillRect(headX + 13 * menuScale, headY, 1 * menuScale, 2 * menuScale);
+  }
 
   // Face details.
   ctx.fillStyle = "#1e2431";
+  if (player.label === "Dwight") {
+    ctx.strokeStyle = "#c2ccd8";
+    ctx.lineWidth = Math.max(1, menuScale);
+    ctx.strokeRect(headX + 5.5 * menuScale, headY + 3.5 * menuScale, 6 * menuScale, 5 * menuScale);
+    ctx.strokeRect(headX + 17.5 * menuScale, headY + 3.5 * menuScale, 6 * menuScale, 5 * menuScale);
+    ctx.beginPath();
+    ctx.moveTo(headX + 11.5 * menuScale, headY + 6 * menuScale);
+    ctx.lineTo(headX + 17.5 * menuScale, headY + 6 * menuScale);
+    ctx.stroke();
+  }
   ctx.fillRect(headX + 7 * menuScale, headY + 4 * menuScale, 2 * menuScale, 2 * menuScale);
   ctx.fillRect(headX + 19 * menuScale, headY + 4 * menuScale, 2 * menuScale, 2 * menuScale);
   ctx.fillRect(headX + 12 * menuScale, headY + 8 * menuScale, 6 * menuScale, 1 * menuScale);
