@@ -90,6 +90,9 @@ const state = {
   cameraOffset: 0,
   screenShake: 0,
   theme: "bullpen",
+  worldBannerText: "",
+  worldBannerLeft: 0,
+  audioCtx: null,
   player: null,
   obstacles: [],
 };
@@ -100,6 +103,14 @@ const THEME_OBSTACLE_POOLS = {
   streets: ["cat", "snowball", "intern"],
   corporate: ["folder", "desk", "intern"],
   pursuit: ["snowball", "folder", "cat"],
+};
+
+const THEME_LABELS = {
+  bullpen: "The Bullpen",
+  warehouse: "The Warehouse",
+  streets: "Scranton Streets",
+  corporate: "NYC Corporate",
+  pursuit: "Final Pursuit",
 };
 
 function resetState() {
@@ -133,6 +144,8 @@ function resetState() {
   state.cameraOffset = 0;
   state.screenShake = 0;
   state.theme = "bullpen";
+  state.worldBannerText = "";
+  state.worldBannerLeft = 0;
   state.obstacles = [];
 
   state.player = {
@@ -164,6 +177,36 @@ function addHitParticles(x, y, color) {
       ttl: 0.35 + Math.random() * 0.2,
     });
   }
+}
+
+function ensureAudioContext() {
+  if (state.audioCtx) return state.audioCtx;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return null;
+  state.audioCtx = new Ctx();
+  return state.audioCtx;
+}
+
+function playThemeSwitchCue() {
+  const audioCtx = ensureAudioContext();
+  if (!audioCtx) return;
+  if (audioCtx.state === "suspended") audioCtx.resume();
+
+  const now = audioCtx.currentTime;
+  const notes = [370, 494];
+  notes.forEach((frequency, idx) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(frequency, now + idx * 0.09);
+    gain.gain.setValueAtTime(0.0001, now + idx * 0.09);
+    gain.gain.exponentialRampToValueAtTime(0.11, now + idx * 0.09 + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.09 + 0.11);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now + idx * 0.09);
+    osc.stop(now + idx * 0.09 + 0.12);
+  });
 }
 
 function spawnObstacle() {
@@ -346,7 +389,10 @@ function update(dt) {
   if (themeChanged) {
     state.obstacles = [];
     state.spawnTimerSec = 0.15;
+    state.worldBannerText = THEME_LABELS[state.theme] || state.theme;
+    state.worldBannerLeft = 1.6;
     addFloatingText(`Now: ${state.theme.toUpperCase()}`, 350, 95, "#ffe08f");
+    playThemeSwitchCue();
   }
 
   const player = state.player;
@@ -461,6 +507,7 @@ function update(dt) {
     p.vy += 880 * dt;
   }
   state.particles = state.particles.filter((p) => p.age < p.ttl);
+  state.worldBannerLeft = Math.max(0, state.worldBannerLeft - dt);
 }
 
 function drawBackground() {
@@ -717,6 +764,22 @@ function render() {
     ctx.fillText("Press Enter to resume", 386, 288);
   }
 
+  if (state.worldBannerLeft > 0 && !state.gameOver) {
+    const alpha = Math.min(1, state.worldBannerLeft / 0.35);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = "rgba(8, 12, 20, 0.72)";
+    ctx.fillRect(245, 136, 470, 86);
+    ctx.strokeStyle = "rgba(255, 214, 110, 0.75)";
+    ctx.strokeRect(245, 136, 470, 86);
+    ctx.fillStyle = "#ffd66e";
+    ctx.font = "bold 18px Trebuchet MS";
+    ctx.fillText("LEVEL SWITCH", 418, 166);
+    ctx.fillStyle = "#f5ead6";
+    ctx.font = "bold 32px Trebuchet MS";
+    ctx.fillText(state.worldBannerText, 312, 202);
+    ctx.globalAlpha = 1;
+  }
+
   if (state.gameOver) {
     ctx.fillStyle = "rgba(15,20,30,0.66)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -733,6 +796,7 @@ function loop(ts) {
 }
 
 function handlePress(ev) {
+  ensureAudioContext();
   if (ev.code === "ArrowUp") {
     ev.preventDefault();
     jump();
@@ -780,6 +844,7 @@ window.addEventListener("keyup", (ev) => {
 canvas.addEventListener("pointerdown", () => jump());
 
 startBtn.addEventListener("click", () => {
+  ensureAudioContext();
   resetState();
   summaryPanel.hidden = true;
 });
