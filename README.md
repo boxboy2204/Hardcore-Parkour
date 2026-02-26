@@ -2,6 +2,9 @@
 
 Playable vertical-slice prototype built from the project game plan.
 
+## Current UI
+![Hardcore Parkour current UI](./assets/ui-screenshot.png)
+
 ## Run
 Because this is a browser game using modules, serve the folder with a local web server:
 
