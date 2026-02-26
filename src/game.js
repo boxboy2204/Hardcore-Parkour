@@ -217,6 +217,14 @@ const state = {
   shopForeheadStare: false,
   missionToastText: "",
   missionToastLeft: 0,
+  pamQuestRun: false,
+  pamSpottedCount: 0,
+  pamRequiredCount: 5,
+  pamVisible: false,
+  pamVisibleLeft: 0,
+  pamNextSpawnSec: 0,
+  pamX: 0,
+  pamY: 0,
   saveData: null,
 };
 
@@ -243,6 +251,8 @@ function createDefaultSave() {
       savePam: {
         added: false,
         completed: false,
+        warehouseCleared: false,
+        sightingsBest: 0,
       },
     },
     stats: {
@@ -258,15 +268,22 @@ function loadSave() {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return createDefaultSave();
     const parsed = JSON.parse(raw);
+    const defaults = createDefaultSave();
+    const parsedMissions = parsed.missions || {};
+    const parsedSavePam = parsedMissions.savePam || {};
     return {
-      ...createDefaultSave(),
+      ...defaults,
       ...parsed,
-      currencies: { ...createDefaultSave().currencies, ...(parsed.currencies || {}) },
-      unlocks: { ...createDefaultSave().unlocks, ...(parsed.unlocks || {}) },
-      upgrades: { ...createDefaultSave().upgrades, ...(parsed.upgrades || {}) },
-      achievements: { ...createDefaultSave().achievements, ...(parsed.achievements || {}) },
-      missions: { ...createDefaultSave().missions, ...(parsed.missions || {}) },
-      stats: { ...createDefaultSave().stats, ...(parsed.stats || {}) },
+      currencies: { ...defaults.currencies, ...(parsed.currencies || {}) },
+      unlocks: { ...defaults.unlocks, ...(parsed.unlocks || {}) },
+      upgrades: { ...defaults.upgrades, ...(parsed.upgrades || {}) },
+      achievements: { ...defaults.achievements, ...(parsed.achievements || {}) },
+      missions: {
+        ...defaults.missions,
+        ...parsedMissions,
+        savePam: { ...defaults.missions.savePam, ...parsedSavePam },
+      },
+      stats: { ...defaults.stats, ...(parsed.stats || {}) },
     };
   } catch {
     return createDefaultSave();
@@ -359,10 +376,18 @@ function handleJimConversationClick(choiceId) {
 
   if (state.shopConversation.step === "choice") {
     if (choiceId === "ask") {
+      const savePam = state.saveData.missions.savePam;
+      let jimLine =
+        "Jim: Top row stays locked until you save Pam. She's somewhere in the Warehouse. Find her, bring back the key, then we talk.";
+      if (savePam.warehouseCleared && !savePam.completed) {
+        jimLine =
+          "Jim: Top row stays locked until you save Pam. Warehouse round two rules: replay that level, press P every time Pam pops up in the background, and finish with 5 sightings.";
+      } else if (savePam.completed) {
+        jimLine = "Jim: You saved Pam. Key's yours. Try not to buy six puddings at once.";
+      }
       state.shopConversation = {
         step: "pam_info",
-        text:
-          "Jim: Top row stays locked until you save Pam. She's somewhere in the Warehouse. Find her, bring back the key, then we talk.",
+        text: jimLine,
       };
       return;
     }
@@ -459,6 +484,8 @@ function updateUiForScene() {
 
 function resetRunState(worldId = state.selectedWorldId) {
   const preset = CHARACTER_PRESETS[characterSelect.value];
+  const savePam = state.saveData.missions.savePam;
+  const pamQuestRun = worldId === "warehouse" && savePam.added && !savePam.completed && savePam.warehouseCleared;
   state.scene = "run";
   state.running = true;
   state.paused = false;
@@ -491,8 +518,18 @@ function resetRunState(worldId = state.selectedWorldId) {
   state.screenShake = 0;
   state.worldBannerText = THEME_LABELS[worldId] || worldId;
   state.worldBannerLeft = 1.2;
+  state.pamQuestRun = pamQuestRun;
+  state.pamSpottedCount = 0;
+  state.pamRequiredCount = 5;
+  state.pamVisible = false;
+  state.pamVisibleLeft = 0;
+  state.pamNextSpawnSec = pamQuestRun ? 4.2 : 0;
+  state.pamX = 0;
+  state.pamY = 0;
   state.tobyDistance = 100;
   state.obstacles = [];
+
+  if (pamQuestRun) state.worldBannerText = "Warehouse: Save Pam";
 
   const hpBonus = ownsUpgrade("gel_shield") ? 1 : 0;
   const speedBonus = ownsUpgrade("parkour_shoes") ? 18 : 0;
@@ -597,11 +634,31 @@ function endRun(reason = "time") {
   state.saveData.currencies.stanleyNickels += state.earnedStanleyNickels;
   state.saveData.stats.bestHardcoreChain = Math.max(state.saveData.stats.bestHardcoreChain, state.bestChain);
 
+  let questEndingLine = "";
   if (reason === "time") {
     const worldIdx = WORLDS.findIndex((w) => w.id === state.runWorldId);
     if (worldIdx !== -1) {
       state.saveData.unlockedWorldIndex = Math.max(state.saveData.unlockedWorldIndex, worldIdx + 1);
       state.saveData.unlockedWorldIndex = Math.min(state.saveData.unlockedWorldIndex, WORLDS.length - 1);
+    }
+    if (state.runWorldId === "warehouse") {
+      const savePam = state.saveData.missions.savePam;
+      if (savePam.added && !savePam.completed) {
+        if (!savePam.warehouseCleared) {
+          savePam.warehouseCleared = true;
+          questEndingLine = "Mission Update: Replay Warehouse and press P whenever Pam appears.";
+        } else {
+          savePam.sightingsBest = Math.max(savePam.sightingsBest || 0, state.pamSpottedCount);
+          if (state.pamSpottedCount >= state.pamRequiredCount) {
+            savePam.completed = true;
+            state.saveData.unlocks.pamFound = true;
+            state.saveData.unlocks.jimDeskKey = true;
+            questEndingLine = "Quest Complete: You found Pam 5 times and got Jim's Desk Key.";
+          } else {
+            questEndingLine = `Pam sightings this run: ${state.pamSpottedCount}/${state.pamRequiredCount}.`;
+          }
+        }
+      }
     }
   }
 
@@ -636,8 +693,35 @@ function endRun(reason = "time") {
     state.earnedStanleyNickels
   } Stanley Nickels. Total Wallet: ${state.saveData.currencies.schruteBucks} SB / ${
     state.saveData.currencies.stanleyNickels
-  } SN. ${endingLine}`;
+  } SN. ${endingLine}${questEndingLine ? ` ${questEndingLine}` : ""}`;
   summaryPanel.hidden = false;
+}
+
+function spawnPamAppearance() {
+  state.pamVisible = true;
+  state.pamVisibleLeft = 1.75 + Math.random() * 0.95;
+  state.pamX = 500 + Math.random() * 360;
+  state.pamY = 248 + Math.random() * 84;
+}
+
+function hidePamAndScheduleNext() {
+  state.pamVisible = false;
+  state.pamVisibleLeft = 0;
+  state.pamNextSpawnSec = 5.2 + Math.random() * 4.4;
+}
+
+function handlePamSpottingKey() {
+  if (state.scene !== "run" || !state.running || state.paused || !state.pamQuestRun) return;
+  if (!state.pamVisible) {
+    addFloatingText("No Pam", state.player.x + 8, state.player.y - 26, "#b7dbff");
+    return;
+  }
+  state.pamSpottedCount = Math.min(state.pamRequiredCount, state.pamSpottedCount + 1);
+  addFloatingText("PAM!", state.pamX + 8, state.pamY - 8, "#ffd07d");
+  if (state.pamSpottedCount >= state.pamRequiredCount) {
+    addFloatingText("Finish The Level!", state.player.x - 16, state.player.y - 42, "#d9ffba");
+  }
+  hidePamAndScheduleNext();
 }
 
 function doParkourShout() {
@@ -844,6 +928,16 @@ function updateRun(dt) {
   state.score += runSpeed * dt * 0.1;
   state.style += 20 * dt * state.multiplier * player.preset.styleGain * (player.runtimeStyleMul || 1);
 
+  if (state.pamQuestRun) {
+    if (state.pamVisible) {
+      state.pamVisibleLeft = Math.max(0, state.pamVisibleLeft - dt);
+      if (state.pamVisibleLeft <= 0) hidePamAndScheduleNext();
+    } else {
+      state.pamNextSpawnSec -= dt;
+      if (state.pamNextSpawnSec <= 0) spawnPamAppearance();
+    }
+  }
+
   state.spawnTimerSec -= dt;
   if (state.spawnTimerSec <= 0) {
     const difficulty = LEVEL_DIFFICULTY[state.runWorldId] || LEVEL_DIFFICULTY.bullpen;
@@ -988,16 +1082,19 @@ function drawPlayer() {
   ctx.fillRect(x + 6, y - 2 + bob, 30, 5);
   ctx.fillRect(x + 5, y + 1 + bob, 6, 3);
   if (player.preset.label === "Dwight") {
-    // Dwight hair part.
+    // Dwight hairline: receded forehead + center split.
     ctx.fillStyle = "#efcfab";
-    ctx.fillRect(x + 20, y - 2 + bob, 2, 5);
-    ctx.fillRect(x + 20, y + 1 + bob, 1, 2);
+    ctx.fillRect(x + 14, y - 1 + bob, 14, 4);
+    ctx.fillRect(x + 19, y - 2 + bob, 2, 6);
+    ctx.fillStyle = "#2a1e16";
+    ctx.fillRect(x + 12, y - 1 + bob, 3, 2);
+    ctx.fillRect(x + 27, y - 1 + bob, 3, 2);
   }
 
   // Face details.
   ctx.fillStyle = "#1b2230";
   if (player.preset.label === "Dwight") {
-    ctx.strokeStyle = "#c2ccd8";
+    ctx.strokeStyle = "#96a3b3";
     ctx.lineWidth = 1.5;
     ctx.strokeRect(x + 11.5, y + 4.5 + bob, 6, 5);
     ctx.strokeRect(x + 23.5, y + 4.5 + bob, 6, 5);
@@ -1005,9 +1102,13 @@ function drawPlayer() {
     ctx.moveTo(x + 17.5, y + 7 + bob);
     ctx.lineTo(x + 23.5, y + 7 + bob);
     ctx.stroke();
+    // Single eye set inside glasses.
+    ctx.fillRect(x + 14, y + 7 + bob, 1, 1);
+    ctx.fillRect(x + 26, y + 7 + bob, 1, 1);
+  } else {
+    ctx.fillRect(x + 13, y + 6 + bob, 2, 2);
+    ctx.fillRect(x + 25, y + 6 + bob, 2, 2);
   }
-  ctx.fillRect(x + 13, y + 6 + bob, 2, 2);
-  ctx.fillRect(x + 25, y + 6 + bob, 2, 2);
   ctx.fillRect(x + 17, y + 10 + bob, 8, 1);
 
   // Torso base + shading.
@@ -1157,6 +1258,63 @@ function drawObstacles() {
   for (const obs of state.obstacles) drawObstacleSprite(obs);
 }
 
+function drawPamQuestBackgroundSprite() {
+  if (!state.pamQuestRun || !state.pamVisible) return;
+
+  const s = 1.55;
+  const x = state.pamX;
+  const y = state.pamY;
+
+  ctx.fillStyle = "rgba(0,0,0,0.18)";
+  ctx.beginPath();
+  ctx.ellipse(x + 18 * s, y + 56 * s, 18 * s, 5 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Hair silhouette with side volume.
+  ctx.fillStyle = "#7e5139";
+  ctx.fillRect(x + 5 * s, y + 2 * s, 25 * s, 10 * s);
+  ctx.fillRect(x + 4 * s, y + 8 * s, 7 * s, 7 * s);
+  ctx.fillRect(x + 24 * s, y + 8 * s, 7 * s, 7 * s);
+  ctx.fillRect(x + 10 * s, y + 12 * s, 15 * s, 4 * s);
+
+  // Face.
+  ctx.fillStyle = "#f1cfb3";
+  ctx.fillRect(x + 8 * s, y + 10 * s, 19 * s, 14 * s);
+  ctx.fillStyle = "#1d2532";
+  ctx.fillRect(x + 13 * s, y + 15 * s, 2 * s, 2 * s);
+  ctx.fillRect(x + 20 * s, y + 15 * s, 2 * s, 2 * s);
+  ctx.fillRect(x + 14 * s, y + 20 * s, 8 * s, 1 * s);
+
+  // Blouse + cardigan layers.
+  ctx.fillStyle = "#d9eef9";
+  ctx.fillRect(x + 7 * s, y + 24 * s, 22 * s, 20 * s);
+  ctx.fillStyle = "#7f96bf";
+  ctx.fillRect(x + 7 * s, y + 24 * s, 5 * s, 20 * s);
+  ctx.fillRect(x + 24 * s, y + 24 * s, 5 * s, 20 * s);
+  ctx.fillStyle = "#5f78a7";
+  ctx.fillRect(x + 16 * s, y + 24 * s, 4 * s, 15 * s);
+
+  // Arms + folder prop for visibility.
+  ctx.fillStyle = "#f1cfb3";
+  ctx.fillRect(x + 3 * s, y + 28 * s, 4 * s, 12 * s);
+  ctx.fillRect(x + 29 * s, y + 28 * s, 4 * s, 12 * s);
+  ctx.fillStyle = "#f5dca6";
+  ctx.fillRect(x + 30 * s, y + 31 * s, 9 * s, 10 * s);
+  ctx.fillStyle = "#dabf7d";
+  ctx.fillRect(x + 31 * s, y + 30 * s, 4 * s, 2 * s);
+
+  // Skirt + shoes.
+  ctx.fillStyle = "#514a73";
+  ctx.fillRect(x + 12 * s, y + 44 * s, 12 * s, 9 * s);
+  ctx.fillStyle = "#1a2231";
+  ctx.fillRect(x + 12 * s, y + 53 * s, 4 * s, 5 * s);
+  ctx.fillRect(x + 20 * s, y + 53 * s, 4 * s, 5 * s);
+
+  ctx.fillStyle = "#ffe7b1";
+  ctx.font = "bold 14px Trebuchet MS";
+  ctx.fillText("P!", x + 14 * s, y - 6);
+}
+
 function drawHud() {
   ctx.fillStyle = "rgba(15,20,30,0.74)";
   ctx.fillRect(12, 12, 450, 136);
@@ -1179,6 +1337,11 @@ function drawHud() {
   else ctx.fillText(`Time: ${timeLeft.toFixed(1)}s`, 210, 78);
   ctx.fillText(`World: ${THEME_LABELS[state.theme] || state.theme}`, 210, 100);
   ctx.fillText(`Difficulty: ${difficulty.label}`, 210, 122);
+  if (state.pamQuestRun) {
+    ctx.fillStyle = "#ffeeb2";
+    ctx.fillText(`Find Pam: ${state.pamSpottedCount}/${state.pamRequiredCount} (Press P when she appears)`, 500, 100);
+  }
+  ctx.fillStyle = "#d4e6ff";
   ctx.fillText(`Parkour: J  Hit: K  Pause: Enter`, 500, 122);
 
   if (state.slideActive) {
@@ -1448,16 +1611,19 @@ function drawMenuScene() {
   ctx.fillRect(headX - 1 * menuScale, headY - 4 * menuScale, 30 * menuScale, 5 * menuScale);
   ctx.fillRect(headX - 2 * menuScale, headY, 5 * menuScale, 3 * menuScale);
   if (player.label === "Dwight") {
-    // Dwight hair part.
+    // Dwight hairline: receded forehead + center split.
     ctx.fillStyle = "#efcfab";
-    ctx.fillRect(headX + 13 * menuScale, headY - 4 * menuScale, 2 * menuScale, 5 * menuScale);
-    ctx.fillRect(headX + 13 * menuScale, headY, 1 * menuScale, 2 * menuScale);
+    ctx.fillRect(headX + 8 * menuScale, headY - 2 * menuScale, 14 * menuScale, 4 * menuScale);
+    ctx.fillRect(headX + 13 * menuScale, headY - 4 * menuScale, 2 * menuScale, 7 * menuScale);
+    ctx.fillStyle = "#2a1e16";
+    ctx.fillRect(headX + 6 * menuScale, headY - 2 * menuScale, 3 * menuScale, 2 * menuScale);
+    ctx.fillRect(headX + 21 * menuScale, headY - 2 * menuScale, 3 * menuScale, 2 * menuScale);
   }
 
   // Face details.
   ctx.fillStyle = "#1e2431";
   if (player.label === "Dwight") {
-    ctx.strokeStyle = "#c2ccd8";
+    ctx.strokeStyle = "#96a3b3";
     ctx.lineWidth = Math.max(1, menuScale);
     ctx.strokeRect(headX + 5.5 * menuScale, headY + 3.5 * menuScale, 6 * menuScale, 5 * menuScale);
     ctx.strokeRect(headX + 17.5 * menuScale, headY + 3.5 * menuScale, 6 * menuScale, 5 * menuScale);
@@ -1465,9 +1631,13 @@ function drawMenuScene() {
     ctx.moveTo(headX + 11.5 * menuScale, headY + 6 * menuScale);
     ctx.lineTo(headX + 17.5 * menuScale, headY + 6 * menuScale);
     ctx.stroke();
+    // Single eye set inside glasses.
+    ctx.fillRect(headX + 8 * menuScale, headY + 6 * menuScale, 1 * menuScale, 1 * menuScale);
+    ctx.fillRect(headX + 20 * menuScale, headY + 6 * menuScale, 1 * menuScale, 1 * menuScale);
+  } else {
+    ctx.fillRect(headX + 7 * menuScale, headY + 4 * menuScale, 2 * menuScale, 2 * menuScale);
+    ctx.fillRect(headX + 19 * menuScale, headY + 4 * menuScale, 2 * menuScale, 2 * menuScale);
   }
-  ctx.fillRect(headX + 7 * menuScale, headY + 4 * menuScale, 2 * menuScale, 2 * menuScale);
-  ctx.fillRect(headX + 19 * menuScale, headY + 4 * menuScale, 2 * menuScale, 2 * menuScale);
   ctx.fillRect(headX + 12 * menuScale, headY + 8 * menuScale, 6 * menuScale, 1 * menuScale);
 
   // Shirt and tie.
@@ -1528,7 +1698,7 @@ function drawShopScene() {
   ctx.font = "18px Trebuchet MS";
   const questLine = state.saveData.unlocks.pamFound
     ? "Pam rescued: Jim's Desk Key acquired. Top row unlocked."
-    : "Quest lock active: Find Pam in Warehouse (mission not built yet).";
+    : "Quest lock active: Save Pam in Warehouse to unlock top row.";
   drawWrappedText(questLine, 58, 162, 240, 20, 3);
   ctx.fillText(`Wallet: ${state.saveData.currencies.schruteBucks} Schrute Bucks`, 58, 226);
   ctx.fillText(`Wallet: ${state.saveData.currencies.stanleyNickels} Stanley Nickels`, 58, 252);
@@ -1594,6 +1764,51 @@ function drawShopScene() {
   ctx.fillRect(jimX + 9 * jimScale, jimY + 2 * jimScale, 8 * jimScale, 3 * jimScale);
   ctx.fillRect(jimX + 20 * jimScale, jimY + 2 * jimScale, 8 * jimScale, 3 * jimScale);
 
+  // After quest completion, Pam stands beside Jim.
+  if (state.saveData.missions.savePam.completed) {
+    const pamScale = jimScale;
+    const pamX = jimX + 72;
+    const pamY = jimY + 6;
+
+    ctx.fillStyle = "rgba(0,0,0,0.22)";
+    ctx.beginPath();
+    ctx.ellipse(pamX + 16 * pamScale, pamY + 7 * pamScale, 17 * pamScale, 6 * pamScale, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Hair + face.
+    ctx.fillStyle = "#7e5139";
+    ctx.fillRect(pamX + 7 * pamScale, pamY - 55 * pamScale, 18 * pamScale, 6 * pamScale);
+    ctx.fillRect(pamX + 5 * pamScale, pamY - 51 * pamScale, 6 * pamScale, 13 * pamScale);
+    ctx.fillRect(pamX + 21 * pamScale, pamY - 51 * pamScale, 6 * pamScale, 13 * pamScale);
+    ctx.fillRect(pamX + 9 * pamScale, pamY - 40 * pamScale, 16 * pamScale, 4 * pamScale);
+    ctx.fillStyle = "#f1cfb3";
+    ctx.fillRect(pamX + 8 * pamScale, pamY - 48 * pamScale, 16 * pamScale, 12 * pamScale);
+    ctx.fillStyle = "#1d2532";
+    ctx.fillRect(pamX + 12 * pamScale, pamY - 44 * pamScale, 2 * pamScale, 2 * pamScale);
+    ctx.fillRect(pamX + 18 * pamScale, pamY - 44 * pamScale, 2 * pamScale, 2 * pamScale);
+    ctx.fillRect(pamX + 13 * pamScale, pamY - 40 * pamScale, 7 * pamScale, 1 * pamScale);
+
+    // Outfit.
+    ctx.fillStyle = "#d9eef9";
+    ctx.fillRect(pamX + 7 * pamScale, pamY - 36 * pamScale, 18 * pamScale, 23 * pamScale);
+    ctx.fillStyle = "#7f96bf";
+    ctx.fillRect(pamX + 7 * pamScale, pamY - 36 * pamScale, 4 * pamScale, 23 * pamScale);
+    ctx.fillRect(pamX + 21 * pamScale, pamY - 36 * pamScale, 4 * pamScale, 23 * pamScale);
+    ctx.fillStyle = "#f1cfb3";
+    ctx.fillRect(pamX + 4 * pamScale, pamY - 33 * pamScale, 3 * pamScale, 12 * pamScale);
+    ctx.fillRect(pamX + 25 * pamScale, pamY - 33 * pamScale, 3 * pamScale, 12 * pamScale);
+
+    // Skirt + legs + shoes.
+    ctx.fillStyle = "#514a73";
+    ctx.fillRect(pamX + 11 * pamScale, pamY - 13 * pamScale, 10 * pamScale, 8 * pamScale);
+    ctx.fillStyle = "#1a2231";
+    ctx.fillRect(pamX + 12 * pamScale, pamY - 5 * pamScale, 3 * pamScale, 8 * pamScale);
+    ctx.fillRect(pamX + 18 * pamScale, pamY - 5 * pamScale, 3 * pamScale, 8 * pamScale);
+    ctx.fillStyle = "#111722";
+    ctx.fillRect(pamX + 11 * pamScale, pamY + 3 * pamScale, 4 * pamScale, 2 * pamScale);
+    ctx.fillRect(pamX + 18 * pamScale, pamY + 3 * pamScale, 4 * pamScale, 2 * pamScale);
+  }
+
   // TALK callout above Jim.
   const talkX = jimX + 4;
   const talkY = jimY - jimH - 20;
@@ -1643,8 +1858,8 @@ function drawShopScene() {
     const badge = owned ? "OWNED" : lockedByKey ? "LOCKED" : `BUY ${shopPriceLabel(item)}`;
     ctx.fillText(badge, x + 10, y + 80);
 
-    // Top row is visually encased in yellow Jell-O.
-    if (row === 0) {
+    // Top row is visually encased in yellow Jell-O until each item is purchased.
+    if (row === 0 && !owned) {
       const wobble = Math.sin(state.elapsedSec * 4 + col * 0.8) * 2;
       ctx.fillStyle = lockedByKey ? "rgba(255, 213, 82, 0.42)" : "rgba(255, 222, 108, 0.26)";
       ctx.fillRect(x + 2, y + 2, cardW - 4, cardH - 4);
@@ -1767,8 +1982,17 @@ function drawMissionsScene() {
   ctx.font = "bold 22px Trebuchet MS";
   ctx.fillText("Save Pam", 126, 208);
   ctx.font = "18px Trebuchet MS";
-  ctx.fillText("Find Pam somewhere in the Warehouse and report back to Jim.", 126, 238);
-  ctx.fillText(`Status: ${savePam.completed ? "Completed" : savePam.added ? "Active" : "Not Added"}`, 126, 270);
+  if (!savePam.added) {
+    ctx.fillText("Talk to Jim in the shop to unlock this mission.", 126, 238);
+  } else if (!savePam.warehouseCleared) {
+    ctx.fillText("Finish Warehouse once to trigger Pam search mode.", 126, 238);
+  } else if (!savePam.completed) {
+    ctx.fillText("Replay Warehouse: press P whenever Pam appears in the background.", 126, 238);
+    ctx.fillText(`Best sightings in one run: ${savePam.sightingsBest || 0}/5`, 126, 268);
+  } else {
+    ctx.fillText("Pam rescued. Jim unlocked the top-row vending machine items.", 126, 238);
+  }
+  ctx.fillText(`Status: ${savePam.completed ? "Completed" : savePam.added ? "Active" : "Not Added"}`, 126, 298);
 
   ctx.fillStyle = "#c9ddff";
   ctx.font = "17px Trebuchet MS";
@@ -1813,6 +2037,7 @@ function drawRunScene() {
   ctx.save();
   ctx.translate(shakeX, shakeY);
   drawRunBackground();
+  drawPamQuestBackgroundSprite();
   drawPursuitTarget();
   drawObstacles();
   drawPlayer();
@@ -1971,6 +2196,10 @@ function handlePress(ev) {
     ev.preventDefault();
     attack();
   }
+  if (ev.code === "KeyP") {
+    ev.preventDefault();
+    handlePamSpottingKey();
+  }
 }
 
 window.addEventListener("keydown", handlePress);
@@ -2061,8 +2290,8 @@ characterSelect.addEventListener("change", () => {
 });
 
 state.saveData = loadSave();
-// Restore normal progression: start with only level 1 unlocked.
-state.saveData.unlockedWorldIndex = 0;
+// Temporary testing override: unlock all levels.
+state.saveData.unlockedWorldIndex = WORLDS.length - 1;
 // Reset purchased powerups for clean testing.
 state.saveData.upgrades = {};
 // One-time wallet reset requested by user for the rebalanced economy.
