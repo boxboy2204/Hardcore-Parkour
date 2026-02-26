@@ -114,6 +114,57 @@ const SOUL_QUIPS = {
   ],
 };
 
+const SHOP_ITEMS = [
+  {
+    id: "gel_shield",
+    name: "Jell-O Shield",
+    description: "Start each run with +1 HP.",
+    currency: "stanleyNickels",
+    cost: 22,
+    row: "top",
+  },
+  {
+    id: "parkour_shoes",
+    name: "Parkour Shoes",
+    description: "Small permanent speed boost.",
+    currency: "stanleyNickels",
+    cost: 36,
+    row: "top",
+  },
+  {
+    id: "chili_guard",
+    name: "Anti-Chili Pads",
+    description: "Less stumble time on failed shout.",
+    currency: "stanleyNickels",
+    cost: 30,
+    row: "top",
+  },
+  {
+    id: "mifflin_tape",
+    name: "Mifflin Tape",
+    description: "Style gain +10%.",
+    currency: "stanleyNickels",
+    cost: 26,
+    row: "bottom",
+  },
+  {
+    id: "desk_keycard",
+    name: "Desk Keycard",
+    description: "Unlocks one extra world on first buy.",
+    currency: "stanleyNickels",
+    cost: 16,
+    row: "bottom",
+  },
+  {
+    id: "energy_mug",
+    name: "World's Best Mug",
+    description: "Longer speed boost from HARDCORE.",
+    currency: "stanleyNickels",
+    cost: 34,
+    row: "bottom",
+  },
+];
+
 const state = {
   scene: "menu",
   running: false,
@@ -155,6 +206,11 @@ const state = {
   menuCards: [],
   menuDialogue: "Pick a Polaroid so we can go, now.",
   pendingNextWorldId: null,
+  shopCards: [],
+  shopMessage: "",
+  shopMessageColor: "#c5d9f2",
+  shopMessageLeft: 0,
+  shopForeheadStare: false,
   saveData: null,
 };
 
@@ -171,6 +227,7 @@ function createDefaultSave() {
       shopUnlocked: false,
       outfitsUnlocked: [],
     },
+    upgrades: {},
     achievements: {
       bushiestBeaver: false,
       whitestSneakers: false,
@@ -193,6 +250,7 @@ function loadSave() {
       ...parsed,
       currencies: { ...createDefaultSave().currencies, ...(parsed.currencies || {}) },
       unlocks: { ...createDefaultSave().unlocks, ...(parsed.unlocks || {}) },
+      upgrades: { ...createDefaultSave().upgrades, ...(parsed.upgrades || {}) },
       achievements: { ...createDefaultSave().achievements, ...(parsed.achievements || {}) },
       stats: { ...createDefaultSave().stats, ...(parsed.stats || {}) },
     };
@@ -255,11 +313,68 @@ function setMenuDialogue() {
   }
 }
 
+function ownsUpgrade(id) {
+  return Boolean(state.saveData.upgrades[id]);
+}
+
+function shopPriceLabel(item) {
+  return `${item.cost} SN`;
+}
+
+function showShopMessage(text, color = "#ffe4a8") {
+  state.shopMessage = text;
+  state.shopMessageColor = color;
+  state.shopMessageLeft = 2.3;
+}
+
+function tryBuyShopItem(itemId) {
+  const item = SHOP_ITEMS.find((i) => i.id === itemId);
+  if (!item) return;
+
+  if (state.shopForeheadStare) {
+    showShopMessage("Jim is still staring at your forehead. Leave the shop to break it.", "#ffb4a7");
+    return;
+  }
+
+  if (item.row === "top" && !state.saveData.unlocks.jimDeskKey) {
+    showShopMessage("Jim: top row stays in Jell-O until you find Pam.", "#ffb4a7");
+    return;
+  }
+
+  if (ownsUpgrade(item.id)) {
+    showShopMessage("Already owned. Jim nods in deadpan approval.", "#b6f6ff");
+    return;
+  }
+
+  const stanleyWallet = state.saveData.currencies.stanleyNickels;
+  if (stanleyWallet < item.cost) {
+    if (state.saveData.currencies.schruteBucks > 0) {
+      state.shopForeheadStare = true;
+      showShopMessage("You offered Schrute Bucks. Jim locks onto your forehead in silence.", "#ff9ea5");
+      return;
+    }
+    showShopMessage("Not enough Stanley Nickels.", "#ffb4a7");
+    return;
+  }
+
+  state.saveData.currencies.stanleyNickels -= item.cost;
+  state.saveData.upgrades[item.id] = true;
+
+  if (item.id === "desk_keycard") {
+    state.saveData.unlockedWorldIndex = Math.min(WORLDS.length - 1, state.saveData.unlockedWorldIndex + 1);
+  }
+
+  persistSave();
+  showShopMessage(`Purchased ${item.name}. Jim finally de-gels it.`, "#d3ffbf");
+}
+
 function switchScene(sceneId) {
+  const leavingShop = state.scene === "shop" && sceneId !== "shop";
   state.scene = sceneId;
   state.paused = false;
   summaryPanel.hidden = true;
   nextLevelBtn.hidden = true;
+  if (leavingShop) state.shopForeheadStare = false;
   updateUiForScene();
   if (sceneId === "menu") setMenuDialogue();
 }
@@ -321,6 +436,12 @@ function resetRunState(worldId = state.selectedWorldId) {
   state.tobyDistance = 100;
   state.obstacles = [];
 
+  const hpBonus = ownsUpgrade("gel_shield") ? 1 : 0;
+  const speedBonus = ownsUpgrade("parkour_shoes") ? 18 : 0;
+  const stumbleTuning = ownsUpgrade("chili_guard") ? 0.72 : 1;
+  const styleTuning = ownsUpgrade("mifflin_tape") ? 1.1 : 1;
+  const boostTuning = ownsUpgrade("energy_mug") ? 1.2 : 1;
+
   state.player = {
     preset,
     x: 180,
@@ -330,8 +451,12 @@ function resetRunState(worldId = state.selectedWorldId) {
     vy: 0,
     grounded: true,
     jumpsUsed: 0,
-    hp: 4,
+    hp: 4 + hpBonus,
   };
+  state.player.runtimeSpeedBonus = speedBonus;
+  state.player.runtimeStumbleMul = stumbleTuning;
+  state.player.runtimeStyleMul = styleTuning;
+  state.player.runtimeBoostMul = boostTuning;
 
   state.saveData.stats.lifetimeRuns += 1;
   persistSave();
@@ -461,7 +586,7 @@ function doParkourShout() {
   if (state.pendingLanding && state.landingWindowLeft > 0) {
     state.pendingLanding = false;
     state.landingWindowLeft = 0;
-    state.speedBoostLeft = GAME.speedBoostSec;
+    state.speedBoostLeft = GAME.speedBoostSec * (state.player?.runtimeBoostMul || 1);
     state.multiplier = Math.min(20, state.multiplier + 1);
     state.bestChain = Math.max(state.bestChain, state.multiplier - 1);
     addFloatingText("HARDCORE!", state.player.x + 16, state.player.y - 28, "#ffd54d");
@@ -481,7 +606,7 @@ function attack() {
 function stumbleFail() {
   state.pendingLanding = false;
   state.landingWindowLeft = 0;
-  state.stumbleLeft = GAME.stumbleSec;
+  state.stumbleLeft = GAME.stumbleSec * (state.player?.runtimeStumbleMul || 1);
   state.multiplier = 1;
   addFloatingText("OOF", state.player.x + 10, state.player.y - 24, "#ffffff");
 }
@@ -630,9 +755,10 @@ function updateRun(dt) {
   }
 
   const baseSpeed = player.preset.baseSpeed;
+  const upgradeSpeed = player.runtimeSpeedBonus || 0;
   const speedModifier = state.speedBoostLeft > 0 ? GAME.speedBoostValue : 0;
   const stumblePenalty = state.stumbleLeft > 0 ? -140 : 0;
-  const movementSpeed = Math.max(120, baseSpeed + speedModifier + stumblePenalty);
+  const movementSpeed = Math.max(120, baseSpeed + speedModifier + stumblePenalty + upgradeSpeed);
 
   if (state.slideActive) {
     state.slideSpeed = Math.max(0, state.slideSpeed - GAME.slideDeceleration * dt);
@@ -657,7 +783,7 @@ function updateRun(dt) {
   }
 
   state.score += runSpeed * dt * 0.1;
-  state.style += 20 * dt * state.multiplier * player.preset.styleGain;
+  state.style += 20 * dt * state.multiplier * player.preset.styleGain * (player.runtimeStyleMul || 1);
 
   state.spawnTimerSec -= dt;
   if (state.spawnTimerSec <= 0) {
@@ -1020,6 +1146,38 @@ function drawFloatingText() {
   }
 }
 
+function drawWrappedText(text, x, y, maxWidth, lineHeight, maxLines = 3) {
+  const words = text.split(" ");
+  const lines = [];
+  let current = "";
+
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (ctx.measureText(next).width <= maxWidth) {
+      current = next;
+      continue;
+    }
+
+    if (current) lines.push(current);
+    current = word;
+    if (lines.length >= maxLines - 1) break;
+  }
+
+  if (current && lines.length < maxLines) lines.push(current);
+
+  if (lines.length === maxLines && words.join(" ").length > lines.join(" ").length) {
+    let last = lines[maxLines - 1];
+    while (last.length > 0 && ctx.measureText(`${last}...`).width > maxWidth) {
+      last = last.slice(0, -1);
+    }
+    lines[maxLines - 1] = `${last}...`;
+  }
+
+  for (let i = 0; i < lines.length; i += 1) {
+    ctx.fillText(lines[i], x, y + i * lineHeight);
+  }
+}
+
 function drawParticles() {
   for (const p of state.particles) {
     const alpha = 1 - p.age / p.ttl;
@@ -1077,7 +1235,7 @@ function drawMenuScene() {
     ctx.font = "bold 18px Trebuchet MS";
     ctx.fillText(world.label, x + 12, y + 28);
     ctx.font = "14px Trebuchet MS";
-    ctx.fillText(unlocked ? world.subtitle : "Locked", x + 12, y + 50);
+    drawWrappedText(unlocked ? world.subtitle : "Locked", x + 12, y + 50, w - 24, 18, 3);
 
     if (!unlocked) {
       ctx.fillStyle = "rgba(40,40,45,0.45)";
@@ -1133,28 +1291,117 @@ function drawShopScene() {
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  ctx.fillStyle = "rgba(14,17,21,0.7)";
-  ctx.fillRect(140, 90, 680, 360);
+  ctx.fillStyle = "rgba(14,17,21,0.72)";
+  ctx.fillRect(44, 72, 872, 402);
   ctx.strokeStyle = "#f1b864";
-  ctx.strokeRect(140, 90, 680, 360);
+  ctx.strokeRect(44, 72, 872, 402);
 
   ctx.fillStyle = "#ffd480";
   ctx.font = "bold 34px Trebuchet MS";
-  ctx.fillText("Break Room Shop", 350, 150);
+  ctx.fillText("Break Room Shop", 320, 128);
 
   ctx.fillStyle = "#f4ead7";
-  ctx.font = "20px Trebuchet MS";
+  ctx.font = "18px Trebuchet MS";
   const questLine = state.saveData.unlocks.pamFound
     ? "Pam rescued: Jim's Desk Key acquired. Top row unlocked."
     : "Quest lock active: Find Pam in Warehouse (mission not built yet).";
-  ctx.fillText(questLine, 170, 215);
-  ctx.fillText(`Wallet: ${state.saveData.currencies.schruteBucks} Schrute Bucks`, 170, 255);
-  ctx.fillText(`Wallet: ${state.saveData.currencies.stanleyNickels} Stanley Nickels`, 170, 285);
+  drawWrappedText(questLine, 58, 162, 240, 20, 3);
+  ctx.fillText(`Wallet: ${state.saveData.currencies.schruteBucks} Schrute Bucks`, 58, 226);
+  ctx.fillText(`Wallet: ${state.saveData.currencies.stanleyNickels} Stanley Nickels`, 58, 252);
 
-  ctx.fillStyle = "#c5d9f2";
-  ctx.font = "18px Trebuchet MS";
-  ctx.fillText("Jim says the vending machine is 90% Jell-O and 10% disappointment.", 170, 345);
-  ctx.fillText("Press Enter for Menu or use top buttons.", 170, 375);
+  const vmX = 316;
+  const vmY = 150;
+  const vmW = 404;
+  const vmH = 262;
+  ctx.fillStyle = "#2f394f";
+  ctx.fillRect(vmX, vmY, vmW, vmH);
+  ctx.strokeStyle = "#9fd7ff";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(vmX, vmY, vmW, vmH);
+  ctx.fillStyle = "#9aa5b7";
+  ctx.fillRect(vmX + vmW - 78, vmY + 22, 58, vmH - 44);
+  ctx.fillStyle = "#252b38";
+  ctx.fillRect(vmX + vmW - 68, vmY + 34, 38, 26);
+  ctx.fillRect(vmX + vmW - 68, vmY + 68, 38, 18);
+  ctx.fillRect(vmX + vmW - 68, vmY + 96, 38, 18);
+  ctx.fillRect(vmX + vmW - 68, vmY + vmH - 64, 38, 34);
+
+  // Jim leaning against the vending machine.
+  const jimX = 758;
+  const jimY = 370;
+  const jimScale = 1.55;
+  ctx.fillStyle = "rgba(0,0,0,0.24)";
+  ctx.beginPath();
+  ctx.ellipse(jimX + 24 * jimScale, jimY + 8 * jimScale, 24 * jimScale, 8 * jimScale, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#efcfab";
+  ctx.fillRect(jimX + 10 * jimScale, jimY - 60 * jimScale, 20 * jimScale, 12 * jimScale);
+  ctx.fillStyle = "#4c7bb0";
+  ctx.fillRect(jimX + 8 * jimScale, jimY - 48 * jimScale, 28 * jimScale, 34 * jimScale);
+  ctx.fillStyle = "#1b2838";
+  ctx.fillRect(jimX + 12 * jimScale, jimY - 14 * jimScale, 8 * jimScale, 16 * jimScale);
+  ctx.fillRect(jimX + 24 * jimScale, jimY - 14 * jimScale, 8 * jimScale, 16 * jimScale);
+  ctx.fillStyle = "#d2b38f";
+  ctx.fillRect(jimX + 34 * jimScale, jimY - 44 * jimScale, 10 * jimScale, 8 * jimScale);
+
+  state.shopCards = [];
+  const colWidth = 98;
+  const cardW = 110;
+  const cardH = 92;
+  for (let i = 0; i < SHOP_ITEMS.length; i += 1) {
+    const item = SHOP_ITEMS[i];
+    const col = i % 3;
+    const row = item.row === "top" ? 0 : 1;
+    const x = vmX + 16 + col * colWidth;
+    const y = vmY + 30 + row * 116;
+    const lockedByKey = row === 0 && !state.saveData.unlocks.jimDeskKey;
+    const owned = ownsUpgrade(item.id);
+
+    ctx.fillStyle = owned ? "#2f5032" : lockedByKey ? "#46403b" : "#234767";
+    ctx.fillRect(x, y, cardW, cardH);
+    ctx.strokeStyle = owned ? "#b7f2bb" : lockedByKey ? "#8a7b6b" : "#8bc8ff";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, cardW, cardH);
+
+    ctx.fillStyle = "#f5ead6";
+    ctx.font = "bold 17px Trebuchet MS";
+    ctx.fillText(item.name, x + 10, y + 24);
+    ctx.font = "14px Trebuchet MS";
+    drawWrappedText(item.description, x + 10, y + 44, cardW - 18, 15, 2);
+
+    ctx.fillStyle = owned ? "#b7f2bb" : "#ffe4a8";
+    ctx.font = "bold 14px Trebuchet MS";
+    const badge = owned ? "OWNED" : lockedByKey ? "LOCKED" : `BUY ${shopPriceLabel(item)}`;
+    ctx.fillText(badge, x + 10, y + 80);
+
+    state.shopCards.push({ x, y, w: cardW, h: cardH, itemId: item.id, lockedByKey, owned });
+  }
+
+  ctx.fillStyle = state.shopForeheadStare ? "#ff9ea5" : state.shopMessageColor || "#c5d9f2";
+  ctx.font = "17px Trebuchet MS";
+  ctx.fillText(
+    state.shopMessage || "Jim says the vending machine is 90% Jell-O and 10% disappointment.",
+    92,
+    457
+  );
+
+  if (state.shopForeheadStare) {
+    ctx.fillStyle = "rgba(12, 14, 22, 0.55)";
+    ctx.fillRect(56, 72, 848, 402);
+    ctx.fillStyle = "#ffe0b8";
+    ctx.font = "bold 38px Trebuchet MS";
+    ctx.fillText("Jim Is Staring At Your Forehead", 182, 260);
+    ctx.font = "20px Trebuchet MS";
+    ctx.fillText("No dialogue. No blinking. Just leave the shop.", 246, 300);
+  }
+}
+
+function selectShopByCanvasPoint(x, y) {
+  for (const card of state.shopCards) {
+    if (x < card.x || x > card.x + card.w || y < card.y || y > card.y + card.h) continue;
+    tryBuyShopItem(card.itemId);
+    return;
+  }
 }
 
 function drawAnnexScene() {
@@ -1245,6 +1492,10 @@ function render() {
 function update(dt) {
   state.elapsedSec += dt;
   if (state.scene === "run") updateRun(dt);
+  if (state.shopMessageLeft > 0) {
+    state.shopMessageLeft = Math.max(0, state.shopMessageLeft - dt);
+    if (state.shopMessageLeft === 0) state.shopMessage = "";
+  }
 }
 
 function selectWorldByCanvasPoint(x, y) {
@@ -1341,6 +1592,10 @@ canvas.addEventListener("pointerdown", (ev) => {
     selectWorldByCanvasPoint(x, y);
     return;
   }
+  if (state.scene === "shop") {
+    selectShopByCanvasPoint(x, y);
+    return;
+  }
 
   if (state.scene === "run") {
     jump();
@@ -1399,8 +1654,8 @@ characterSelect.addEventListener("change", () => {
 });
 
 state.saveData = loadSave();
-// Temporary test unlock: expose all levels for local playtesting.
-state.saveData.unlockedWorldIndex = WORLDS.length - 1;
+// Restore normal progression: start with only level 1 unlocked.
+state.saveData.unlockedWorldIndex = 0;
 persistSave();
 setMenuDialogue();
 updateUiForScene();
