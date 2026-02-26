@@ -1286,8 +1286,8 @@ function drawMenuScene() {
 
 function drawShopScene() {
   const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-  grad.addColorStop(0, "#2f2b22");
-  grad.addColorStop(1, "#4e3d2d");
+  grad.addColorStop(0, "#f5d9a2");
+  grad.addColorStop(1, "#d9ae68");
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -1327,22 +1327,51 @@ function drawShopScene() {
   ctx.fillRect(vmX + vmW - 68, vmY + vmH - 64, 38, 34);
 
   // Jim leaning against the vending machine.
-  const jimX = 758;
-  const jimY = 370;
-  const jimScale = 1.55;
+  const jimX = 730;
+  const jimY = 392;
+  const jimScale = 2.1;
   ctx.fillStyle = "rgba(0,0,0,0.24)";
   ctx.beginPath();
-  ctx.ellipse(jimX + 24 * jimScale, jimY + 8 * jimScale, 24 * jimScale, 8 * jimScale, 0, 0, Math.PI * 2);
+  ctx.ellipse(jimX + 26 * jimScale, jimY + 8 * jimScale, 25 * jimScale, 8 * jimScale, 0, 0, Math.PI * 2);
   ctx.fill();
+  // Head + hair silhouette.
   ctx.fillStyle = "#efcfab";
-  ctx.fillRect(jimX + 10 * jimScale, jimY - 60 * jimScale, 20 * jimScale, 12 * jimScale);
-  ctx.fillStyle = "#4c7bb0";
-  ctx.fillRect(jimX + 8 * jimScale, jimY - 48 * jimScale, 28 * jimScale, 34 * jimScale);
+  ctx.fillRect(jimX + 11 * jimScale, jimY - 62 * jimScale, 22 * jimScale, 15 * jimScale);
+  ctx.fillStyle = "#2a1e16";
+  ctx.fillRect(jimX + 9 * jimScale, jimY - 68 * jimScale, 26 * jimScale, 7 * jimScale);
+  ctx.fillRect(jimX + 7 * jimScale, jimY - 63 * jimScale, 8 * jimScale, 5 * jimScale);
+  ctx.fillRect(jimX + 24 * jimScale, jimY - 63 * jimScale, 9 * jimScale, 3 * jimScale);
+
+  // Face details for a more recognizable Jim look.
+  ctx.fillStyle = "#1e2431";
+  ctx.fillRect(jimX + 16 * jimScale, jimY - 56 * jimScale, 2 * jimScale, 2 * jimScale);
+  ctx.fillRect(jimX + 25 * jimScale, jimY - 56 * jimScale, 2 * jimScale, 2 * jimScale);
+  ctx.fillRect(jimX + 20 * jimScale, jimY - 52 * jimScale, 3 * jimScale, 1 * jimScale);
+  ctx.fillRect(jimX + 18 * jimScale, jimY - 49 * jimScale, 7 * jimScale, 1 * jimScale);
+
+  // Torso with shirt shading and tie.
+  ctx.fillStyle = "#5f8fca";
+  ctx.fillRect(jimX + 9 * jimScale, jimY - 47 * jimScale, 30 * jimScale, 35 * jimScale);
+  ctx.fillStyle = "#4e79ad";
+  ctx.fillRect(jimX + 30 * jimScale, jimY - 45 * jimScale, 8 * jimScale, 31 * jimScale);
+  ctx.fillStyle = "#2f4f7a";
+  ctx.fillRect(jimX + 22 * jimScale, jimY - 45 * jimScale, 4 * jimScale, 20 * jimScale);
+
+  // Left arm down, right arm bent/leaning on machine.
+  ctx.fillStyle = "#d4b28f";
+  ctx.fillRect(jimX + 7 * jimScale, jimY - 43 * jimScale, 4 * jimScale, 17 * jimScale);
+  ctx.fillStyle = "#5f8fca";
+  ctx.fillRect(jimX + 38 * jimScale, jimY - 40 * jimScale, 10 * jimScale, 7 * jimScale);
+  ctx.fillStyle = "#d4b28f";
+  ctx.fillRect(jimX + 48 * jimScale, jimY - 39 * jimScale, 6 * jimScale, 6 * jimScale);
+
+  // Pants + shoes.
   ctx.fillStyle = "#1b2838";
-  ctx.fillRect(jimX + 12 * jimScale, jimY - 14 * jimScale, 8 * jimScale, 16 * jimScale);
-  ctx.fillRect(jimX + 24 * jimScale, jimY - 14 * jimScale, 8 * jimScale, 16 * jimScale);
-  ctx.fillStyle = "#d2b38f";
-  ctx.fillRect(jimX + 34 * jimScale, jimY - 44 * jimScale, 10 * jimScale, 8 * jimScale);
+  ctx.fillRect(jimX + 14 * jimScale, jimY - 12 * jimScale, 9 * jimScale, 17 * jimScale);
+  ctx.fillRect(jimX + 26 * jimScale, jimY - 12 * jimScale, 9 * jimScale, 17 * jimScale);
+  ctx.fillStyle = "#111722";
+  ctx.fillRect(jimX + 13 * jimScale, jimY + 5 * jimScale, 10 * jimScale, 3 * jimScale);
+  ctx.fillRect(jimX + 26 * jimScale, jimY + 5 * jimScale, 10 * jimScale, 3 * jimScale);
 
   state.shopCards = [];
   const colWidth = 98;
@@ -1364,10 +1393,10 @@ function drawShopScene() {
     ctx.strokeRect(x, y, cardW, cardH);
 
     ctx.fillStyle = "#f5ead6";
-    ctx.font = "bold 17px Trebuchet MS";
-    ctx.fillText(item.name, x + 10, y + 24);
+    ctx.font = "bold 13px Trebuchet MS";
+    drawWrappedText(item.name, x + 10, y + 20, cardW - 18, 14, 1);
     ctx.font = "14px Trebuchet MS";
-    drawWrappedText(item.description, x + 10, y + 44, cardW - 18, 15, 2);
+    drawWrappedText(item.description, x + 10, y + 42, cardW - 18, 15, 2);
 
     ctx.fillStyle = owned ? "#b7f2bb" : "#ffe4a8";
     ctx.font = "bold 14px Trebuchet MS";
