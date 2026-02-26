@@ -427,7 +427,11 @@ function doParkourShout() {
     state.multiplier = Math.min(20, state.multiplier + 1);
     state.bestChain = Math.max(state.bestChain, state.multiplier - 1);
     addFloatingText("HARDCORE!", state.player.x + 16, state.player.y - 28, "#ffd54d");
+    return;
   }
+
+  // Failed attempt only when player actually presses J outside the valid window.
+  stumbleFail();
 }
 
 function attack() {
@@ -516,6 +520,18 @@ function handleAttackHits(playerBox) {
   }
 }
 
+function stompObstacle(obstacle) {
+  obstacle.hit = true;
+  state.score += 95;
+  state.style += 20 * state.multiplier;
+  state.player.vy = -360;
+  state.player.grounded = false;
+  state.pendingLanding = false;
+  state.landingWindowLeft = 0;
+  addFloatingText("CRUNCH!", obstacle.x + 2, obstacle.y - 10, "#ffe68d");
+  addHitParticles(obstacle.x + obstacle.width * 0.5, obstacle.y + obstacle.height * 0.4, "#ffd79a");
+}
+
 function updateRun(dt) {
   if (!state.running || state.paused) return;
 
@@ -550,7 +566,10 @@ function updateRun(dt) {
 
   if (state.landingWindowLeft > 0) {
     state.landingWindowLeft -= dt;
-    if (state.landingWindowLeft <= 0 && state.pendingLanding) stumbleFail();
+    if (state.landingWindowLeft <= 0 && state.pendingLanding) {
+      state.pendingLanding = false;
+      state.landingWindowLeft = 0;
+    }
   }
 
   state.speedBoostLeft = Math.max(0, state.speedBoostLeft - dt);
@@ -618,6 +637,13 @@ function updateRun(dt) {
       state.style += 14;
       addFloatingText("SWOOSH", obstacle.x + 4, obstacle.y - 8, "#8fe4ff");
       addHitParticles(obstacle.x + obstacle.width * 0.5, obstacle.y + obstacle.height * 0.5, "#8ed9ff");
+      continue;
+    }
+
+    const playerBottom = playerBox.y + playerBox.height;
+    const landingFromAbove = player.vy > 40 && playerBottom <= obstacle.y + 14;
+    if (landingFromAbove) {
+      stompObstacle(obstacle);
       continue;
     }
 
