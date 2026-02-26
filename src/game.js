@@ -54,6 +54,10 @@ const GAME = {
   runTimeSec: 70,
   attackDurationSec: 0.14,
   attackCooldownSec: 0.24,
+  slideHoldThresholdSec: 0.14,
+  slideInitialSpeed: 560,
+  slideDeceleration: 720,
+  slideScorePerObstacle: 80,
 };
 
 const state = {
@@ -70,6 +74,11 @@ const state = {
   stumbleLeft: 0,
   attackLeft: 0,
   attackCooldownLeft: 0,
+  slideActive: false,
+  slideSpeed: 0,
+  spaceHeld: false,
+  spaceHoldSec: 0,
+  pendingSpaceTapJump: false,
   floatingText: [],
   particles: [],
   stars: 0,
@@ -99,6 +108,11 @@ function resetState() {
   state.stumbleLeft = 0;
   state.attackLeft = 0;
   state.attackCooldownLeft = 0;
+  state.slideActive = false;
+  state.slideSpeed = 0;
+  state.spaceHeld = false;
+  state.spaceHoldSec = 0;
+  state.pendingSpaceTapJump = false;
   state.floatingText = [];
   state.particles = [];
   state.stars = 0;
@@ -227,10 +241,20 @@ function stumbleFail() {
 
 function jump() {
   if (!state.running) return;
+  if (state.slideActive) return;
   if (state.player.jumpsUsed >= state.player.preset.maxJumps) return;
   state.player.vy = -state.player.preset.jumpPower;
   state.player.grounded = false;
   state.player.jumpsUsed += 1;
+}
+
+function startSlide() {
+  if (!state.running) return;
+  if (!state.player.grounded || state.slideActive) return;
+  state.slideActive = true;
+  state.slideSpeed = GAME.slideInitialSpeed;
+  state.pendingSpaceTapJump = false;
+  addFloatingText("SLIDE!", state.player.x + 10, state.player.y - 30, "#9ce3ff");
 }
 
 function onLanding() {
@@ -341,10 +365,32 @@ function update(dt) {
   state.attackCooldownLeft = Math.max(0, state.attackCooldownLeft - dt);
   state.screenShake = Math.max(0, state.screenShake - dt);
 
+  if (state.spaceHeld) {
+    state.spaceHoldSec += dt;
+    if (
+      !state.slideActive &&
+      state.player.grounded &&
+      state.spaceHoldSec >= GAME.slideHoldThresholdSec &&
+      state.pendingSpaceTapJump
+    ) {
+      startSlide();
+    }
+  }
+
   const baseSpeed = player.preset.baseSpeed;
   const speedModifier = state.speedBoostLeft > 0 ? GAME.speedBoostValue : 0;
   const stumblePenalty = state.stumbleLeft > 0 ? -140 : 0;
-  const runSpeed = Math.max(120, baseSpeed + speedModifier + stumblePenalty);
+  const movementSpeed = Math.max(120, baseSpeed + speedModifier + stumblePenalty);
+
+  if (state.slideActive) {
+    state.slideSpeed = Math.max(0, state.slideSpeed - GAME.slideDeceleration * dt);
+    if (state.slideSpeed <= 0 || !state.player.grounded) {
+      state.slideActive = false;
+      state.slideSpeed = 0;
+    }
+  }
+
+  const runSpeed = state.slideActive ? movementSpeed + state.slideSpeed : movementSpeed;
 
   state.score += runSpeed * dt * 0.1;
   state.style += 20 * dt * state.multiplier * player.preset.styleGain;
@@ -369,7 +415,19 @@ function update(dt) {
 
   for (const obstacle of state.obstacles) {
     obstacle.x -= runSpeed * dt * obstacle.speedFactor;
-    if (!obstacle.hit && intersects(playerBox, obstacle)) handleObstacleCollision(obstacle);
+    if (obstacle.hit) continue;
+    if (!intersects(playerBox, obstacle)) continue;
+
+    if (state.slideActive) {
+      obstacle.hit = true;
+      state.score += GAME.slideScorePerObstacle;
+      state.style += 14;
+      addFloatingText("SWOOSH", obstacle.x + 4, obstacle.y - 8, "#8fe4ff");
+      addHitParticles(obstacle.x + obstacle.width * 0.5, obstacle.y + obstacle.height * 0.5, "#8ed9ff");
+      continue;
+    }
+
+    handleObstacleCollision(obstacle);
   }
 
   state.obstacles = state.obstacles.filter((obs) => obs.x + obs.width > -20 && !obs.hit);
@@ -435,7 +493,9 @@ function drawBackground() {
 function drawPlayer() {
   const player = state.player;
   const x = player.x;
-  const y = player.y - player.height;
+  const slideHeight = state.slideActive ? 22 : 0;
+  const visualHeight = player.height - slideHeight;
+  const y = player.y - visualHeight;
   const runCycle = Math.sin(state.worldTimeSec * 14);
 
   ctx.fillStyle = "rgba(0,0,0,0.2)";
@@ -444,29 +504,33 @@ function drawPlayer() {
   ctx.fill();
 
   ctx.fillStyle = "#f3d6b3";
-  ctx.fillRect(x + 7, y + 2, 28, 12);
+  ctx.fillRect(x + 7, y + 2, 28, state.slideActive ? 9 : 12);
 
   ctx.fillStyle = player.preset.color;
-  ctx.fillRect(x + 4, y + 14, 34, 34);
+  ctx.fillRect(x + 4, y + (state.slideActive ? 10 : 14), 34, state.slideActive ? 22 : 34);
 
   ctx.fillStyle = player.preset.tieColor;
-  ctx.fillRect(x + 19, y + 18, 4, 20);
+  ctx.fillRect(x + 19, y + (state.slideActive ? 12 : 18), 4, state.slideActive ? 11 : 20);
 
   const armY = y + 20 + runCycle * 2;
   ctx.fillStyle = "#d9ba97";
-  ctx.fillRect(x - 1, armY, 8, 16);
+  ctx.fillRect(x - 1, state.slideActive ? y + 16 : armY, 8, state.slideActive ? 8 : 16);
   if (state.attackLeft > 0) {
-    ctx.fillRect(x + 34, y + 18, 14, 8);
+    ctx.fillRect(x + 34, y + (state.slideActive ? 15 : 18), 14, 8);
     ctx.fillStyle = "#ffe189";
-    ctx.fillRect(x + 48, y + 20, 18, 4);
+    ctx.fillRect(x + 48, y + (state.slideActive ? 17 : 20), 18, 4);
   } else {
-    ctx.fillRect(x + 35, armY, 8, 16);
+    ctx.fillRect(x + 35, state.slideActive ? y + 16 : armY, 8, state.slideActive ? 8 : 16);
   }
 
   const legOffset = player.grounded ? runCycle * 4 : 0;
   ctx.fillStyle = "#1c2431";
-  ctx.fillRect(x + 10, y + 48, 9, 14 + Math.abs(legOffset));
-  ctx.fillRect(x + 24, y + 48, 9, 14 + Math.abs(legOffset));
+  if (state.slideActive) {
+    ctx.fillRect(x + 12, y + 28, 17, 7);
+  } else {
+    ctx.fillRect(x + 10, y + 48, 9, 14 + Math.abs(legOffset));
+    ctx.fillRect(x + 24, y + 48, 9, 14 + Math.abs(legOffset));
+  }
 
   ctx.fillStyle = "#111";
   ctx.fillRect(x + 12, y + 6, 6, 4);
@@ -534,6 +598,9 @@ function drawHud() {
   ctx.fillText(`Time: ${timeLeft.toFixed(1)}s`, 190, 78);
   ctx.fillText(`World: ${state.theme}`, 190, 100);
   ctx.fillText(`Hit: K`, 300, 34);
+  if (state.slideActive) {
+    ctx.fillText(`Slide: ${Math.ceil(state.slideSpeed)}`, 300, 56);
+  }
 
   if (state.pendingLanding && state.landingWindowLeft > 0) {
     const pct = state.landingWindowLeft / GAME.parkourWindowSec;
@@ -587,7 +654,7 @@ function drawIdleScreen() {
   ctx.font = "bold 32px Trebuchet MS";
   ctx.fillText("Hardcore Parkour Prototype", 240, 220);
   ctx.font = "20px Trebuchet MS";
-  ctx.fillText("Space/tap to jump. Enter after landing for HARDCORE.", 190, 272);
+  ctx.fillText("Tap Space/tap to jump, hold Space to slide through obstacles.", 155, 272);
   ctx.fillText("Press K to hit obstacles before they hit you.", 262, 306);
 }
 
@@ -626,9 +693,17 @@ function loop(ts) {
 }
 
 function handlePress(ev) {
-  if (ev.code === "Space" || ev.code === "ArrowUp") {
+  if (ev.code === "ArrowUp") {
     ev.preventDefault();
     jump();
+  }
+  if (ev.code === "Space") {
+    ev.preventDefault();
+    if (!state.spaceHeld) {
+      state.spaceHeld = true;
+      state.spaceHoldSec = 0;
+      state.pendingSpaceTapJump = true;
+    }
   }
   if (ev.code === "Enter") {
     ev.preventDefault();
@@ -641,6 +716,15 @@ function handlePress(ev) {
 }
 
 window.addEventListener("keydown", handlePress);
+window.addEventListener("keyup", (ev) => {
+  if (ev.code !== "Space") return;
+  state.spaceHeld = false;
+  if (state.pendingSpaceTapJump && !state.slideActive && state.spaceHoldSec < GAME.slideHoldThresholdSec) {
+    jump();
+  }
+  state.pendingSpaceTapJump = false;
+  state.spaceHoldSec = 0;
+});
 canvas.addEventListener("pointerdown", () => jump());
 
 startBtn.addEventListener("click", () => {
