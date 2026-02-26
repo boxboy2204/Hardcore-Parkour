@@ -5,6 +5,7 @@ ctx.imageSmoothingEnabled = false;
 const characterSelect = document.getElementById("characterSelect");
 const startBtn = document.getElementById("startBtn");
 const retryBtn = document.getElementById("retryBtn");
+const nextLevelBtn = document.getElementById("nextLevelBtn");
 const summaryPanel = document.getElementById("summaryPanel");
 const summaryText = document.getElementById("summaryText");
 
@@ -87,6 +88,14 @@ const THEME_LABELS = {
   pursuit: "Final Pursuit",
 };
 
+const LEVEL_DIFFICULTY = {
+  bullpen: { label: "Very Easy", obstacleSpeedMul: 0.82, spawnBase: 1.35, spawnRand: 0.85, spawnMin: 0.72 },
+  warehouse: { label: "Easy", obstacleSpeedMul: 0.92, spawnBase: 1.12, spawnRand: 0.78, spawnMin: 0.60 },
+  streets: { label: "Medium", obstacleSpeedMul: 1.0, spawnBase: 0.95, spawnRand: 0.72, spawnMin: 0.50 },
+  corporate: { label: "Hard", obstacleSpeedMul: 1.12, spawnBase: 0.82, spawnRand: 0.68, spawnMin: 0.42 },
+  pursuit: { label: "Super Hard", obstacleSpeedMul: 1.24, spawnBase: 0.68, spawnRand: 0.56, spawnMin: 0.34 },
+};
+
 const SOUL_QUIPS = {
   michael: [
     "Michael: This run is going to be a TED Talk with knees.",
@@ -145,6 +154,7 @@ const state = {
   obstacles: [],
   menuCards: [],
   menuDialogue: "Pick a Polaroid so we can go, now.",
+  pendingNextWorldId: null,
   saveData: null,
 };
 
@@ -249,6 +259,7 @@ function switchScene(sceneId) {
   state.scene = sceneId;
   state.paused = false;
   summaryPanel.hidden = true;
+  nextLevelBtn.hidden = true;
   updateUiForScene();
   if (sceneId === "menu") setMenuDialogue();
 }
@@ -347,7 +358,8 @@ function addHitParticles(x, y, color) {
 }
 
 function spawnObstacle() {
-  const distanceFactor = Math.min(1.75, 1 + state.worldTimeSec / 75);
+  const difficulty = LEVEL_DIFFICULTY[state.runWorldId] || LEVEL_DIFFICULTY.bullpen;
+  const distanceFactor = Math.min(1.75, 1 + state.worldTimeSec / 75) * difficulty.obstacleSpeedMul;
   const pool = THEME_OBSTACLE_POOLS[state.theme] || THEME_OBSTACLE_POOLS.bullpen;
   const type = pool[Math.floor(Math.random() * pool.length)];
 
@@ -410,6 +422,19 @@ function endRun(reason = "time") {
   }
 
   persistSave();
+
+  const worldIdx = WORLDS.findIndex((w) => w.id === state.runWorldId);
+  const hasNextLevel = worldIdx !== -1 && worldIdx < WORLDS.length - 1;
+  const successfulFinish = reason === "time" || reason === "toby_caught";
+  if (successfulFinish && hasNextLevel) {
+    const nextWorld = WORLDS[worldIdx + 1];
+    state.pendingNextWorldId = nextWorld.id;
+    nextLevelBtn.textContent = `Continue To ${nextWorld.label}`;
+    nextLevelBtn.hidden = false;
+  } else {
+    state.pendingNextWorldId = null;
+    nextLevelBtn.hidden = true;
+  }
 
   let endingLine =
     state.stars === 1
@@ -636,9 +661,10 @@ function updateRun(dt) {
 
   state.spawnTimerSec -= dt;
   if (state.spawnTimerSec <= 0) {
+    const difficulty = LEVEL_DIFFICULTY[state.runWorldId] || LEVEL_DIFFICULTY.bullpen;
     spawnObstacle();
-    const spawnGap = 0.62 + Math.random() * 0.8;
-    state.spawnTimerSec = Math.max(0.34, spawnGap - state.worldTimeSec * 0.004);
+    const spawnGap = difficulty.spawnBase + Math.random() * difficulty.spawnRand;
+    state.spawnTimerSec = Math.max(difficulty.spawnMin, spawnGap - state.worldTimeSec * 0.004);
   }
 
   const hitboxW = player.width * player.preset.hitboxScale;
@@ -760,7 +786,9 @@ function drawPlayer() {
   const slideHeight = state.slideActive ? 22 : 0;
   const visualHeight = player.height - slideHeight;
   const y = player.y - visualHeight;
-  const runCycle = Math.sin(state.worldTimeSec * 14);
+  const runCycle = Math.sin(state.worldTimeSec * 18);
+  const runCycleOpp = Math.sin(state.worldTimeSec * 18 + Math.PI);
+  const bob = player.grounded ? Math.abs(Math.sin(state.worldTimeSec * 18)) * 2 : -2;
 
   ctx.fillStyle = "rgba(0,0,0,0.2)";
   ctx.beginPath();
@@ -768,37 +796,39 @@ function drawPlayer() {
   ctx.fill();
 
   ctx.fillStyle = "#f3d6b3";
-  ctx.fillRect(x + 7, y + 2, 28, state.slideActive ? 9 : 12);
+  ctx.fillRect(x + 7, y + 2 + bob, 28, state.slideActive ? 9 : 12);
 
   ctx.fillStyle = player.preset.color;
-  ctx.fillRect(x + 4, y + (state.slideActive ? 10 : 14), 34, state.slideActive ? 22 : 34);
+  ctx.fillRect(x + 4, y + (state.slideActive ? 10 : 14) + bob, 34, state.slideActive ? 22 : 34);
 
   ctx.fillStyle = player.preset.tieColor;
-  ctx.fillRect(x + 19, y + (state.slideActive ? 12 : 18), 4, state.slideActive ? 11 : 20);
+  ctx.fillRect(x + 19, y + (state.slideActive ? 12 : 18) + bob, 4, state.slideActive ? 11 : 20);
 
-  const armY = y + 20 + runCycle * 2;
+  const armFrontY = y + 21 + runCycle * 3 + bob;
+  const armBackY = y + 21 + runCycleOpp * 3 + bob;
   ctx.fillStyle = "#d9ba97";
-  ctx.fillRect(x - 1, state.slideActive ? y + 16 : armY, 8, state.slideActive ? 8 : 16);
+  ctx.fillRect(x - 1, state.slideActive ? y + 16 : armBackY, 8, state.slideActive ? 8 : 16);
   if (state.attackLeft > 0) {
     ctx.fillRect(x + 34, y + (state.slideActive ? 15 : 18), 14, 8);
     ctx.fillStyle = "#ffe189";
     ctx.fillRect(x + 48, y + (state.slideActive ? 17 : 20), 18, 4);
   } else {
-    ctx.fillRect(x + 35, state.slideActive ? y + 16 : armY, 8, state.slideActive ? 8 : 16);
+    ctx.fillRect(x + 35, state.slideActive ? y + 16 : armFrontY, 8, state.slideActive ? 8 : 16);
   }
 
-  const legOffset = player.grounded ? runCycle * 4 : 0;
+  const legFront = player.grounded ? runCycle * 5 : 0;
+  const legBack = player.grounded ? runCycleOpp * 5 : 0;
   ctx.fillStyle = "#1c2431";
   if (state.slideActive) {
     ctx.fillRect(x + 12, y + 28, 17, 7);
   } else {
-    ctx.fillRect(x + 10, y + 48, 9, 14 + Math.abs(legOffset));
-    ctx.fillRect(x + 24, y + 48, 9, 14 + Math.abs(legOffset));
+    ctx.fillRect(x + 10, y + 48 + Math.max(0, -legBack), 9, 14 + Math.abs(legBack));
+    ctx.fillRect(x + 24, y + 48 + Math.max(0, -legFront), 9, 14 + Math.abs(legFront));
   }
 
   ctx.fillStyle = "#111";
-  ctx.fillRect(x + 12, y + 6, 6, 4);
-  ctx.fillRect(x + 24, y + 6, 6, 4);
+  ctx.fillRect(x + 12, y + 6 + bob, 6, 4);
+  ctx.fillRect(x + 24, y + 6 + bob, 6, 4);
 }
 
 function drawObstacleSprite(obs) {
@@ -816,13 +846,20 @@ function drawObstacleSprite(obs) {
     ctx.fillRect(obs.x + 7, obs.y + 22, 14, 8);
     ctx.fillRect(obs.x + 30, obs.y + 22, 14, 8);
   } else if (obs.type === "angela_cat") {
-    ctx.fillStyle = "#dfc09d";
-    ctx.fillRect(obs.x + 4, obs.y + 6, obs.width - 8, obs.height - 8);
-    ctx.fillRect(obs.x, obs.y + 2, 8, 8);
-    ctx.fillRect(obs.x + obs.width - 8, obs.y + 2, 8, 8);
+    const wobble = Math.sin(state.worldTimeSec * 22 + obs.x * 0.03) * 1.5;
+    ctx.fillStyle = "#d6bd99";
+    ctx.fillRect(obs.x + 5, obs.y + 8 + wobble, 18, 11);
+    ctx.fillRect(obs.x + 20, obs.y + 7 + wobble, 10, 8);
+    ctx.fillRect(obs.x + 17, obs.y + 5 + wobble, 4, 3);
+    ctx.fillRect(obs.x + 25, obs.y + 4 + wobble, 4, 3);
+    ctx.fillRect(obs.x + 2, obs.y + 12 + wobble, 4, 3);
+    ctx.fillRect(obs.x, obs.y + 10 + wobble, 3, 2);
+    ctx.fillRect(obs.x + 7, obs.y + 18 + wobble, 3, 3);
+    ctx.fillRect(obs.x + 15, obs.y + 18 + wobble, 3, 3);
     ctx.fillStyle = "#2b2b2b";
-    ctx.fillRect(obs.x + 10, obs.y + 11, 4, 4);
-    ctx.fillRect(obs.x + obs.width - 14, obs.y + 11, 4, 4);
+    ctx.fillRect(obs.x + 22, obs.y + 9 + wobble, 2, 2);
+    ctx.fillRect(obs.x + 27, obs.y + 9 + wobble, 2, 2);
+    ctx.fillRect(obs.x + 25, obs.y + 12 + wobble, 2, 2);
   } else if (obs.type === "chili_spill") {
     ctx.fillStyle = "#8f3328";
     ctx.fillRect(obs.x, obs.y + 6, obs.width, 6);
@@ -911,11 +948,13 @@ function drawHud() {
   ctx.fillText(`x${state.multiplier} Hardcore`, 210, 56);
 
   const timeLeft = Math.max(0, GAME.runTimeSec - state.worldTimeSec);
+  const difficulty = LEVEL_DIFFICULTY[state.runWorldId] || LEVEL_DIFFICULTY.bullpen;
   ctx.fillStyle = "#d4e6ff";
   if (state.runWorldId === "pursuit") ctx.fillText("Time: -- (Chase Mode)", 210, 78);
   else ctx.fillText(`Time: ${timeLeft.toFixed(1)}s`, 210, 78);
   ctx.fillText(`World: ${THEME_LABELS[state.theme] || state.theme}`, 210, 100);
-  ctx.fillText(`Parkour: J  Hit: K  Pause: Enter`, 210, 122);
+  ctx.fillText(`Difficulty: ${difficulty.label}`, 210, 122);
+  ctx.fillText(`Parkour: J  Hit: K  Pause: Enter`, 500, 122);
 
   if (state.slideActive) {
     ctx.fillStyle = "#8fdcff";
@@ -1314,6 +1353,7 @@ startBtn.addEventListener("click", () => {
     if (isWorldUnlocked(state.selectedWorldId)) {
       resetRunState(state.selectedWorldId);
       summaryPanel.hidden = true;
+      nextLevelBtn.hidden = true;
     }
     return;
   }
@@ -1330,6 +1370,7 @@ retryBtn.addEventListener("click", () => {
   if (state.scene === "run") {
     resetRunState(state.runWorldId);
     summaryPanel.hidden = true;
+    nextLevelBtn.hidden = true;
     return;
   }
 
@@ -1345,11 +1386,22 @@ retryBtn.addEventListener("click", () => {
   }
 });
 
+nextLevelBtn.addEventListener("click", () => {
+  if (!state.pendingNextWorldId) return;
+  state.selectedWorldId = state.pendingNextWorldId;
+  resetRunState(state.pendingNextWorldId);
+  summaryPanel.hidden = true;
+  nextLevelBtn.hidden = true;
+});
+
 characterSelect.addEventListener("change", () => {
   setMenuDialogue();
 });
 
 state.saveData = loadSave();
+// Temporary test unlock: expose all levels for local playtesting.
+state.saveData.unlockedWorldIndex = WORLDS.length - 1;
+persistSave();
 setMenuDialogue();
 updateUiForScene();
 summaryPanel.hidden = true;
