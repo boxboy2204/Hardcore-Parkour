@@ -167,6 +167,7 @@ const SHOP_ITEMS = [
 
 const state = {
   scene: "menu",
+  previousScene: "menu",
   running: false,
   paused: false,
   gameOver: false,
@@ -207,10 +208,15 @@ const state = {
   menuDialogue: "Pick a Polaroid so we can go, now.",
   pendingNextWorldId: null,
   shopCards: [],
+  shopJimBounds: null,
+  shopTalkBounds: [],
+  shopConversation: null,
   shopMessage: "",
   shopMessageColor: "#c5d9f2",
   shopMessageLeft: 0,
   shopForeheadStare: false,
+  missionToastText: "",
+  missionToastLeft: 0,
   saveData: null,
 };
 
@@ -233,9 +239,16 @@ function createDefaultSave() {
       whitestSneakers: false,
       dontGoInThere: false,
     },
+    missions: {
+      savePam: {
+        added: false,
+        completed: false,
+      },
+    },
     stats: {
       bestHardcoreChain: 0,
       lifetimeRuns: 0,
+      economyV2ResetApplied: false,
     },
   };
 }
@@ -252,6 +265,7 @@ function loadSave() {
       unlocks: { ...createDefaultSave().unlocks, ...(parsed.unlocks || {}) },
       upgrades: { ...createDefaultSave().upgrades, ...(parsed.upgrades || {}) },
       achievements: { ...createDefaultSave().achievements, ...(parsed.achievements || {}) },
+      missions: { ...createDefaultSave().missions, ...(parsed.missions || {}) },
       stats: { ...createDefaultSave().stats, ...(parsed.stats || {}) },
     };
   } catch {
@@ -327,6 +341,45 @@ function showShopMessage(text, color = "#ffe4a8") {
   state.shopMessageLeft = 2.3;
 }
 
+function showMissionToast(text) {
+  state.missionToastText = text;
+  state.missionToastLeft = 2.6;
+}
+
+function startJimConversation() {
+  if (state.shopForeheadStare) return;
+  state.shopConversation = {
+    step: "choice",
+    text: "Jim: Nice try. Those top-row items are in witness protection.",
+  };
+}
+
+function handleJimConversationClick(choiceId) {
+  if (!state.shopConversation) return;
+
+  if (state.shopConversation.step === "choice") {
+    if (choiceId === "ask") {
+      state.shopConversation = {
+        step: "pam_info",
+        text:
+          "Jim: Top row stays locked until you save Pam. She's somewhere in the Warehouse. Find her, bring back the key, then we talk.",
+      };
+      return;
+    }
+    state.shopConversation = null;
+    return;
+  }
+
+  if (state.shopConversation.step === "pam_info") {
+    if (!state.saveData.missions.savePam.added) {
+      state.saveData.missions.savePam.added = true;
+      persistSave();
+      showMissionToast('Mission Added: "Save Pam"');
+    }
+    state.shopConversation = null;
+  }
+}
+
 function tryBuyShopItem(itemId) {
   const item = SHOP_ITEMS.find((i) => i.id === itemId);
   if (!item) return;
@@ -370,11 +423,13 @@ function tryBuyShopItem(itemId) {
 
 function switchScene(sceneId) {
   const leavingShop = state.scene === "shop" && sceneId !== "shop";
+  state.previousScene = state.scene;
   state.scene = sceneId;
   state.paused = false;
   summaryPanel.hidden = true;
   nextLevelBtn.hidden = true;
   if (leavingShop) state.shopForeheadStare = false;
+  if (sceneId !== "shop") state.shopConversation = null;
   updateUiForScene();
   if (sceneId === "menu") setMenuDialogue();
 }
@@ -384,6 +439,9 @@ function updateUiForScene() {
     startBtn.textContent = "Launch Level";
     retryBtn.textContent = "Shop";
     retryBtn.hidden = false;
+  } else if (state.scene === "missions") {
+    startBtn.textContent = "Back";
+    retryBtn.hidden = true;
   } else if (state.scene === "run") {
     startBtn.textContent = "Back To Menu";
     retryBtn.textContent = "Run It Back";
@@ -531,8 +589,9 @@ function endRun(reason = "time") {
   state.running = false;
   state.gameOver = true;
   state.stars = calculateStars();
-  state.earnedSchruteBucks = Math.floor(state.style / 15 + state.stars * 90);
-  state.earnedStanleyNickels = Math.floor(state.score / 80 + state.stars * 8);
+  // Economy v2: much lower payouts. Example target: 5-star run => 50 SB and 10 SN.
+  state.earnedSchruteBucks = state.stars * 10;
+  state.earnedStanleyNickels = state.stars * 2;
 
   state.saveData.currencies.schruteBucks += state.earnedSchruteBucks;
   state.saveData.currencies.stanleyNickels += state.earnedStanleyNickels;
@@ -1189,6 +1248,9 @@ function drawParticles() {
 }
 
 function drawMenuScene() {
+  const boardOuter = { x: 70, y: 70, w: 820, h: 380 };
+  const boardInner = { x: 92, y: 92, w: 776, h: 336 };
+
   const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
   grad.addColorStop(0, "#1c3048");
   grad.addColorStop(1, "#243958");
@@ -1196,9 +1258,9 @@ function drawMenuScene() {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   ctx.fillStyle = "#313f52";
-  ctx.fillRect(70, 70, 820, 380);
+  ctx.fillRect(boardOuter.x, boardOuter.y, boardOuter.w, boardOuter.h);
   ctx.fillStyle = "#f4f2e7";
-  ctx.fillRect(92, 92, 776, 336);
+  ctx.fillRect(boardInner.x, boardInner.y, boardInner.w, boardInner.h);
 
   ctx.strokeStyle = "#8b2e2e";
   ctx.lineWidth = 2;
@@ -1207,6 +1269,79 @@ function drawMenuScene() {
   ctx.lineTo(832, 390);
   ctx.moveTo(130, 365);
   ctx.lineTo(780, 148);
+  ctx.stroke();
+
+  // Hand-drawn style doodles (no text).
+  ctx.strokeStyle = "rgba(36, 74, 138, 0.78)";
+  ctx.lineWidth = 2;
+  // Top-left trophy doodle.
+  ctx.strokeRect(110, 98, 22, 16);
+  ctx.strokeRect(116, 114, 10, 8);
+  ctx.beginPath();
+  ctx.moveTo(110, 106);
+  ctx.lineTo(102, 110);
+  ctx.moveTo(132, 106);
+  ctx.lineTo(140, 110);
+  ctx.stroke();
+  // Top-right beet doodle.
+  ctx.beginPath();
+  ctx.ellipse(760, 108, 12, 8, 0, 0, Math.PI * 2);
+  ctx.moveTo(760, 100);
+  ctx.lineTo(754, 92);
+  ctx.moveTo(760, 100);
+  ctx.lineTo(766, 92);
+  ctx.stroke();
+  // Center-top pretzel-ish loop.
+  ctx.beginPath();
+  ctx.moveTo(454, 102);
+  ctx.bezierCurveTo(468, 88, 486, 112, 500, 102);
+  ctx.bezierCurveTo(486, 116, 468, 92, 454, 102);
+  ctx.stroke();
+
+  // Lower-left doodles: chili splash + magnifier.
+  ctx.strokeStyle = "rgba(194, 62, 62, 0.84)";
+  ctx.beginPath();
+  ctx.moveTo(166, 372);
+  ctx.lineTo(176, 354);
+  ctx.lineTo(188, 370);
+  ctx.lineTo(198, 352);
+  ctx.lineTo(208, 372);
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(61, 83, 118, 0.84)";
+  ctx.beginPath();
+  ctx.arc(238, 364, 11, 0, Math.PI * 2);
+  ctx.moveTo(246, 372);
+  ctx.lineTo(254, 380);
+  ctx.stroke();
+
+  // Right-side "Michael Scarn" style hero doodles: mask + star + bolt.
+  ctx.strokeStyle = "rgba(29, 60, 128, 0.9)";
+  // Mask
+  ctx.beginPath();
+  ctx.moveTo(734, 320);
+  ctx.lineTo(752, 314);
+  ctx.lineTo(770, 320);
+  ctx.lineTo(752, 326);
+  ctx.closePath();
+  ctx.moveTo(744, 320);
+  ctx.lineTo(748, 320);
+  ctx.moveTo(756, 320);
+  ctx.lineTo(760, 320);
+  ctx.stroke();
+  // Star
+  ctx.beginPath();
+  ctx.moveTo(822, 372);
+  ctx.lineTo(828, 386);
+  ctx.lineTo(814, 378);
+  ctx.lineTo(832, 378);
+  ctx.lineTo(818, 386);
+  ctx.stroke();
+  // Lightning
+  ctx.beginPath();
+  ctx.moveTo(842, 328);
+  ctx.lineTo(834, 344);
+  ctx.lineTo(844, 344);
+  ctx.lineTo(836, 360);
   ctx.stroke();
 
   ctx.fillStyle = "#1f2938";
@@ -1250,38 +1385,71 @@ function drawMenuScene() {
 
   const anim = Math.sin(state.elapsedSec * 5);
   const player = CHARACTER_PRESETS[characterSelect.value];
-  const px = 64;
-  const py = 470;
+  const px = 98;
+  const py = 422;
+  const menuScale = 1.3;
 
   ctx.fillStyle = "rgba(0,0,0,0.24)";
   ctx.beginPath();
-  ctx.ellipse(px + 24, py + 6, 24, 8, 0, 0, Math.PI * 2);
+  ctx.ellipse(px + 23 * menuScale, py + 7, 24 * menuScale, 8, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = "#f3d6b3";
-  ctx.fillRect(px + 10, py - 62, 28, 12);
+  // More realistic menu-side character sprite.
+  const bob = Math.abs(anim) * 1.5;
+  const headX = px + 10 * menuScale;
+  const headY = py - 62 * menuScale + bob;
+  const bodyX = px + 8 * menuScale;
+  const bodyY = py - 50 * menuScale + bob;
+
+  // Head + hair.
+  ctx.fillStyle = "#efcfab";
+  ctx.fillRect(headX, headY, 28 * menuScale, 12 * menuScale);
+  ctx.fillStyle = "#2a1e16";
+  ctx.fillRect(headX - 1 * menuScale, headY - 4 * menuScale, 30 * menuScale, 5 * menuScale);
+  ctx.fillRect(headX - 2 * menuScale, headY, 5 * menuScale, 3 * menuScale);
+
+  // Face details.
+  ctx.fillStyle = "#1e2431";
+  ctx.fillRect(headX + 7 * menuScale, headY + 4 * menuScale, 2 * menuScale, 2 * menuScale);
+  ctx.fillRect(headX + 19 * menuScale, headY + 4 * menuScale, 2 * menuScale, 2 * menuScale);
+  ctx.fillRect(headX + 12 * menuScale, headY + 8 * menuScale, 6 * menuScale, 1 * menuScale);
+
+  // Shirt and tie.
   ctx.fillStyle = player.color;
-  ctx.fillRect(px + 8, py - 50, 34, 36);
+  ctx.fillRect(bodyX, bodyY, 34 * menuScale, 36 * menuScale);
+  ctx.fillStyle = "rgba(255,255,255,0.12)";
+  ctx.fillRect(bodyX + 20 * menuScale, bodyY + 1 * menuScale, 10 * menuScale, 34 * menuScale);
   ctx.fillStyle = player.tieColor;
-  ctx.fillRect(px + 23, py - 45, 4, 18);
+  ctx.fillRect(bodyX + 15 * menuScale, bodyY + 4 * menuScale, 4 * menuScale, 20 * menuScale);
+
+  // Arms with subtle swing.
+  const armSwingA = anim * 2.2;
+  const armSwingB = -anim * 2.2;
+  ctx.fillStyle = "#d4b28f";
+  ctx.fillRect(bodyX - 3 * menuScale, bodyY + 8 * menuScale + armSwingA, 5 * menuScale, 16 * menuScale);
+  ctx.fillRect(bodyX + 34 * menuScale, bodyY + 8 * menuScale + armSwingB, 5 * menuScale, 16 * menuScale);
+
+  // Pants + shoes.
   ctx.fillStyle = "#1c2431";
-  ctx.fillRect(px + 13, py - 14, 9, 15 + Math.abs(anim * 2));
-  ctx.fillRect(px + 27, py - 14, 9, 15 + Math.abs(anim * 2));
+  ctx.fillRect(px + 13 * menuScale, py - 14 * menuScale, 9 * menuScale, 15 * menuScale + Math.abs(anim * 3));
+  ctx.fillRect(px + 27 * menuScale, py - 14 * menuScale, 9 * menuScale, 15 * menuScale + Math.abs(-anim * 3));
+  ctx.fillStyle = "#111722";
+  ctx.fillRect(px + 12 * menuScale, py + 1 * menuScale, 10 * menuScale, 3 * menuScale);
+  ctx.fillRect(px + 27 * menuScale, py + 1 * menuScale, 10 * menuScale, 3 * menuScale);
 
   ctx.fillStyle = "rgba(15,20,30,0.82)";
-  ctx.fillRect(20, 480, 920, 50);
+  ctx.fillRect(20, 458, 920, 72);
   ctx.strokeStyle = "rgba(124, 199, 255, 0.45)";
-  ctx.strokeRect(20, 480, 920, 50);
+  ctx.strokeRect(20, 458, 920, 72);
 
-  // Keep dialogue and controls in separate rows to avoid overlap.
-  const trimmedDialogue = state.menuDialogue.length > 78 ? `${state.menuDialogue.slice(0, 75)}...` : state.menuDialogue;
+  // Show full dialogue line(s) without truncating.
   ctx.fillStyle = "#f5ead6";
   ctx.font = "bold 16px Trebuchet MS";
-  ctx.fillText(trimmedDialogue, 34, 501);
+  drawWrappedText(state.menuDialogue, 34, 480, 890, 20, 2);
 
   ctx.fillStyle = "#fff3b4";
   ctx.font = "15px Trebuchet MS";
-  ctx.fillText("Enter: Launch Level   Click Polaroids   S: Shop   A: Annex", 34, 521);
+  ctx.fillText("Enter: Launch Level   Click Polaroids   S: Shop   A: Annex", 34, 523);
 }
 
 function drawShopScene() {
@@ -1330,6 +1498,9 @@ function drawShopScene() {
   const jimX = vmX + vmW + 10;
   const jimY = 392;
   const jimScale = 1.85;
+  const jimW = 40 * jimScale;
+  const jimH = 70 * jimScale;
+  state.shopJimBounds = { x: jimX, y: jimY - jimH, w: jimW, h: jimH };
   ctx.fillStyle = "rgba(0,0,0,0.24)";
   ctx.beginPath();
   ctx.ellipse(jimX + 20 * jimScale, jimY + 8 * jimScale, 20 * jimScale, 7 * jimScale, 0, 0, Math.PI * 2);
@@ -1366,6 +1537,25 @@ function drawShopScene() {
   ctx.fillStyle = "#111722";
   ctx.fillRect(jimX + 9 * jimScale, jimY + 2 * jimScale, 8 * jimScale, 3 * jimScale);
   ctx.fillRect(jimX + 20 * jimScale, jimY + 2 * jimScale, 8 * jimScale, 3 * jimScale);
+
+  // TALK callout above Jim.
+  const talkX = jimX + 4;
+  const talkY = jimY - jimH - 20;
+  ctx.fillStyle = "#ffed99";
+  ctx.fillRect(talkX, talkY, 66, 22);
+  ctx.strokeStyle = "#8b6d1e";
+  ctx.strokeRect(talkX, talkY, 66, 22);
+  ctx.fillStyle = "#2a2618";
+  ctx.font = "bold 14px Trebuchet MS";
+  ctx.fillText("TALK", talkX + 13, talkY + 15);
+  ctx.fillStyle = "#ffed99";
+  ctx.beginPath();
+  ctx.moveTo(talkX + 28, talkY + 22);
+  ctx.lineTo(talkX + 38, talkY + 22);
+  ctx.lineTo(talkX + 33, talkY + 30);
+  ctx.closePath();
+  ctx.fill();
+  state.shopTalkBounds = [{ id: "talk", x: talkX, y: talkY, w: 66, h: 30 }];
 
   state.shopCards = [];
   const colWidth = 98;
@@ -1421,7 +1611,6 @@ function drawShopScene() {
     92,
     457
   );
-
   if (state.shopForeheadStare) {
     ctx.fillStyle = "rgba(12, 14, 22, 0.55)";
     ctx.fillRect(56, 72, 848, 402);
@@ -1431,14 +1620,103 @@ function drawShopScene() {
     ctx.font = "20px Trebuchet MS";
     ctx.fillText("No dialogue. No blinking. Just leave the shop.", 246, 300);
   }
+
+  if (state.shopConversation) {
+    const boxX = 92;
+    const boxY = 278;
+    const boxW = 798;
+    const boxH = 136;
+    ctx.fillStyle = "rgba(8, 11, 20, 0.85)";
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.strokeStyle = "#8bc8ff";
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+    ctx.fillStyle = "#f5ead6";
+    ctx.font = "18px Trebuchet MS";
+    drawWrappedText(state.shopConversation.text, boxX + 14, boxY + 30, boxW - 28, 23, 3);
+
+    state.shopTalkBounds = [];
+    if (state.shopConversation.step === "choice") {
+      const askBtn = { id: "ask", x: boxX + 16, y: boxY + 94, w: 278, h: 30 };
+      const leaveBtn = { id: "leave", x: boxX + 314, y: boxY + 94, w: 160, h: 30 };
+      for (const btn of [askBtn, leaveBtn]) {
+        ctx.fillStyle = "#2f4f7a";
+        ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
+        ctx.strokeStyle = "#8bc8ff";
+        ctx.strokeRect(btn.x, btn.y, btn.w, btn.h);
+      }
+      ctx.fillStyle = "#f5ead6";
+      ctx.font = "bold 16px Trebuchet MS";
+      ctx.fillText("Why can't I buy top-row items?", askBtn.x + 12, askBtn.y + 20);
+      ctx.fillText("Leave", leaveBtn.x + 52, leaveBtn.y + 20);
+      state.shopTalkBounds.push(askBtn, leaveBtn);
+    } else if (state.shopConversation.step === "pam_info") {
+      const doneBtn = { id: "done", x: boxX + 16, y: boxY + 94, w: 150, h: 30 };
+      ctx.fillStyle = "#2f4f7a";
+      ctx.fillRect(doneBtn.x, doneBtn.y, doneBtn.w, doneBtn.h);
+      ctx.strokeStyle = "#8bc8ff";
+      ctx.strokeRect(doneBtn.x, doneBtn.y, doneBtn.w, doneBtn.h);
+      ctx.fillStyle = "#f5ead6";
+      ctx.font = "bold 16px Trebuchet MS";
+      ctx.fillText("Got it", doneBtn.x + 50, doneBtn.y + 20);
+      state.shopTalkBounds.push(doneBtn);
+    }
+  }
 }
 
 function selectShopByCanvasPoint(x, y) {
+  if (state.shopTalkBounds.length > 0) {
+    for (const target of state.shopTalkBounds) {
+      if (x < target.x || x > target.x + target.w || y < target.y || y > target.y + target.h) continue;
+      if (target.id === "talk") startJimConversation();
+      else handleJimConversationClick(target.id);
+      return;
+    }
+  }
+
+  if (state.shopConversation) return;
+
+  if (state.shopJimBounds) {
+    const b = state.shopJimBounds;
+    if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+      startJimConversation();
+      return;
+    }
+  }
+
   for (const card of state.shopCards) {
     if (x < card.x || x > card.x + card.w || y < card.y || y > card.y + card.h) continue;
     tryBuyShopItem(card.itemId);
     return;
   }
+}
+
+function drawMissionsScene() {
+  const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  grad.addColorStop(0, "#1f2f4f");
+  grad.addColorStop(1, "#12213a");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = "rgba(10,16,28,0.84)";
+  ctx.fillRect(86, 86, 788, 368);
+  ctx.strokeStyle = "#8bc8ff";
+  ctx.strokeRect(86, 86, 788, 368);
+
+  ctx.fillStyle = "#ffe08f";
+  ctx.font = "bold 36px Trebuchet MS";
+  ctx.fillText("Missions", 420, 140);
+
+  const savePam = state.saveData.missions.savePam;
+  ctx.fillStyle = "#f5ead6";
+  ctx.font = "bold 22px Trebuchet MS";
+  ctx.fillText("Save Pam", 126, 208);
+  ctx.font = "18px Trebuchet MS";
+  ctx.fillText("Find Pam somewhere in the Warehouse and report back to Jim.", 126, 238);
+  ctx.fillText(`Status: ${savePam.completed ? "Completed" : savePam.added ? "Active" : "Not Added"}`, 126, 270);
+
+  ctx.fillStyle = "#c9ddff";
+  ctx.font = "17px Trebuchet MS";
+  ctx.fillText("Press M to close missions.", 126, 408);
 }
 
 function drawAnnexScene() {
@@ -1523,7 +1801,21 @@ function render() {
   if (state.scene === "menu") drawMenuScene();
   else if (state.scene === "run") drawRunScene();
   else if (state.scene === "shop") drawShopScene();
+  else if (state.scene === "missions") drawMissionsScene();
   else drawAnnexScene();
+
+  if (state.missionToastLeft > 0) {
+    const alpha = Math.min(1, state.missionToastLeft / 0.3);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = "rgba(8, 14, 24, 0.86)";
+    ctx.fillRect(276, 26, 408, 40);
+    ctx.strokeStyle = "#8fd6ff";
+    ctx.strokeRect(276, 26, 408, 40);
+    ctx.fillStyle = "#d8f3ff";
+    ctx.font = "bold 18px Trebuchet MS";
+    ctx.fillText(state.missionToastText, 292, 52);
+    ctx.globalAlpha = 1;
+  }
 }
 
 function update(dt) {
@@ -1532,6 +1824,10 @@ function update(dt) {
   if (state.shopMessageLeft > 0) {
     state.shopMessageLeft = Math.max(0, state.shopMessageLeft - dt);
     if (state.shopMessageLeft === 0) state.shopMessage = "";
+  }
+  if (state.missionToastLeft > 0) {
+    state.missionToastLeft = Math.max(0, state.missionToastLeft - dt);
+    if (state.missionToastLeft === 0) state.missionToastText = "";
   }
 }
 
@@ -1560,6 +1856,16 @@ function loop(ts) {
 function handlePress(ev) {
   ensureAudioContext();
 
+  if (ev.code === "KeyM") {
+    ev.preventDefault();
+    if (state.scene === "missions") {
+      switchScene(state.previousScene || "menu");
+    } else {
+      switchScene("missions");
+    }
+    return;
+  }
+
   if (ev.code === "Enter") {
     ev.preventDefault();
     if (state.scene === "menu") {
@@ -1575,6 +1881,10 @@ function handlePress(ev) {
     }
     if (state.scene === "shop" || state.scene === "annex") {
       switchScene("menu");
+      return;
+    }
+    if (state.scene === "missions") {
+      switchScene(state.previousScene || "menu");
       return;
     }
   }
@@ -1641,6 +1951,10 @@ canvas.addEventListener("pointerdown", (ev) => {
 
 startBtn.addEventListener("click", () => {
   ensureAudioContext();
+  if (state.scene === "missions") {
+    switchScene(state.previousScene || "menu");
+    return;
+  }
   if (state.scene === "menu") {
     if (isWorldUnlocked(state.selectedWorldId)) {
       resetRunState(state.selectedWorldId);
@@ -1693,6 +2007,14 @@ characterSelect.addEventListener("change", () => {
 state.saveData = loadSave();
 // Restore normal progression: start with only level 1 unlocked.
 state.saveData.unlockedWorldIndex = 0;
+// Reset purchased powerups for clean testing.
+state.saveData.upgrades = {};
+// One-time wallet reset requested by user for the rebalanced economy.
+if (!state.saveData.stats.economyV2ResetApplied) {
+  state.saveData.currencies.schruteBucks = 0;
+  state.saveData.currencies.stanleyNickels = 0;
+  state.saveData.stats.economyV2ResetApplied = true;
+}
 persistSave();
 setMenuDialogue();
 updateUiForScene();
