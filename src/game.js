@@ -1,5 +1,6 @@
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
+ctx.imageSmoothingEnabled = false;
 
 const characterSelect = document.getElementById("characterSelect");
 const startBtn = document.getElementById("startBtn");
@@ -84,6 +85,24 @@ const THEME_LABELS = {
   streets: "Scranton Streets",
   corporate: "NYC Corporate",
   pursuit: "Final Pursuit",
+};
+
+const SOUL_QUIPS = {
+  michael: [
+    "Michael: This run is going to be a TED Talk with knees.",
+    "Michael: If parkour is wrong, I do not want to be right.",
+    "Michael: I am not superstitious, but I am a little jump-stitious.",
+  ],
+  dwight: [
+    "Dwight: Through obstacles, over fear, under budget.",
+    "Dwight: Precision. Discipline. Beet-powered speed.",
+    "Dwight: Bears. Beets. Wall-jumps.",
+  ],
+  andy: [
+    "Andy: Nard-dog note: slide first, apologize never.",
+    "Andy: If I fall, call it interpretive choreography.",
+    "Andy: This is Cornell-level athletic theater.",
+  ],
 };
 
 const state = {
@@ -213,13 +232,15 @@ function isWorldUnlocked(worldId) {
 function setMenuDialogue() {
   const runner = characterSelect.value;
   const selected = WORLDS.find((w) => w.id === state.selectedWorldId) || WORLDS[0];
+  const quips = SOUL_QUIPS[runner];
+  const quip = quips[Math.floor(Math.random() * quips.length)];
 
   if (runner === "michael") {
-    state.menuDialogue = `Michael: Pick ${selected.label}! Meeting adjourned energy.`;
+    state.menuDialogue = `Pick ${selected.label}. ${quip}`;
   } else if (runner === "dwight") {
-    state.menuDialogue = `Dwight: ${selected.label}. Tactical route confirmed.`;
+    state.menuDialogue = `${selected.label} is tactically sound. ${quip}`;
   } else {
-    state.menuDialogue = `Andy: ${selected.label} gets a cappella hype from me.`;
+    state.menuDialogue = `${selected.label} gets a cappella hype. ${quip}`;
   }
 }
 
@@ -623,11 +644,11 @@ function updateRun(dt) {
 
 function drawRunBackground() {
   const palettes = {
-    bullpen: ["#9ec7e7", "#d8d9d0", "#8aa3b5", "#a9bed4"],
-    warehouse: ["#8d9ca6", "#ced2cb", "#728087", "#95a3ae"],
-    streets: ["#9caeb8", "#d5d4ce", "#76848b", "#abb8c1"],
-    corporate: ["#a6bad4", "#dddcd5", "#8896ab", "#bccbe0"],
-    pursuit: ["#6f8bb1", "#bec8d0", "#4f637d", "#8ca5c6"],
+    bullpen: ["#79cbff", "#e9f2db", "#5f99cb", "#b9ddff"],
+    warehouse: ["#95b9d9", "#dee4d2", "#5d7e98", "#c4daef"],
+    streets: ["#8da7ff", "#e8d9cf", "#5f6ec9", "#b8beff"],
+    corporate: ["#7ed6e3", "#efe6d1", "#4ea1b0", "#bcf4ff"],
+    pursuit: ["#4776ff", "#d6d7d5", "#2344bb", "#8cabff"],
   };
   const [sky, floor, mid, haze] = palettes[state.theme];
   const xShift = state.worldTimeSec * 50;
@@ -661,6 +682,12 @@ function drawRunBackground() {
   for (let i = 0; i < 24; i += 1) {
     const x = (i * 54 - (xShift * 1.3) % 1200) - 10;
     ctx.fillRect(x, GAME.floorTop + 24, 28, 4);
+  }
+
+  // Soft scanline pass to keep the crunchy 8-bit feel.
+  ctx.fillStyle = "rgba(0, 0, 0, 0.06)";
+  for (let y = 0; y < canvas.height; y += 4) {
+    ctx.fillRect(0, y, canvas.width, 1);
   }
 }
 
@@ -862,13 +889,13 @@ function drawMenuScene() {
     const selected = state.selectedWorldId === world.id;
     const unlocked = isWorldUnlocked(world.id);
 
-    ctx.fillStyle = selected ? "#f7f0d0" : "#fffaf0";
+    ctx.fillStyle = selected ? "#fff8c9" : "#fffdf3";
     ctx.fillRect(x, y, w, h);
     ctx.strokeStyle = selected ? "#d3a324" : "#8f8a80";
     ctx.lineWidth = selected ? 4 : 2;
     ctx.strokeRect(x, y, w, h);
 
-    ctx.fillStyle = unlocked ? "#2a3343" : "#6e6e6e";
+    ctx.fillStyle = unlocked ? "#10203d" : "#6e6e6e";
     ctx.font = "bold 18px Trebuchet MS";
     ctx.fillText(world.label, x + 12, y + 28);
     ctx.font = "14px Trebuchet MS";
@@ -905,15 +932,20 @@ function drawMenuScene() {
   ctx.fillRect(px + 13, py - 14, 9, 15 + Math.abs(anim * 2));
   ctx.fillRect(px + 27, py - 14, 9, 15 + Math.abs(anim * 2));
 
-  ctx.fillStyle = "rgba(15,20,30,0.75)";
-  ctx.fillRect(20, 490, 920, 38);
-  ctx.fillStyle = "#f5ead6";
-  ctx.font = "18px Trebuchet MS";
-  ctx.fillText(state.menuDialogue, 34, 515);
+  ctx.fillStyle = "rgba(15,20,30,0.82)";
+  ctx.fillRect(20, 480, 920, 50);
+  ctx.strokeStyle = "rgba(124, 199, 255, 0.45)";
+  ctx.strokeRect(20, 480, 920, 50);
 
-  ctx.fillStyle = "#d5e5ff";
+  // Keep dialogue and controls in separate rows to avoid overlap.
+  const trimmedDialogue = state.menuDialogue.length > 78 ? `${state.menuDialogue.slice(0, 75)}...` : state.menuDialogue;
+  ctx.fillStyle = "#f5ead6";
+  ctx.font = "bold 16px Trebuchet MS";
+  ctx.fillText(trimmedDialogue, 34, 501);
+
+  ctx.fillStyle = "#fff3b4";
   ctx.font = "15px Trebuchet MS";
-  ctx.fillText("Enter: Launch selected level. Click a Polaroid to switch level.", 520, 515);
+  ctx.fillText("Enter: Launch Level   Click Polaroids   S: Shop   A: Annex", 34, 521);
 }
 
 function drawShopScene() {
@@ -943,7 +975,7 @@ function drawShopScene() {
 
   ctx.fillStyle = "#c5d9f2";
   ctx.font = "18px Trebuchet MS";
-  ctx.fillText("Placeholder scene scaffold complete. Next: item catalog + purchase logic.", 170, 345);
+  ctx.fillText("Jim says the vending machine is 90% Jell-O and 10% disappointment.", 170, 345);
   ctx.fillText("Press Enter for Menu or use top buttons.", 170, 375);
 }
 
@@ -971,7 +1003,7 @@ function drawAnnexScene() {
     170,
     255
   );
-  ctx.fillText("Kelly commentary + outfit toggles are scaffolded next.", 170, 300);
+  ctx.fillText("Kelly says this room needs 40% more drama and 200% more glitter.", 170, 300);
 
   ctx.fillStyle = "#c5d9f2";
   ctx.font = "18px Trebuchet MS";
