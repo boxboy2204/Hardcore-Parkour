@@ -62,6 +62,7 @@ const GAME = {
 
 const state = {
   running: false,
+  paused: false,
   gameOver: false,
   worldTimeSec: 0,
   score: 0,
@@ -93,9 +94,18 @@ const state = {
   obstacles: [],
 };
 
+const THEME_OBSTACLE_POOLS = {
+  bullpen: ["desk", "cat", "intern"],
+  warehouse: ["intern", "weak_floorboard", "desk"],
+  streets: ["cat", "snowball", "intern"],
+  corporate: ["folder", "desk", "intern"],
+  pursuit: ["snowball", "folder", "cat"],
+};
+
 function resetState() {
   const preset = CHARACTER_PRESETS[characterSelect.value];
   state.running = true;
+  state.paused = false;
   state.gameOver = false;
   state.worldTimeSec = 0;
   state.score = 0;
@@ -158,17 +168,16 @@ function addHitParticles(x, y, color) {
 
 function spawnObstacle() {
   const distanceFactor = Math.min(1.75, 1 + state.worldTimeSec / 75);
-  const roll = Math.random();
-  let type = "desk";
-  if (roll < 0.18) type = "cat";
-  else if (roll < 0.36) type = "intern";
-  else if (roll > 0.76) type = "weak_floorboard";
+  const pool = THEME_OBSTACLE_POOLS[state.theme] || THEME_OBSTACLE_POOLS.bullpen;
+  const type = pool[Math.floor(Math.random() * pool.length)];
 
   const size = {
     desk: { w: 52, h: 46, topOffset: 0, hp: 1 },
     cat: { w: 34, h: 24, topOffset: -2, hp: 1 },
     intern: { w: 40, h: 58, topOffset: 0, hp: 1 },
     weak_floorboard: { w: 58, h: 20, topOffset: 14, hp: 1 },
+    snowball: { w: 24, h: 24, topOffset: -8, hp: 1 },
+    folder: { w: 34, h: 18, topOffset: -28, hp: 1 },
   }[type];
 
   const top = GAME.groundY - size.h + size.topOffset;
@@ -214,7 +223,7 @@ function endRun() {
 }
 
 function doParkourShout() {
-  if (!state.running) return;
+  if (!state.running || state.paused) return;
   if (state.pendingLanding && state.landingWindowLeft > 0) {
     state.pendingLanding = false;
     state.landingWindowLeft = 0;
@@ -226,7 +235,7 @@ function doParkourShout() {
 }
 
 function attack() {
-  if (!state.running || state.attackCooldownLeft > 0) return;
+  if (!state.running || state.paused || state.attackCooldownLeft > 0) return;
   state.attackLeft = GAME.attackDurationSec;
   state.attackCooldownLeft = GAME.attackCooldownSec;
 }
@@ -240,7 +249,7 @@ function stumbleFail() {
 }
 
 function jump() {
-  if (!state.running) return;
+  if (!state.running || state.paused) return;
   if (state.slideActive) return;
   if (state.player.jumpsUsed >= state.player.preset.maxJumps) return;
   state.player.vy = -state.player.preset.jumpPower;
@@ -249,7 +258,7 @@ function jump() {
 }
 
 function startSlide() {
-  if (!state.running) return;
+  if (!state.running || state.paused) return;
   if (!state.player.grounded || state.slideActive) return;
   state.slideActive = true;
   state.slideSpeed = GAME.slideInitialSpeed;
@@ -267,12 +276,14 @@ function intersects(a, b) {
 }
 
 function updateWorldTheme() {
+  const prevTheme = state.theme;
   const t = state.worldTimeSec;
   if (t < 16) state.theme = "bullpen";
   else if (t < 32) state.theme = "warehouse";
   else if (t < 48) state.theme = "streets";
   else if (t < 60) state.theme = "corporate";
   else state.theme = "pursuit";
+  return prevTheme !== state.theme;
 }
 
 function handleObstacleCollision(obstacle) {
@@ -321,7 +332,7 @@ function handleAttackHits(playerBox) {
 }
 
 function update(dt) {
-  if (!state.running) return;
+  if (!state.running || state.paused) return;
 
   state.elapsedSec += dt;
   state.worldTimeSec += dt;
@@ -331,7 +342,12 @@ function update(dt) {
     return;
   }
 
-  updateWorldTheme();
+  const themeChanged = updateWorldTheme();
+  if (themeChanged) {
+    state.obstacles = [];
+    state.spawnTimerSec = 0.15;
+    addFloatingText(`Now: ${state.theme.toUpperCase()}`, 350, 95, "#ffe08f");
+  }
 
   const player = state.player;
   const prevGrounded = player.grounded;
@@ -567,6 +583,18 @@ function drawObstacleSprite(obs) {
     ctx.fillStyle = "#162635";
     ctx.fillRect(obs.x + 12, obs.y + 30, 6, 18);
     ctx.fillRect(obs.x + 22, obs.y + 30, 6, 18);
+  } else if (obs.type === "snowball") {
+    ctx.fillStyle = "#f2f7ff";
+    ctx.beginPath();
+    ctx.arc(obs.x + obs.width * 0.5, obs.y + obs.height * 0.5, obs.width * 0.45, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#dbe5f2";
+    ctx.fillRect(obs.x + 8, obs.y + 6, 4, 3);
+  } else if (obs.type === "folder") {
+    ctx.fillStyle = "#d6a95c";
+    ctx.fillRect(obs.x, obs.y + 3, obs.width, obs.height - 3);
+    ctx.fillStyle = "#e8c480";
+    ctx.fillRect(obs.x + 4, obs.y, 12, 4);
   } else {
     ctx.fillStyle = "#b79e6a";
     ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
@@ -598,6 +626,8 @@ function drawHud() {
   ctx.fillText(`Time: ${timeLeft.toFixed(1)}s`, 190, 78);
   ctx.fillText(`World: ${state.theme}`, 190, 100);
   ctx.fillText(`Hit: K`, 300, 34);
+  ctx.fillText(`Parkour: J`, 300, 78);
+  ctx.fillText(`Start/Pause: Enter`, 420, 100);
   if (state.slideActive) {
     ctx.fillText(`Slide: ${Math.ceil(state.slideSpeed)}`, 300, 56);
   }
@@ -611,7 +641,7 @@ function drawHud() {
     ctx.strokeStyle = "#111";
     ctx.strokeRect(420, 22, 250, 26);
     ctx.fillStyle = "#111";
-    ctx.fillText("PARKOUR NOW (ENTER)", 433, 40);
+    ctx.fillText("PARKOUR NOW (J)", 448, 40);
   }
 
   if (state.attackCooldownLeft > 0) {
@@ -654,8 +684,8 @@ function drawIdleScreen() {
   ctx.font = "bold 32px Trebuchet MS";
   ctx.fillText("Hardcore Parkour Prototype", 240, 220);
   ctx.font = "20px Trebuchet MS";
-  ctx.fillText("Tap Space/tap to jump, hold Space to slide through obstacles.", 155, 272);
-  ctx.fillText("Press K to hit obstacles before they hit you.", 262, 306);
+  ctx.fillText("Enter starts the run. Tap Space to jump, hold Space to slide.", 170, 272);
+  ctx.fillText("Press J for PARKOUR timing and K to hit obstacles.", 230, 306);
 }
 
 function render() {
@@ -676,6 +706,16 @@ function render() {
   drawFloatingText();
   drawHud();
   ctx.restore();
+
+  if (state.paused && !state.gameOver) {
+    ctx.fillStyle = "rgba(15,20,30,0.58)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#f5ead6";
+    ctx.font = "bold 40px Trebuchet MS";
+    ctx.fillText("PAUSED", 405, 250);
+    ctx.font = "20px Trebuchet MS";
+    ctx.fillText("Press Enter to resume", 386, 288);
+  }
 
   if (state.gameOver) {
     ctx.fillStyle = "rgba(15,20,30,0.66)";
@@ -706,6 +746,18 @@ function handlePress(ev) {
     }
   }
   if (ev.code === "Enter") {
+    ev.preventDefault();
+    if (!state.running && !state.gameOver) {
+      resetState();
+      summaryPanel.hidden = true;
+      return;
+    }
+    if (state.running && !state.gameOver) {
+      state.paused = !state.paused;
+      return;
+    }
+  }
+  if (ev.code === "KeyJ") {
     ev.preventDefault();
     doParkourShout();
   }
@@ -743,5 +795,6 @@ characterSelect.addEventListener("change", () => {
 
 resetState();
 state.running = false;
+state.paused = false;
 state.gameOver = false;
 requestAnimationFrame(loop);
