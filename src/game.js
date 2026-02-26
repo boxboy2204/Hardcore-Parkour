@@ -10,6 +10,7 @@ const summaryPanel = document.getElementById("summaryPanel");
 const summaryText = document.getElementById("summaryText");
 
 const SAVE_KEY = "hardcore_parkour_save_v1";
+const RESET_ONCE_KEY = "hardcore_parkour_reset_once_v1";
 
 const CHARACTER_PRESETS = {
   michael: {
@@ -1011,45 +1012,240 @@ function updateRun(dt) {
 }
 
 function drawRunBackground() {
-  const palettes = {
-    bullpen: ["#79cbff", "#e9f2db", "#5f99cb", "#b9ddff"],
-    warehouse: ["#95b9d9", "#dee4d2", "#5d7e98", "#c4daef"],
-    streets: ["#8da7ff", "#e8d9cf", "#5f6ec9", "#b8beff"],
-    corporate: ["#7ed6e3", "#efe6d1", "#4ea1b0", "#bcf4ff"],
-    pursuit: ["#4776ff", "#d6d7d5", "#2344bb", "#8cabff"],
-  };
-  const [sky, floor, mid, haze] = palettes[state.theme];
-  const xShift = state.worldTimeSec * 50;
+  const xShift = state.worldTimeSec * 62;
 
-  const grad = ctx.createLinearGradient(0, 0, 0, GAME.floorTop);
-  grad.addColorStop(0, sky);
-  grad.addColorStop(1, haze);
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, canvas.width, GAME.floorTop);
+  if (state.theme === "bullpen") {
+    const wallGrad = ctx.createLinearGradient(0, 0, 0, GAME.floorTop);
+    wallGrad.addColorStop(0, "#c5dcf8");
+    wallGrad.addColorStop(1, "#9bbddf");
+    ctx.fillStyle = wallGrad;
+    ctx.fillRect(0, 0, canvas.width, GAME.floorTop);
 
-  ctx.fillStyle = "rgba(255,255,255,0.35)";
-  for (let i = 0; i < 4; i += 1) {
-    const x = (i * 260 - (xShift * 0.22) % 1100) - 120;
-    ctx.beginPath();
-    ctx.ellipse(x, 90 + (i % 2) * 24, 86, 24, 0, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillStyle = "#7087a6";
+    for (let i = 0; i < 6; i += 1) {
+      const x = i * 170 - ((xShift * 0.16) % 170);
+      ctx.fillRect(x, 42, 120, 64);
+      ctx.fillStyle = "#b8d9ff";
+      ctx.fillRect(x + 10, 52, 46, 20);
+      ctx.fillRect(x + 64, 52, 46, 20);
+      ctx.fillStyle = "#7087a6";
+    }
+
+    ctx.fillStyle = "#d6e4f7";
+    ctx.fillRect(0, 106, canvas.width, 9);
+    ctx.fillStyle = "#edf5ff";
+    for (let i = 0; i < 5; i += 1) {
+      ctx.fillRect(84 + i * 182, 16, 120, 10);
+      ctx.fillRect(94 + i * 182, 26, 100, 3);
+    }
+
+    for (let i = 0; i < 8; i += 1) {
+      const x = i * 132 - ((xShift * 0.56) % 132);
+      const h = 74 + (i % 3) * 18;
+      ctx.fillStyle = "#6f8298";
+      ctx.fillRect(x - 14, 300 - h, 124, h);
+      ctx.fillStyle = "#56677f";
+      ctx.fillRect(x + 4, 300 - h + 12, 86, 8);
+      ctx.fillStyle = "#8496ad";
+      ctx.fillRect(x + 92, 300 - h + 14, 8, h - 14);
+    }
+  } else if (state.theme === "warehouse") {
+    const wallGrad = ctx.createLinearGradient(0, 0, 0, GAME.floorTop);
+    wallGrad.addColorStop(0, "#aeb4bf");
+    wallGrad.addColorStop(1, "#7f8a99");
+    ctx.fillStyle = wallGrad;
+    ctx.fillRect(0, 0, canvas.width, GAME.floorTop);
+
+    ctx.fillStyle = "#8893a3";
+    for (let i = 0; i < 14; i += 1) {
+      const x = i * 74 - ((xShift * 0.12) % 74);
+      ctx.fillRect(x, 0, 2, GAME.floorTop);
+    }
+
+    ctx.fillStyle = "#697587";
+    for (let i = 0; i < 4; i += 1) {
+      ctx.fillRect(76 + i * 230, 20, 170, 16);
+      ctx.fillStyle = "#dee8f3";
+      ctx.fillRect(84 + i * 230, 24, 154, 8);
+      ctx.fillStyle = "#697587";
+    }
+
+    for (let i = 0; i < 7; i += 1) {
+      const x = i * 146 - ((xShift * 0.45) % 146);
+      ctx.fillStyle = "#4a5568";
+      ctx.fillRect(x + 8, 202, 106, 98);
+      ctx.fillStyle = "#8f9eb4";
+      ctx.fillRect(x + 16, 214, 90, 6);
+      ctx.fillRect(x + 16, 238, 90, 6);
+      ctx.fillRect(x + 16, 262, 90, 6);
+      ctx.fillStyle = "#b5c2d6";
+      ctx.fillRect(x + 24, 274, 16, 20);
+      ctx.fillRect(x + 46, 274, 16, 20);
+      ctx.fillRect(x + 68, 274, 16, 20);
+    }
+  } else if (state.theme === "corporate") {
+    const wallGrad = ctx.createLinearGradient(0, 0, 0, GAME.floorTop);
+    wallGrad.addColorStop(0, "#d5f5fb");
+    wallGrad.addColorStop(1, "#8ec8d8");
+    ctx.fillStyle = wallGrad;
+    ctx.fillRect(0, 0, canvas.width, GAME.floorTop);
+
+    ctx.fillStyle = "#f1f7ff";
+    ctx.fillRect(0, 0, canvas.width, 26);
+    for (let i = 0; i < 6; i += 1) {
+      ctx.fillStyle = "#d8eaf7";
+      ctx.fillRect(70 + i * 160, 10, 108, 8);
+      ctx.fillStyle = "#f8fdff";
+      ctx.fillRect(78 + i * 160, 13, 92, 3);
+    }
+
+    for (let i = 0; i < 6; i += 1) {
+      const x = i * 168 - ((xShift * 0.18) % 168);
+      ctx.fillStyle = "#4f7894";
+      ctx.fillRect(x + 20, 44, 128, 156);
+      ctx.fillStyle = "#9cd4f2";
+      ctx.fillRect(x + 28, 54, 112, 136);
+      ctx.fillStyle = "#c8ecff";
+      ctx.fillRect(x + 34, 60, 24, 124);
+      ctx.fillRect(x + 66, 60, 24, 124);
+      ctx.fillRect(x + 98, 60, 24, 124);
+    }
+
+    for (let i = 0; i < 7; i += 1) {
+      const x = i * 140 - ((xShift * 0.56) % 140);
+      const h = 72 + (i % 2) * 24;
+      ctx.fillStyle = "#6a8ca7";
+      ctx.fillRect(x + 8, 300 - h, 114, h);
+      ctx.fillStyle = "#4f6d84";
+      ctx.fillRect(x + 20, 300 - h + 16, 72, 10);
+      ctx.fillStyle = "#d5e9f9";
+      ctx.fillRect(x + 22, 300 - h + 40, 18, 3);
+      ctx.fillRect(x + 44, 300 - h + 40, 18, 3);
+      ctx.fillRect(x + 66, 300 - h + 40, 18, 3);
+    }
+  } else if (state.theme === "streets") {
+    const skyGrad = ctx.createLinearGradient(0, 0, 0, GAME.floorTop);
+    skyGrad.addColorStop(0, "#8cc0ff");
+    skyGrad.addColorStop(1, "#d4e6ff");
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0, 0, canvas.width, GAME.floorTop);
+
+    ctx.fillStyle = "rgba(255,255,255,0.48)";
+    for (let i = 0; i < 5; i += 1) {
+      const x = i * 210 - ((xShift * 0.2) % 1100) - 80;
+      ctx.beginPath();
+      ctx.ellipse(x, 82 + (i % 2) * 30, 74, 22, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Falling snow layers for Scranton streets.
+    ctx.fillStyle = "rgba(245, 250, 255, 0.88)";
+    for (let i = 0; i < 64; i += 1) {
+      const drift = (i % 2 === 0 ? xShift * 0.12 : -xShift * 0.09) % (canvas.width + 40);
+      const x = (i * 31 + drift + 20) % (canvas.width + 40) - 20;
+      const y = (i * 27 + state.elapsedSec * (34 + (i % 5) * 8)) % (GAME.floorTop - 8);
+      const size = i % 3 === 0 ? 3 : 2;
+      ctx.fillRect(x, y, size, size);
+    }
+    ctx.fillStyle = "rgba(230, 242, 255, 0.72)";
+    for (let i = 0; i < 34; i += 1) {
+      const x = (i * 47 - (xShift * 0.16) + 10) % (canvas.width + 30) - 15;
+      const y = (i * 36 + state.elapsedSec * (18 + (i % 4) * 5)) % (GAME.floorTop - 8);
+      ctx.fillRect(x, y, 2, 2);
+    }
+
+    for (let i = 0; i < 10; i += 1) {
+      const x = i * 118 - ((xShift * 0.42) % 118);
+      const h = 96 + (i % 4) * 35;
+      ctx.fillStyle = "#516481";
+      ctx.fillRect(x - 12, 300 - h, 108, h);
+      ctx.fillStyle = "#8fb0dd";
+      for (let w = 0; w < 3; w += 1) ctx.fillRect(x + 4 + w * 30, 300 - h + 14, 16, h - 24);
+    }
+
+    ctx.fillStyle = "#6a84aa";
+    for (let i = 0; i < 8; i += 1) {
+      const x = i * 150 - ((xShift * 0.95) % 150);
+      ctx.fillRect(x, 292, 8, 108);
+      ctx.fillStyle = "#ffe38d";
+      ctx.fillRect(x - 4, 292, 16, 8);
+      ctx.fillStyle = "#6a84aa";
+    }
+  } else {
+    const skyGrad = ctx.createLinearGradient(0, 0, 0, GAME.floorTop);
+    skyGrad.addColorStop(0, "#263f8f");
+    skyGrad.addColorStop(1, "#6a90e1");
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0, 0, canvas.width, GAME.floorTop);
+
+    ctx.fillStyle = "#dce6ff";
+    for (let i = 0; i < 30; i += 1) {
+      const sx = (i * 37 + Math.floor(i / 3) * 19) % canvas.width;
+      const sy = (i * 29) % 180;
+      ctx.fillRect(sx, sy, 2, 2);
+    }
+
+    for (let i = 0; i < 11; i += 1) {
+      const x = i * 114 - ((xShift * 0.58) % 114);
+      const h = 118 + (i % 4) * 38;
+      ctx.fillStyle = "#1f2f6d";
+      ctx.fillRect(x - 10, 300 - h, 108, h);
+      ctx.fillStyle = "#89b2ff";
+      for (let w = 0; w < 3; w += 1) ctx.fillRect(x + 6 + w * 28, 300 - h + 12, 14, h - 22);
+    }
+
+    ctx.fillStyle = "#2d437c";
+    ctx.fillRect(0, 300, canvas.width, 20);
+    ctx.fillStyle = "#ffc65f";
+    for (let i = 0; i < 10; i += 1) {
+      const x = i * 120 - ((xShift * 1.1) % 120);
+      ctx.fillRect(x + 40, 306, 44, 4);
+    }
   }
 
-  ctx.fillStyle = mid;
-  for (let i = 0; i < 10; i += 1) {
-    const w = 110 + (i % 3) * 28;
-    const x = (i * 140 - (xShift * 0.6) % 1400) - 20;
-    const h = 70 + (i % 4) * 18;
-    ctx.fillRect(x, 292 - h, w, h);
+  if (state.theme === "pursuit") {
+    // Make the chase lane clearly read as a road.
+    ctx.fillStyle = "#2d3139";
+    ctx.fillRect(0, GAME.floorTop, canvas.width, canvas.height - GAME.floorTop);
+    ctx.fillStyle = "#1e232b";
+    for (let i = 0; i < 24; i += 1) {
+      const x = i * 52 - ((xShift * 1.05) % 52);
+      ctx.fillRect(x, GAME.floorTop + 8, 28, canvas.height - GAME.floorTop - 8);
+    }
+    ctx.fillStyle = "#f4f2c9";
+    for (let i = 0; i < 16; i += 1) {
+      const x = i * 72 - ((xShift * 1.28) % 72);
+      ctx.fillRect(x + 8, GAME.floorTop + 28, 38, 6);
+    }
+    ctx.fillStyle = "#cfd7e2";
+    for (let i = 0; i < 20; i += 1) {
+      const x = i * 58 - ((xShift * 1.16) % 58);
+      ctx.fillRect(x + 6, GAME.floorTop + 4, 2, 10);
+      ctx.fillRect(x + 6, canvas.height - 16, 2, 10);
+    }
+  } else {
+    const floorColor = state.theme === "streets" ? "#4f5668" : "#d7ddd8";
+    ctx.fillStyle = floorColor;
+    ctx.fillRect(0, GAME.floorTop, canvas.width, canvas.height - GAME.floorTop);
   }
 
-  ctx.fillStyle = floor;
-  ctx.fillRect(0, GAME.floorTop, canvas.width, canvas.height - GAME.floorTop);
-
-  ctx.fillStyle = "rgba(0,0,0,0.12)";
-  for (let i = 0; i < 24; i += 1) {
-    const x = (i * 54 - (xShift * 1.3) % 1200) - 10;
-    ctx.fillRect(x, GAME.floorTop + 24, 28, 4);
+  if (state.theme === "streets") {
+    ctx.fillStyle = "#f4f2c9";
+    for (let i = 0; i < 16; i += 1) {
+      const x = i * 72 - ((xShift * 1.28) % 72);
+      ctx.fillRect(x + 8, GAME.floorTop + 30, 38, 5);
+    }
+    ctx.fillStyle = "rgba(234, 244, 255, 0.72)";
+    for (let i = 0; i < 18; i += 1) {
+      const x = i * 66 - ((xShift * 0.8) % 66);
+      ctx.fillRect(x + 6, GAME.floorTop + 2 + (i % 3), 22, 2);
+    }
+  } else {
+    ctx.fillStyle = "rgba(0,0,0,0.12)";
+    for (let i = 0; i < 24; i += 1) {
+      const x = i * 54 - ((xShift * 1.2) % 54);
+      ctx.fillRect(x, GAME.floorTop + 24, 28, 4);
+    }
   }
 
   // Soft scanline pass to keep the crunchy 8-bit feel.
@@ -2289,6 +2485,10 @@ characterSelect.addEventListener("change", () => {
   setMenuDialogue();
 });
 
+if (!localStorage.getItem(RESET_ONCE_KEY)) {
+  localStorage.removeItem(SAVE_KEY);
+  localStorage.setItem(RESET_ONCE_KEY, "1");
+}
 state.saveData = loadSave();
 // Temporary testing override: unlock all levels.
 state.saveData.unlockedWorldIndex = WORLDS.length - 1;
