@@ -37,8 +37,8 @@ const CHARACTER_PRESETS = {
   },
   andy: {
     label: "Andy",
-    color: "#952f2f",
-    tieColor: "#f4d76b",
+    color: "#5a3820",
+    tieColor: "#9a1f2f",
     baseSpeed: 305,
     jumpPower: 700,
     styleGain: 1.6,
@@ -272,6 +272,7 @@ const state = {
   missionToastText: "",
   missionToastLeft: 0,
   annexCards: [],
+  annexAchievementBounds: [],
   annexMessage: "Kelly: This room is 40% drama and 200% glitter.",
   annexMessageLeft: 0,
   pamQuestRun: false,
@@ -2509,6 +2510,7 @@ function drawAnnexScene() {
   ctx.fillText("Kelly only accepts Schrute Bucks.", 64, 226);
 
   // Dundie shelf.
+  state.annexAchievementBounds = [];
   ctx.fillStyle = "#6f4c3c";
   ctx.fillRect(62, 252, 236, 10);
   ctx.fillRect(62, 334, 236, 10);
@@ -2525,7 +2527,11 @@ function drawAnnexScene() {
     ctx.fillStyle = unlocked ? "#ffefbe" : "#b6a9bc";
     ctx.font = "bold 11px Trebuchet MS";
     ctx.fillText(dundieLabels[i], x + 4, y + 52);
+    state.annexAchievementBounds.push({ x, y, w: 44, h: 56, id: dundieKeys[i] });
   }
+  ctx.fillStyle = "#dfc8f0";
+  ctx.font = "12px Trebuchet MS";
+  ctx.fillText("Click a Dundie to view how to earn it.", 64, 350);
 
   // Kelly sprite.
   const kx = 832;
@@ -2716,6 +2722,18 @@ function drawAnnexScene() {
 }
 
 function selectAnnexByCanvasPoint(x, y) {
+  for (const badge of state.annexAchievementBounds) {
+    if (x < badge.x || x > badge.x + badge.w || y < badge.y || y > badge.y + badge.h) continue;
+    if (badge.id === "bushiestBeaver") {
+      showAnnexMessage('Dundie: "Bushiest Beaver" - Collect 1,000 Paper Ream pickups in The Warehouse.');
+    } else if (badge.id === "whitestSneakers") {
+      showAnnexMessage('Dundie: "Whitest Sneakers" - Hit 50 HARDCORE landings in a row without scuffing.');
+    } else {
+      showAnnexMessage('Dundie: "Don\'t Go In There" - Jump into Kevin\'s chili 3 times in one run.');
+    }
+    return;
+  }
+
   for (const card of state.annexCards) {
     if (x < card.x || x > card.x + card.w || y < card.y || y > card.y + card.h) continue;
     toggleOutfit(card.outfitId);
