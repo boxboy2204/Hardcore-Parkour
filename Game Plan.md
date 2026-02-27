@@ -75,6 +75,6 @@
 10\. Secret Achievements (Dundies)
 
 * You can view these in the Annex Boutique, displayed on a shelf behind Kelly.  
-* The "Bushiest Beaver" Award: Collect 1,000 "Paper Ream" pickups in the Warehouse.  
+* The "Hottest in the Office" Award: Collect 1,000 "Paper Ream" pickups in the Warehouse.  
 * The "Whitest Sneakers" Award: Successfully hit 50 "Hardcore\!" landings in a row without scuffing your shoes.  
 * The "Don't Go In There" Award: Accidentally jump into Kevin’s spilled chili 3 times in one run.

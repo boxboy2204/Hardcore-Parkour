@@ -128,7 +128,8 @@ kbd {
   box-shadow:
     0 14px 36px #041230b3,
     0 0 0 4px #0d274f;
-  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  text-rendering: geometricPrecision;
 }
 
 .panel {
