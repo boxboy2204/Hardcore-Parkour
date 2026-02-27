@@ -8,6 +8,8 @@ const retryBtn = document.getElementById("retryBtn");
 const nextLevelBtn = document.getElementById("nextLevelBtn");
 const summaryPanel = document.getElementById("summaryPanel");
 const summaryText = document.getElementById("summaryText");
+const cornerTv = document.getElementById("cornerTv");
+const cornerLogo = document.getElementById("cornerLogo");
 
 const SAVE_KEY = "hardcore_parkour_save_v1";
 const RESET_ONCE_KEY = "hardcore_parkour_reset_once_v1";
@@ -70,7 +72,7 @@ const WORLDS = [
   { id: "warehouse", label: "The Warehouse", subtitle: "Paper piles, shelves, ladders" },
   { id: "streets", label: "Scranton Streets", subtitle: "Lightpoles, snowballs, hydrants" },
   { id: "corporate", label: "NYC Corporate", subtitle: "Desks, folders, bystanders" },
-  { id: "pursuit", label: "Final Pursuit", subtitle: "Catch the Scranton Strangler at x5 Hardcore" },
+  { id: "pursuit", label: "Final Pursuit", subtitle: "Catch the Scranton Strangler at x10 Hardcore" },
 ];
 
 const THEME_OBSTACLE_POOLS = {
@@ -79,6 +81,7 @@ const THEME_OBSTACLE_POOLS = {
   streets: ["lightpole", "jim_snowball", "hydrant"],
   corporate: ["desk", "jan_folder", "bystander"],
   pursuit: ["folder", "paper_ream", "mung_beans"],
+  skarn: ["hockey_puck", "hydrant", "goldenface_minion"],
 };
 
 const THEME_LABELS = {
@@ -87,6 +90,7 @@ const THEME_LABELS = {
   streets: "Scranton Streets",
   corporate: "NYC Corporate",
   pursuit: "Final Pursuit",
+  skarn: "Threat Level Midnight",
 };
 
 const LEVEL_DIFFICULTY = {
@@ -95,6 +99,7 @@ const LEVEL_DIFFICULTY = {
   streets: { label: "Medium", obstacleSpeedMul: 1.0, spawnBase: 0.95, spawnRand: 0.72, spawnMin: 0.50 },
   corporate: { label: "Hard", obstacleSpeedMul: 1.12, spawnBase: 0.82, spawnRand: 0.68, spawnMin: 0.42 },
   pursuit: { label: "Super Hard", obstacleSpeedMul: 1.24, spawnBase: 0.68, spawnRand: 0.56, spawnMin: 0.34 },
+  skarn: { label: "Cinematic", obstacleSpeedMul: 1.08, spawnBase: 0.88, spawnRand: 0.62, spawnMin: 0.44 },
 };
 
 const SOUL_QUIPS = {
@@ -219,13 +224,22 @@ const ANNEX_OUTFITS = [
   },
   {
     id: "three_hole_gym",
-    name: "Three-Hole Gym Shirt",
+    name: "Jim's Three-Hole Shirt",
     cost: 0,
     character: "all",
     requiredAchievement: "whitestSneakers",
-    tagline: "Dundie reward. A plain shirt with three dramatic black holes.",
+    tagline: "Dundie reward. Jim's classic shirt with three horizontal punch holes.",
     kelly:
-      "Kelly: This is giving gym class meets business chaos. Three-hole chic is weirdly working.",
+      "Kelly: Jim-core. Minimal, iconic, and yes, the holes are a deliberate fashion choice.",
+  },
+  {
+    id: "goldenface",
+    name: "Goldenface Suit",
+    cost: 0,
+    character: "all",
+    requiredAchievement: null,
+    tagline: "Secret mission fit. Jim's desk stash for full villain energy.",
+    kelly: "Kelly: Goldenface is giving dramatic anti-hero and I respect that commitment.",
   },
 ];
 
@@ -269,6 +283,7 @@ const state = {
   player: null,
   obstacles: [],
   menuCards: [],
+  menuMugBounds: null,
   menuDialogue: "Pick a Sticky Note so we can go, now.",
   menuClickWorldId: null,
   menuClickLeft: 0,
@@ -281,10 +296,17 @@ const state = {
   cutsceneSongTimer: 0,
   cutsceneBbCount: 0,
   cutsceneLyricLine: 0,
+  skarnMusicTimer: 0,
+  skarnMusicStep: 0,
   shopCards: [],
   shopJimBounds: null,
+  shopPamBounds: null,
   shopTalkBounds: [],
   shopConversation: null,
+  deskBounds: null,
+  deskDrawerBounds: null,
+  deskGoldenfaceBounds: null,
+  deskDrawerOpen: false,
   shopMessage: "",
   shopMessageColor: "#c5d9f2",
   shopMessageLeft: 0,
@@ -303,6 +325,14 @@ const state = {
   pamNextSpawnSec: 0,
   pamX: 0,
   pamY: 0,
+  cornerLogoX: 8,
+  cornerLogoY: 8,
+  cornerLogoVX: 118,
+  cornerLogoVY: 96,
+  cornerLogoWidth: 92,
+  cornerLogoHeight: 52,
+  cornerLogoColorT: 0,
+  cornerLogoRewardCooldown: 0,
   saveData: null,
 };
 
@@ -337,6 +367,14 @@ function createDefaultSave() {
         warehouseCleared: false,
         sightingsBest: 0,
       },
+      captureStrangler: {
+        added: false,
+        completed: false,
+      },
+      threatLevelMidnight: {
+        added: false,
+        completed: false,
+      },
     },
     stats: {
       bestHardcoreChain: 0,
@@ -357,6 +395,8 @@ function loadSave() {
     const defaults = createDefaultSave();
     const parsedMissions = parsed.missions || {};
     const parsedSavePam = parsedMissions.savePam || {};
+    const parsedCaptureStrangler = parsedMissions.captureStrangler || {};
+    const parsedThreatLevelMidnight = parsedMissions.threatLevelMidnight || {};
     const parsedUnlocks = parsed.unlocks || {};
     const parsedEquippedOutfits = parsedUnlocks.equippedOutfits || {};
     const parsedAchievements = parsed.achievements || {};
@@ -390,6 +430,8 @@ function loadSave() {
         ...defaults.missions,
         ...parsedMissions,
         savePam: { ...defaults.missions.savePam, ...parsedSavePam },
+        captureStrangler: { ...defaults.missions.captureStrangler, ...parsedCaptureStrangler },
+        threatLevelMidnight: { ...defaults.missions.threatLevelMidnight, ...parsedThreatLevelMidnight },
       },
       stats: { ...defaults.stats, ...(parsed.stats || {}) },
     };
@@ -477,6 +519,72 @@ function updateCutsceneSong(dt) {
   }
 }
 
+function playSkarnRetroNote(frequency, durationSec = 0.18, type = "square", level = 0.05) {
+  const audioCtx = ensureAudioContext();
+  if (!audioCtx) return;
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  const now = audioCtx.currentTime;
+
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(frequency, now);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(level, now + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + Math.max(0.08, durationSec));
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start(now);
+  osc.stop(now + Math.max(0.09, durationSec) + 0.01);
+}
+
+function updateSkarnMusic(dt) {
+  const active =
+    state.scene === "run" && state.runWorldId === "skarn" && state.running && !state.paused && !state.gameOver;
+  if (!active) {
+    state.skarnMusicTimer = 0;
+    state.skarnMusicStep = 0;
+    return;
+  }
+
+  const bass = [
+    98.0, 98.0, 110.0, 110.0, 123.47, 123.47, 110.0, 98.0,
+    98.0, 98.0, 87.31, 87.31, 82.41, 82.41, 87.31, 98.0,
+  ];
+  const leadA = [
+    392.0, 440.0, 493.88, 523.25, 659.25, 587.33, 523.25, 493.88,
+    440.0, 493.88, 523.25, 587.33, 659.25, 587.33, 523.25, 493.88,
+  ];
+  const leadB = [
+    440.0, 493.88, 523.25, 587.33, 698.46, 659.25, 587.33, 523.25,
+    493.88, 523.25, 587.33, 659.25, 783.99, 698.46, 659.25, 587.33,
+  ];
+  const arpA = [
+    783.99, 880.0, 987.77, 880.0, 1046.5, 987.77, 880.0, 783.99,
+    739.99, 783.99, 880.0, 783.99, 987.77, 880.0, 783.99, 739.99,
+  ];
+  const arpB = [
+    880.0, 987.77, 1046.5, 987.77, 1174.66, 1046.5, 987.77, 880.0,
+    783.99, 880.0, 987.77, 880.0, 1046.5, 987.77, 880.0, 783.99,
+  ];
+  const stepLen = 0.175;
+
+  state.skarnMusicTimer -= dt;
+  while (state.skarnMusicTimer <= 0) {
+    const idx = state.skarnMusicStep % 16;
+    const section = Math.floor(state.skarnMusicStep / 16) % 4;
+    const useB = section >= 2;
+    const lead = useB ? leadB : leadA;
+    const arp = useB ? arpB : arpA;
+    playSkarnRetroNote(bass[idx], 0.13, "sawtooth", 0.045);
+    playSkarnRetroNote(lead[idx], 0.1, "square", 0.032);
+    playSkarnRetroNote(arp[idx], 0.07, "triangle", 0.02);
+    if (idx % 4 === 0) playSkarnRetroNote(lead[idx] * 0.5, 0.08, "square", 0.02);
+    state.skarnMusicStep += 1;
+    state.skarnMusicTimer += stepLen;
+  }
+}
+
 function isWorldUnlocked(worldId) {
   const idx = WORLDS.findIndex((w) => w.id === worldId);
   return idx !== -1 && idx <= state.saveData.unlockedWorldIndex;
@@ -539,9 +647,108 @@ function syncDundieOutfitRewards() {
   if (changed) persistSave();
 }
 
+function syncPostKeyMissionRewards() {
+  if (!state.saveData) return;
+  let changed = false;
+  const missions = state.saveData.missions;
+
+  if (state.saveData.unlocks.jimDeskKey) {
+    if (!missions.threatLevelMidnight.added) {
+      missions.threatLevelMidnight.added = true;
+      showMissionToast('Mission Added: "Threat Level Midnight"');
+      changed = true;
+    }
+    if (!state.saveData.unlocks.outfitsUnlocked.includes("goldenface")) {
+      state.saveData.unlocks.outfitsUnlocked.push("goldenface");
+      changed = true;
+    }
+  }
+
+  if (changed) persistSave();
+}
+
 function showAnnexMessage(text) {
   state.annexMessage = text;
   state.annexMessageLeft = 3.6;
+}
+
+function awardCornerTvJackpot() {
+  state.saveData.currencies.schruteBucks += 250;
+  state.cornerLogoRewardCooldown = 0.8;
+  persistSave();
+  showMissionToast("Corner hit! +250 Schrute Bucks from the office TV.");
+}
+
+function updateCornerTv(dt) {
+  if (!cornerTv || !cornerLogo || !state.saveData) return;
+
+  const logoW = cornerLogo.clientWidth || state.cornerLogoWidth;
+  const logoH = cornerLogo.clientHeight || state.cornerLogoHeight;
+  const maxX = Math.max(0, cornerTv.clientWidth - logoW);
+  const maxY = Math.max(0, cornerTv.clientHeight - logoH);
+  if (maxX <= 0 || maxY <= 0) return;
+
+  state.cornerLogoX += state.cornerLogoVX * dt;
+  state.cornerLogoY += state.cornerLogoVY * dt;
+
+  let hitX = false;
+  let hitY = false;
+
+  if (state.cornerLogoX <= 0) {
+    state.cornerLogoX = 0;
+    state.cornerLogoVX = Math.abs(state.cornerLogoVX);
+    hitX = true;
+  } else if (state.cornerLogoX >= maxX) {
+    state.cornerLogoX = maxX;
+    state.cornerLogoVX = -Math.abs(state.cornerLogoVX);
+    hitX = true;
+  }
+
+  if (state.cornerLogoY <= 0) {
+    state.cornerLogoY = 0;
+    state.cornerLogoVY = Math.abs(state.cornerLogoVY);
+    hitY = true;
+  } else if (state.cornerLogoY >= maxY) {
+    state.cornerLogoY = maxY;
+    state.cornerLogoVY = -Math.abs(state.cornerLogoVY);
+    hitY = true;
+  }
+
+  if (hitX || hitY) {
+    if (Math.random() < 0.01) {
+      const cornerX = Math.random() < 0.5 ? 0 : maxX;
+      const cornerY = Math.random() < 0.5 ? 0 : maxY;
+      state.cornerLogoX = cornerX;
+      state.cornerLogoY = cornerY;
+      state.cornerLogoVX = cornerX === 0 ? Math.abs(state.cornerLogoVX) : -Math.abs(state.cornerLogoVX);
+      state.cornerLogoVY = cornerY === 0 ? Math.abs(state.cornerLogoVY) : -Math.abs(state.cornerLogoVY);
+      if (state.cornerLogoRewardCooldown <= 0) awardCornerTvJackpot();
+    } else if (hitX && hitY) {
+      // Keep true corner events rare (1/100 chance).
+      state.cornerLogoY = Math.max(1, Math.min(maxY - 1, state.cornerLogoY + (state.cornerLogoVY > 0 ? 1 : -1)));
+    }
+  }
+
+  state.cornerLogoColorT += dt * 0.45;
+  const palette = [
+    [95, 255, 136], // green
+    [255, 94, 109], // red
+    [88, 140, 255], // blue
+  ];
+  const seg = Math.floor(state.cornerLogoColorT) % palette.length;
+  const next = (seg + 1) % palette.length;
+  const t = state.cornerLogoColorT - Math.floor(state.cornerLogoColorT);
+  const c0 = palette[seg];
+  const c1 = palette[next];
+  const r = Math.round(c0[0] + (c1[0] - c0[0]) * t);
+  const g = Math.round(c0[1] + (c1[1] - c0[1]) * t);
+  const b = Math.round(c0[2] + (c1[2] - c0[2]) * t);
+  const darkR = Math.round(r * 0.45);
+  const darkG = Math.round(g * 0.45);
+  const darkB = Math.round(b * 0.45);
+  cornerLogo.style.background = `linear-gradient(145deg, rgb(${r}, ${g}, ${b}), rgb(${darkR}, ${darkG}, ${darkB}))`;
+  cornerLogo.style.boxShadow = `0 0 12px rgba(${r}, ${g}, ${b}, 0.55)`;
+  cornerLogo.style.transform = `translate(${Math.round(state.cornerLogoX)}px, ${Math.round(state.cornerLogoY)}px)`;
 }
 
 function getRunnerId() {
@@ -668,6 +875,7 @@ function toggleOutfit(outfitId) {
 function startJimConversation() {
   if (state.shopForeheadStare) return;
   state.shopConversation = {
+    actor: "jim",
     step: "choice",
     text: "Jim: Nice try. Those top-row items are in witness protection.",
   };
@@ -679,15 +887,19 @@ function handleJimConversationClick(choiceId) {
   if (state.shopConversation.step === "choice") {
     if (choiceId === "ask") {
       const savePam = state.saveData.missions.savePam;
+      const capture = state.saveData.missions.captureStrangler;
       let jimLine =
         "Jim: Top row stays locked until you save Pam. She's somewhere in the Warehouse. Find her, bring back the key, then we talk.";
       if (savePam.warehouseCleared && !savePam.completed) {
         jimLine =
           "Jim: Top row stays locked until you save Pam. Warehouse round two rules: replay that level, press P every time Pam pops up in the background, and finish with 5 sightings.";
       } else if (savePam.completed) {
-        jimLine = "Jim: You saved Pam. Key's yours. Try not to buy six puddings at once.";
+        jimLine = capture.completed
+          ? "Jim: You caught the Scranton Strangler. Talk to Pam for your key."
+          : "Jim: You saved Pam. Next step is her call. Go talk to her.";
       }
       state.shopConversation = {
+        actor: "jim",
         step: "pam_info",
         text: jimLine,
       };
@@ -707,6 +919,103 @@ function handleJimConversationClick(choiceId) {
   }
 }
 
+function startPamConversation() {
+  if (state.shopForeheadStare || !state.saveData?.missions?.savePam?.completed) return;
+  const capture = state.saveData.missions.captureStrangler;
+  const tlm = state.saveData.missions.threatLevelMidnight;
+  if (tlm.completed) {
+    state.shopConversation = {
+      actor: "pam",
+      step: "post_midnight",
+      text:
+        "Pam: You actually pulled off Threat Level Midnight. That was... weirdly heroic. Art school suddenly feels less scary now.",
+    };
+    return;
+  }
+  if (capture.completed && !state.saveData.unlocks.jimDeskKey) {
+    state.shopConversation = {
+      actor: "pam",
+      step: "reward_ready",
+      text: "Pam: You did it. You caught the Scranton Strangler. Here, take Jim's Desk Key.",
+    };
+    return;
+  }
+  if (capture.completed && state.saveData.unlocks.jimDeskKey) {
+    state.shopConversation = {
+      actor: "pam",
+      step: "post_capture",
+      text:
+        "Pam: You really did it. Jim's desk should open now. Press D in the conference room, grab Goldenface, then tap Michael's mug.",
+    };
+    return;
+  }
+  state.shopConversation = {
+    actor: "pam",
+    step: "intro",
+    text: "Pam: Dunder Mifflin, this is Pam.",
+  };
+}
+
+function handlePamConversationClick(choiceId) {
+  if (!state.shopConversation) return;
+  const capture = state.saveData.missions.captureStrangler;
+
+  if (state.shopConversation.step === "intro") {
+    if (choiceId === "ask_how") {
+      state.shopConversation = {
+        actor: "pam",
+        step: "how_doing",
+        text: "Pam: Well, I want to go to art school, but I am too afraid to go out when the Strangler is on the loose.",
+      };
+      return;
+    }
+    state.shopConversation = null;
+    return;
+  }
+
+  if (state.shopConversation.step === "how_doing") {
+    if (choiceId === "catch_strangler") {
+      state.shopConversation = {
+        actor: "pam",
+        step: "offer_help",
+        text:
+          "Pam: Really! That would be great, and I'll tell you what, once you capture the Strangler come to me, I might have something for you.",
+      };
+      return;
+    }
+    state.shopConversation = null;
+    return;
+  }
+
+  if (state.shopConversation.step === "offer_help") {
+    if (!capture.added) {
+      capture.added = true;
+      persistSave();
+      showMissionToast("New Mission: Capture The Strangler");
+    }
+    state.shopConversation = null;
+    return;
+  }
+
+  if (state.shopConversation.step === "reward_ready") {
+    state.saveData.unlocks.jimDeskKey = true;
+    persistSave();
+    showMissionToast("Mission Reward: Jim's Desk Key");
+    showShopMessage("Pam handed you Jim's Desk Key. Top row unlocked.", "#d3ffbf");
+    state.shopConversation = null;
+    return;
+  }
+
+  if (state.shopConversation.step === "post_capture") {
+    state.shopConversation = null;
+    return;
+  }
+
+  if (state.shopConversation.step === "post_midnight") {
+    state.shopConversation = null;
+  }
+}
+
 function tryBuyShopItem(itemId) {
   const item = SHOP_ITEMS.find((i) => i.id === itemId);
   if (!item) return;
@@ -717,7 +1026,7 @@ function tryBuyShopItem(itemId) {
   }
 
   if (item.row === "top" && !state.saveData.unlocks.jimDeskKey) {
-    showShopMessage("Jim: top row stays in Jell-O until you find Pam.", "#ffb4a7");
+    showShopMessage("Jim: top row stays in Jell-O until Pam gives you my key.", "#ffb4a7");
     return;
   }
 
@@ -758,6 +1067,7 @@ function switchScene(sceneId) {
   nextLevelBtn.hidden = true;
   if (leavingShop) state.shopForeheadStare = false;
   if (sceneId !== "shop") state.shopConversation = null;
+  if (sceneId === "desk") state.deskDrawerOpen = false;
   if (sceneId === "cutscene") {
     state.cutsceneTimeSec = 0;
     state.cutsceneFadeLeft = 0.85;
@@ -796,6 +1106,9 @@ function updateUiForScene() {
     startBtn.textContent = "Back To Menu";
     retryBtn.textContent = "Go Annex";
     retryBtn.hidden = false;
+  } else if (state.scene === "desk") {
+    startBtn.textContent = "Back To Menu";
+    retryBtn.hidden = true;
   } else {
     startBtn.textContent = "Back To Menu";
     retryBtn.textContent = "Go Shop";
@@ -927,6 +1240,8 @@ function spawnObstacle() {
     folder: { w: 34, h: 18, topOffset: -36, hp: 1 },
     paper_ream: { w: 38, h: 24, topOffset: -6, hp: 1 },
     mung_beans: { w: 22, h: 22, topOffset: -18, hp: 1 },
+    hockey_puck: { w: 24, h: 12, topOffset: -18, hp: 1 },
+    goldenface_minion: { w: 34, h: 54, topOffset: 2, hp: 1 },
   }[type];
 
   let spawnX = canvas.width + 20;
@@ -997,13 +1312,19 @@ function endRun(reason = "time") {
           if (state.pamSpottedCount >= state.pamRequiredCount) {
             savePam.completed = true;
             state.saveData.unlocks.pamFound = true;
-            state.saveData.unlocks.jimDeskKey = true;
-            questEndingLine = "Quest Complete: You found Pam 5 times and got Jim's Desk Key.";
+            questEndingLine = "Quest Complete: You found Pam 5 times. Talk to Pam in the shop.";
           } else {
             questEndingLine = `Pam sightings this run: ${state.pamSpottedCount}/${state.pamRequiredCount}.`;
           }
         }
       }
+    }
+  }
+  if (reason === "toby_caught" && state.runWorldId === "pursuit") {
+    const capture = state.saveData.missions.captureStrangler;
+    if (capture.added && !capture.completed) {
+      capture.completed = true;
+      questEndingLine = "Mission Complete: Capture the Strangler. Talk to Pam for your reward.";
     }
   }
 
@@ -1097,7 +1418,7 @@ function doParkourShout() {
 }
 
 function attack() {
-  if (!state.running || state.paused || state.attackCooldownLeft > 0) return;
+  if (!state.running || state.paused || state.attackCooldownLeft > 0 || state.runWorldId === "skarn") return;
   state.attackLeft = GAME.attackDurationSec;
   state.attackCooldownLeft = GAME.attackCooldownSec;
 }
@@ -1134,7 +1455,13 @@ function onLanding() {
 }
 
 function isDodgeOnlyObstacle(type) {
-  return type === "angela_cat" || type === "jim_snowball" || type === "folder" || type === "jan_folder";
+  return (
+    type === "angela_cat" ||
+    type === "jim_snowball" ||
+    type === "folder" ||
+    type === "jan_folder" ||
+    type === "hockey_puck"
+  );
 }
 
 function intersects(a, b) {
@@ -1288,7 +1615,7 @@ function updateRun(dt) {
   const runSpeed = state.slideActive ? movementSpeed + state.slideSpeed : movementSpeed;
 
   if (state.runWorldId === "pursuit") {
-    if (state.multiplier >= 5) {
+    if (state.multiplier >= 10) {
       endRun("toby_caught");
       return;
     }
@@ -1638,6 +1965,19 @@ function drawRunBackground() {
       ctx.fillRect(x + 6, GAME.floorTop + 4, 2, 10);
       ctx.fillRect(x + 6, canvas.height - 16, 2, 10);
     }
+  } else if (state.theme === "skarn") {
+    ctx.fillStyle = "#322447";
+    ctx.fillRect(0, GAME.floorTop, canvas.width, canvas.height - GAME.floorTop);
+    ctx.fillStyle = "#21172f";
+    for (let i = 0; i < 22; i += 1) {
+      const x = i * 56 - ((xShift * 1.02) % 56);
+      ctx.fillRect(x, GAME.floorTop + 8, 30, canvas.height - GAME.floorTop - 8);
+    }
+    ctx.fillStyle = "#ffd8f0";
+    for (let i = 0; i < 14; i += 1) {
+      const x = i * 82 - ((xShift * 1.2) % 82);
+      ctx.fillRect(x + 10, GAME.floorTop + 30, 40, 5);
+    }
   } else {
     const floorColor = state.theme === "streets" ? "#4f5668" : "#d7ddd8";
     ctx.fillStyle = floorColor;
@@ -1654,6 +1994,32 @@ function drawRunBackground() {
     for (let i = 0; i < 18; i += 1) {
       const x = i * 66 - ((xShift * 0.8) % 66);
       ctx.fillRect(x + 6, GAME.floorTop + 2 + (i % 3), 22, 2);
+    }
+  } else if (state.theme === "skarn") {
+    const skyGrad = ctx.createLinearGradient(0, 0, 0, GAME.floorTop);
+    skyGrad.addColorStop(0, "#ffb1d5");
+    skyGrad.addColorStop(1, "#f27cc4");
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0, 0, canvas.width, GAME.floorTop);
+
+    ctx.fillStyle = "rgba(255, 238, 247, 0.6)";
+    for (let i = 0; i < 6; i += 1) {
+      const x = i * 190 - ((xShift * 0.2) % 1140) - 90;
+      ctx.beginPath();
+      ctx.ellipse(x, 72 + (i % 2) * 24, 68, 20, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    for (let i = 0; i < 9; i += 1) {
+      const x = i * 126 - ((xShift * 0.55) % 126);
+      const h = 108 + (i % 3) * 24;
+      ctx.fillStyle = "#582a52";
+      ctx.fillRect(x + 4, 300 - h, 104, h);
+      ctx.fillStyle = "#ffdd8a";
+      ctx.fillRect(x + 14, 300 - h + 18, 14, 6);
+      ctx.fillRect(x + 34, 300 - h + 18, 14, 6);
+      ctx.fillRect(x + 54, 300 - h + 18, 14, 6);
+      ctx.fillRect(x + 74, 300 - h + 18, 14, 6);
     }
   } else {
     ctx.fillStyle = "rgba(0,0,0,0.12)";
@@ -1674,6 +2040,7 @@ function drawPlayer() {
   const player = state.player;
   const runnerId = getOutfitRunnerId();
   const outfitId = getEquippedOutfitId(runnerId);
+  const slidePose = state.slideActive ? Math.max(0, Math.min(1, state.slideSpeed / Math.max(1, GAME.slideInitialSpeed))) : 0;
   const x = player.x;
   const slideHeight = state.slideActive ? 22 : 0;
   const visualHeight = player.height - slideHeight;
@@ -1723,10 +2090,21 @@ function drawPlayer() {
     ctx.fillRect(x + 25, y + 6 + bob, 2, 2);
   }
   ctx.fillRect(x + 17, y + 10 + bob, 8, 1);
+  if (outfitId === "goldenface") {
+    ctx.fillStyle = "#e4ba53";
+    ctx.fillRect(x + 7, y + 2 + bob, 28, state.slideActive ? 9 : 12);
+    ctx.fillStyle = "#1b1a1c";
+    ctx.fillRect(x + 13, y + 6 + bob, 2, 2);
+    ctx.fillRect(x + 25, y + 6 + bob, 2, 2);
+    ctx.fillRect(x + 16, y + 10 + bob, 10, 1);
+  }
   if (outfitId === "ryan_beard") {
-    ctx.fillStyle = "#5f3e2f";
-    ctx.fillRect(x + 12, y + 9 + bob, 16, 4);
-    ctx.fillRect(x + 15, y + 13 + bob, 10, 2);
+    ctx.fillStyle = "#151518";
+    ctx.fillRect(x + 11, y + 9 + bob, 3, 5);
+    ctx.fillRect(x + 26, y + 9 + bob, 3, 5);
+    ctx.fillRect(x + 14, y + 10 + bob, 12, 2);
+    ctx.fillRect(x + 14, y + 12 + bob, 12, 1);
+    ctx.fillRect(x + 15, y + 13 + bob, 10, 1);
   }
 
   // Torso base + shading.
@@ -1735,6 +2113,9 @@ function drawPlayer() {
   if (outfitId === "cornell_fit") {
     shirtColor = "#8a2432";
     tieColor = "#f4d76b";
+  } else if (outfitId === "goldenface") {
+    shirtColor = "#121316";
+    tieColor = "#d6b255";
   } else if (outfitId === "date_mike") {
     shirtColor = "#1e2f4e";
     tieColor = "#9a1f2f";
@@ -1767,9 +2148,19 @@ function drawPlayer() {
   }
   if (outfitId === "three_hole_gym") {
     ctx.fillStyle = "#0f1118";
-    ctx.fillRect(x + 12, bodyY + 9, 4, 4);
-    ctx.fillRect(x + 19, bodyY + 14, 4, 4);
-    ctx.fillRect(x + 26, bodyY + 11, 4, 4);
+    ctx.fillRect(x + 19, bodyY + 8, 4, 4);
+    ctx.fillRect(x + 19, bodyY + 13, 4, 4);
+    ctx.fillRect(x + 19, bodyY + 18, 4, 4);
+  }
+  if (outfitId === "goldenface") {
+    // Suit jacket + white shirt panel.
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(x + 16, bodyY + 3, 10, state.slideActive ? 12 : 23);
+    ctx.fillStyle = "#121316";
+    ctx.fillRect(x + 4, bodyY, 8, state.slideActive ? 22 : 34);
+    ctx.fillRect(x + 30, bodyY, 8, state.slideActive ? 22 : 34);
+    ctx.fillRect(x + 12, bodyY + 4, 4, state.slideActive ? 14 : 22);
+    ctx.fillRect(x + 26, bodyY + 4, 4, state.slideActive ? 14 : 22);
   }
   if (outfitId === "date_mike") {
     ctx.fillStyle = "#0d1118";
@@ -1784,26 +2175,50 @@ function drawPlayer() {
 
   const armFrontY = y + 21 + runCycle * 3 + bob;
   const armBackY = y + 21 + runCycleOpp * 3 + bob;
+  const slideArmBackY = y + 22 + bob;
+  const slideArmFrontY = y + 23 + bob;
+  const hasSleeves = player.preset.label !== "Dwight" && player.preset.label !== "Kelly";
+  const sleeveH = state.slideActive ? 4 : 7;
   // Back arm first for depth.
   ctx.fillStyle = "#c9a682";
-  ctx.fillRect(x - 1, state.slideActive ? y + 16 : armBackY, 8, state.slideActive ? 8 : 16);
+  ctx.fillRect(x - 1, state.slideActive ? slideArmBackY : armBackY, 8, state.slideActive ? 7 : 16);
+  if (hasSleeves) {
+    ctx.fillStyle = shirtColor;
+    ctx.fillRect(x - 1, state.slideActive ? slideArmBackY : armBackY, 8, sleeveH);
+  }
   if (state.attackLeft > 0) {
+    if (hasSleeves) {
+      ctx.fillStyle = shirtColor;
+      ctx.fillRect(x + 35, y + (state.slideActive ? 15 : 18) + bob, 8, sleeveH);
+    }
+    ctx.fillStyle = "#c9a682";
     ctx.fillRect(x + 34, y + (state.slideActive ? 15 : 18) + bob, 14, 8);
     ctx.fillStyle = "#ffe189";
     ctx.fillRect(x + 48, y + (state.slideActive ? 17 : 20) + bob, 18, 4);
   } else {
     ctx.fillStyle = "#d9ba97";
-    ctx.fillRect(x + 35, state.slideActive ? y + 16 : armFrontY, 8, state.slideActive ? 8 : 16);
+    ctx.fillRect(x + 35, state.slideActive ? slideArmFrontY : armFrontY, 8, state.slideActive ? 7 : 16);
+    if (hasSleeves) {
+      ctx.fillStyle = shirtColor;
+      ctx.fillRect(x + 35, state.slideActive ? slideArmFrontY : armFrontY, 8, sleeveH);
+    }
   }
 
   const legFront = player.grounded ? runCycle * 5 : 0;
   const legBack = player.grounded ? runCycleOpp * 5 : 0;
   ctx.fillStyle = "#202a39";
   if (state.slideActive) {
-    ctx.fillRect(x + 12, y + 28, 17, 7);
+    const slideLegY = y + 31 + bob;
+    const legReach = 30 + Math.round(slidePose * 9);
+    ctx.fillRect(x + 9, slideLegY, legReach, 5);
+    ctx.fillRect(x + 9, slideLegY + 5, legReach - 2, 5);
     ctx.fillStyle = "#141a25";
-    ctx.fillRect(x + 11, y + 34, 8, 3);
-    ctx.fillRect(x + 22, y + 34, 8, 3);
+    ctx.fillRect(x + 8 + legReach, slideLegY + 2, 8, 3);
+    ctx.fillRect(x + 8 + (legReach - 2), slideLegY + 7, 8, 3);
+    ctx.fillStyle = "rgba(255,255,255,0.26)";
+    ctx.fillRect(x - 2, GAME.floorTop + 1, 8, 2);
+    ctx.fillRect(x - 10, GAME.floorTop + 3, 6, 2);
+    ctx.fillRect(x - 16, GAME.floorTop + 5, 5, 1);
   } else {
     ctx.fillRect(x + 10, y + 48 + Math.max(0, -legBack), 9, 14 + Math.abs(legBack));
     ctx.fillRect(x + 24, y + 48 + Math.max(0, -legFront), 9, 14 + Math.abs(legFront));
@@ -1913,6 +2328,28 @@ function drawObstacleSprite(obs) {
     ctx.fillStyle = "#d34136";
     ctx.fillRect(obs.x + 8, obs.y + 4, obs.width - 16, obs.height - 4);
     ctx.fillRect(obs.x, obs.y + 14, obs.width, 8);
+  } else if (obs.type === "hockey_puck") {
+    ctx.fillStyle = "#1a1d24";
+    ctx.fillRect(obs.x, obs.y + 2, obs.width, obs.height - 2);
+    ctx.fillStyle = "#343b48";
+    ctx.fillRect(obs.x + 2, obs.y, obs.width - 4, 3);
+    ctx.fillStyle = "#a6b5cc";
+    ctx.fillRect(obs.x + 6, obs.y + 3, obs.width - 12, 1);
+  } else if (obs.type === "goldenface_minion") {
+    ctx.fillStyle = "#1f1d22";
+    ctx.fillRect(obs.x + 6, obs.y + 16, obs.width - 12, obs.height - 16);
+    ctx.fillStyle = "#2f2c33";
+    ctx.fillRect(obs.x + 4, obs.y + 18, 6, 18);
+    ctx.fillRect(obs.x + obs.width - 10, obs.y + 18, 6, 18);
+    ctx.fillStyle = "#e4ba53";
+    ctx.fillRect(obs.x + 8, obs.y + 2, obs.width - 16, 14);
+    ctx.fillStyle = "#1a1a1a";
+    ctx.fillRect(obs.x + 10, obs.y + 7, 5, 2);
+    ctx.fillRect(obs.x + obs.width - 15, obs.y + 7, 5, 2);
+    ctx.fillRect(obs.x + 12, obs.y + 11, obs.width - 24, 2);
+    ctx.fillStyle = "#111722";
+    ctx.fillRect(obs.x + 10, obs.y + obs.height - 2, 6, 2);
+    ctx.fillRect(obs.x + obs.width - 16, obs.y + obs.height - 2, 6, 2);
   } else if (obs.type === "jan_folder" || obs.type === "folder") {
     ctx.fillStyle = "#d6a95c";
     ctx.fillRect(obs.x, obs.y + 3, obs.width, obs.height - 3);
@@ -2064,7 +2501,8 @@ function drawHud() {
     ctx.fillText(`Find Pam: ${state.pamSpottedCount}/${state.pamRequiredCount} (Press P when she appears)`, 500, 100);
   }
   ctx.fillStyle = "#d4e6ff";
-  ctx.fillText(`Parkour: J  Hit: K  Pause: Enter`, 500, 122);
+  if (state.runWorldId === "skarn") ctx.fillText(`Parkour: J  Hit: LOCKED  Pause: Enter`, 500, 122);
+  else ctx.fillText(`Parkour: J  Hit: K  Pause: Enter`, 500, 122);
 
   if (state.slideActive) {
     ctx.fillStyle = "#8fdcff";
@@ -2232,6 +2670,34 @@ function drawMenuScene() {
   ctx.lineTo(198, 352);
   ctx.lineTo(208, 372);
   ctx.stroke();
+
+  // "World's Best Boss" mug mission prop in the board-side gap.
+  const mugX = 890;
+  const mugY = 366;
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
+  ctx.fillRect(mugX + 8, mugY + 48, 60, 4);
+  // Mug body + rim + bottom.
+  ctx.fillStyle = "#f4f4f2";
+  ctx.fillRect(mugX + 16, mugY, 42, 48);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(mugX + 18, mugY + 1, 38, 4);
+  ctx.fillStyle = "#e3e3e1";
+  ctx.fillRect(mugX + 16, mugY + 44, 42, 4);
+  // Handle with inner cutout.
+  ctx.fillStyle = "#ececeb";
+  ctx.fillRect(mugX + 8, mugY + 12, 8, 26);
+  ctx.fillStyle = "#cfd0cf";
+  ctx.fillRect(mugX + 10, mugY + 15, 3, 20);
+  // Subtle side shading.
+  ctx.fillStyle = "#dddddb";
+  ctx.fillRect(mugX + 53, mugY + 6, 4, 34);
+  // Label text.
+  ctx.fillStyle = "#1f242f";
+  ctx.font = "bold 9px Trebuchet MS";
+  ctx.fillText("WORLD'S", mugX + 20, mugY + 17);
+  ctx.fillText("BEST", mugX + 27, mugY + 29);
+  ctx.fillText("BOSS", mugX + 27, mugY + 41);
+  state.menuMugBounds = { x: mugX + 6, y: mugY - 2, w: 62, h: 56 };
   ctx.strokeStyle = "rgba(61, 83, 118, 0.84)";
   ctx.beginPath();
   ctx.arc(238, 364, 11, 0, Math.PI * 2);
@@ -2402,9 +2868,21 @@ function drawMenuScene() {
     ctx.fillRect(headX + 19 * menuScale, headY + 4 * menuScale, 2 * menuScale, 2 * menuScale);
   }
   ctx.fillRect(headX + 12 * menuScale, headY + 8 * menuScale, 6 * menuScale, 1 * menuScale);
+  if (equippedOutfit === "goldenface") {
+    ctx.fillStyle = "#e4ba53";
+    ctx.fillRect(headX, headY, 28 * menuScale, 12 * menuScale);
+    ctx.fillStyle = "#1b1a1c";
+    ctx.fillRect(headX + 7 * menuScale, headY + 4 * menuScale, 2 * menuScale, 2 * menuScale);
+    ctx.fillRect(headX + 19 * menuScale, headY + 4 * menuScale, 2 * menuScale, 2 * menuScale);
+    ctx.fillRect(headX + 11 * menuScale, headY + 8 * menuScale, 8 * menuScale, 1 * menuScale);
+  }
   if (equippedOutfit === "ryan_beard") {
-    ctx.fillStyle = "#5f3e2f";
-    ctx.fillRect(headX + 6 * menuScale, headY + 7 * menuScale, 16 * menuScale, 3 * menuScale);
+    ctx.fillStyle = "#151518";
+    ctx.fillRect(headX + 4 * menuScale, headY + 7 * menuScale, 3 * menuScale, 5 * menuScale);
+    ctx.fillRect(headX + 21 * menuScale, headY + 7 * menuScale, 3 * menuScale, 5 * menuScale);
+    ctx.fillRect(headX + 7 * menuScale, headY + 8 * menuScale, 14 * menuScale, 2 * menuScale);
+    ctx.fillRect(headX + 7 * menuScale, headY + 10 * menuScale, 14 * menuScale, 1 * menuScale);
+    ctx.fillRect(headX + 8 * menuScale, headY + 11 * menuScale, 12 * menuScale, 1 * menuScale);
   }
 
   // Shirt and tie.
@@ -2413,6 +2891,9 @@ function drawMenuScene() {
   if (equippedOutfit === "cornell_fit") {
     shirtColor = "#8a2432";
     tieColor = "#f4d76b";
+  } else if (equippedOutfit === "goldenface") {
+    shirtColor = "#121316";
+    tieColor = "#d6b255";
   } else if (equippedOutfit === "date_mike") {
     shirtColor = "#1e2f4e";
     tieColor = "#9a1f2f";
@@ -2438,9 +2919,9 @@ function drawMenuScene() {
   }
   if (equippedOutfit === "three_hole_gym") {
     ctx.fillStyle = "#0f1118";
-    ctx.fillRect(bodyX + 8 * menuScale, bodyY + 9 * menuScale, 4 * menuScale, 4 * menuScale);
+    ctx.fillRect(bodyX + 15 * menuScale, bodyY + 9 * menuScale, 4 * menuScale, 4 * menuScale);
     ctx.fillRect(bodyX + 15 * menuScale, bodyY + 14 * menuScale, 4 * menuScale, 4 * menuScale);
-    ctx.fillRect(bodyX + 22 * menuScale, bodyY + 11 * menuScale, 4 * menuScale, 4 * menuScale);
+    ctx.fillRect(bodyX + 15 * menuScale, bodyY + 19 * menuScale, 4 * menuScale, 4 * menuScale);
   } else if (equippedOutfit === "date_mike") {
     ctx.fillStyle = "#0d1118";
     ctx.fillRect(headX - 1 * menuScale, headY - 8 * menuScale, 30 * menuScale, 3 * menuScale);
@@ -2451,6 +2932,15 @@ function drawMenuScene() {
     ctx.fillStyle = "#2f4f2f";
     ctx.fillRect(headX + 15 * menuScale, headY + 2 * menuScale, 4 * menuScale, 2 * menuScale);
   }
+  if (equippedOutfit === "goldenface") {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(bodyX + 14 * menuScale, bodyY + 4 * menuScale, 8 * menuScale, 20 * menuScale);
+    ctx.fillStyle = "#121316";
+    ctx.fillRect(bodyX, bodyY, 7 * menuScale, 36 * menuScale);
+    ctx.fillRect(bodyX + 27 * menuScale, bodyY, 7 * menuScale, 36 * menuScale);
+    ctx.fillRect(bodyX + 9 * menuScale, bodyY + 4 * menuScale, 5 * menuScale, 20 * menuScale);
+    ctx.fillRect(bodyX + 22 * menuScale, bodyY + 4 * menuScale, 5 * menuScale, 20 * menuScale);
+  }
 
   // Arms with subtle swing.
   const armSwingA = anim * 2.2;
@@ -2458,6 +2948,11 @@ function drawMenuScene() {
   ctx.fillStyle = "#d4b28f";
   ctx.fillRect(bodyX - 3 * menuScale, bodyY + 8 * menuScale + armSwingA, 5 * menuScale, 16 * menuScale);
   ctx.fillRect(bodyX + 34 * menuScale, bodyY + 8 * menuScale + armSwingB, 5 * menuScale, 16 * menuScale);
+  if (player.label !== "Dwight" && player.label !== "Kelly") {
+    ctx.fillStyle = shirtColor;
+    ctx.fillRect(bodyX - 3 * menuScale, bodyY + 8 * menuScale + armSwingA, 5 * menuScale, 7 * menuScale);
+    ctx.fillRect(bodyX + 34 * menuScale, bodyY + 8 * menuScale + armSwingB, 5 * menuScale, 7 * menuScale);
+  }
 
   // Pants + shoes.
   ctx.fillStyle = "#1c2431";
@@ -2479,7 +2974,7 @@ function drawMenuScene() {
 
   ctx.fillStyle = "#fff3b4";
   ctx.font = "15px Trebuchet MS";
-  ctx.fillText("Enter: Launch Level   Click Sticky Notes   S: Shop   A: Annex", 34, 523);
+  ctx.fillText("Enter: Launch Level   Click Sticky Notes   S: Shop   A: Annex   D: Jim's Desk", 34, 523);
 }
 
 function drawShopScene() {
@@ -2500,9 +2995,9 @@ function drawShopScene() {
 
   ctx.fillStyle = "#f4ead7";
   ctx.font = "18px Trebuchet MS";
-  const questLine = state.saveData.unlocks.pamFound
-    ? "Pam rescued. Jim's Desk Key acquired. Top row is officially de-gelled."
-    : "Quest lock active: Save Pam in Warehouse to unlock the top row.";
+  const questLine = state.saveData.unlocks.jimDeskKey
+    ? "Pam gave you Jim's Desk Key. Top row is officially de-gelled."
+    : "Quest lock active: Save Pam, then complete 'Capture The Strangler' to get the key.";
   drawWrappedText(questLine, 58, 162, 240, 20, 3);
   ctx.fillText(`Wallet: ${state.saveData.currencies.schruteBucks} Schrute Bucks`, 58, 226);
   ctx.fillText(`Wallet: ${state.saveData.currencies.stanleyNickels} Stanley Nickels`, 58, 252);
@@ -2527,7 +3022,7 @@ function drawShopScene() {
   // Jim leaning against the vending machine.
   const jimX = vmX + vmW + 10;
   const jimY = 392;
-  const jimScale = 1.85;
+  const jimScale = 2.0;
   const jimW = 40 * jimScale;
   const jimH = 70 * jimScale;
   state.shopJimBounds = { x: jimX, y: jimY - jimH, w: jimW, h: jimH };
@@ -2567,12 +3062,16 @@ function drawShopScene() {
   ctx.fillStyle = "#111722";
   ctx.fillRect(jimX + 9 * jimScale, jimY + 2 * jimScale, 8 * jimScale, 3 * jimScale);
   ctx.fillRect(jimX + 20 * jimScale, jimY + 2 * jimScale, 8 * jimScale, 3 * jimScale);
+  state.shopTalkBounds = [];
 
   // After quest completion, Pam stands beside Jim.
   if (state.saveData.missions.savePam.completed) {
     const pamScale = jimScale;
     const pamX = jimX + 72;
     const pamY = jimY + 6;
+    const pamW = 40 * pamScale;
+    const pamH = 70 * pamScale;
+    state.shopPamBounds = { x: pamX, y: pamY - pamH, w: pamW, h: pamH };
 
     ctx.fillStyle = "rgba(0,0,0,0.22)";
     ctx.beginPath();
@@ -2601,6 +3100,9 @@ function drawShopScene() {
     ctx.fillStyle = "#f1cfb3";
     ctx.fillRect(pamX + 4 * pamScale, pamY - 33 * pamScale, 3 * pamScale, 12 * pamScale);
     ctx.fillRect(pamX + 25 * pamScale, pamY - 33 * pamScale, 3 * pamScale, 12 * pamScale);
+    ctx.fillStyle = "#d9eef9";
+    ctx.fillRect(pamX + 4 * pamScale, pamY - 33 * pamScale, 3 * pamScale, 5 * pamScale);
+    ctx.fillRect(pamX + 25 * pamScale, pamY - 33 * pamScale, 3 * pamScale, 5 * pamScale);
 
     // Skirt + legs + shoes.
     ctx.fillStyle = "#514a73";
@@ -2611,6 +3113,27 @@ function drawShopScene() {
     ctx.fillStyle = "#111722";
     ctx.fillRect(pamX + 11 * pamScale, pamY + 3 * pamScale, 4 * pamScale, 2 * pamScale);
     ctx.fillRect(pamX + 18 * pamScale, pamY + 3 * pamScale, 4 * pamScale, 2 * pamScale);
+
+    // TALK callout above Pam.
+    const pamTalkX = pamX - 2;
+    const pamTalkY = pamY - pamH - 20;
+    ctx.fillStyle = "#ffed99";
+    ctx.fillRect(pamTalkX, pamTalkY, 66, 22);
+    ctx.strokeStyle = "#8b6d1e";
+    ctx.strokeRect(pamTalkX, pamTalkY, 66, 22);
+    ctx.fillStyle = "#2a2618";
+    ctx.font = "bold 14px Trebuchet MS";
+    ctx.fillText("TALK", pamTalkX + 13, pamTalkY + 15);
+    ctx.fillStyle = "#ffed99";
+    ctx.beginPath();
+    ctx.moveTo(pamTalkX + 28, pamTalkY + 22);
+    ctx.lineTo(pamTalkX + 38, pamTalkY + 22);
+    ctx.lineTo(pamTalkX + 33, pamTalkY + 30);
+    ctx.closePath();
+    ctx.fill();
+    state.shopTalkBounds.push({ id: "pam_talk", x: pamTalkX, y: pamTalkY, w: 66, h: 30 });
+  } else {
+    state.shopPamBounds = null;
   }
 
   // TALK callout above Jim.
@@ -2630,7 +3153,7 @@ function drawShopScene() {
   ctx.lineTo(talkX + 33, talkY + 30);
   ctx.closePath();
   ctx.fill();
-  state.shopTalkBounds = [{ id: "talk", x: talkX, y: talkY, w: 66, h: 30 }];
+  state.shopTalkBounds.push({ id: "talk", x: talkX, y: talkY, w: 66, h: 30 });
 
   state.shopCards = [];
   const colWidth = 98;
@@ -2710,7 +3233,7 @@ function drawShopScene() {
     drawWrappedText(state.shopConversation.text, boxX + 14, boxY + 30, boxW - 28, 23, 3);
 
     state.shopTalkBounds = [];
-    if (state.shopConversation.step === "choice") {
+    if (state.shopConversation.actor === "jim" && state.shopConversation.step === "choice") {
       const askBtn = { id: "ask", x: boxX + 16, y: boxY + 94, w: 340, h: 30 };
       const leaveBtn = { id: "leave", x: boxX + 372, y: boxY + 94, w: 160, h: 30 };
       for (const btn of [askBtn, leaveBtn]) {
@@ -2725,7 +3248,51 @@ function drawShopScene() {
       ctx.font = "bold 16px Trebuchet MS";
       ctx.fillText("Leave", leaveBtn.x + 52, leaveBtn.y + 20);
       state.shopTalkBounds.push(askBtn, leaveBtn);
-    } else if (state.shopConversation.step === "pam_info") {
+    } else if (state.shopConversation.actor === "jim" && state.shopConversation.step === "pam_info") {
+      const doneBtn = { id: "done", x: boxX + 16, y: boxY + 94, w: 150, h: 30 };
+      ctx.fillStyle = "#2f4f7a";
+      ctx.fillRect(doneBtn.x, doneBtn.y, doneBtn.w, doneBtn.h);
+      ctx.strokeStyle = "#8bc8ff";
+      ctx.strokeRect(doneBtn.x, doneBtn.y, doneBtn.w, doneBtn.h);
+      ctx.fillStyle = "#f5ead6";
+      ctx.font = "bold 16px Trebuchet MS";
+      ctx.fillText("Got it", doneBtn.x + 50, doneBtn.y + 20);
+      state.shopTalkBounds.push(doneBtn);
+    } else if (state.shopConversation.actor === "pam" && state.shopConversation.step === "intro") {
+      const askBtn = { id: "ask_how", x: boxX + 16, y: boxY + 94, w: 280, h: 30 };
+      const leaveBtn = { id: "leave", x: boxX + 312, y: boxY + 94, w: 160, h: 30 };
+      for (const btn of [askBtn, leaveBtn]) {
+        ctx.fillStyle = "#2f4f7a";
+        ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
+        ctx.strokeStyle = "#8bc8ff";
+        ctx.strokeRect(btn.x, btn.y, btn.w, btn.h);
+      }
+      ctx.fillStyle = "#f5ead6";
+      ctx.font = "bold 16px Trebuchet MS";
+      ctx.fillText("How are you doing?", askBtn.x + 54, askBtn.y + 20);
+      ctx.fillText("Leave", leaveBtn.x + 52, leaveBtn.y + 20);
+      state.shopTalkBounds.push(askBtn, leaveBtn);
+    } else if (state.shopConversation.actor === "pam" && state.shopConversation.step === "how_doing") {
+      const catchBtn = { id: "catch_strangler", x: boxX + 16, y: boxY + 94, w: 320, h: 30 };
+      const leaveBtn = { id: "leave", x: boxX + 352, y: boxY + 94, w: 160, h: 30 };
+      for (const btn of [catchBtn, leaveBtn]) {
+        ctx.fillStyle = "#2f4f7a";
+        ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
+        ctx.strokeStyle = "#8bc8ff";
+        ctx.strokeRect(btn.x, btn.y, btn.w, btn.h);
+      }
+      ctx.fillStyle = "#f5ead6";
+      ctx.font = "bold 16px Trebuchet MS";
+      ctx.fillText("I could catch the Strangler.", catchBtn.x + 34, catchBtn.y + 20);
+      ctx.fillText("Leave", leaveBtn.x + 52, leaveBtn.y + 20);
+      state.shopTalkBounds.push(catchBtn, leaveBtn);
+    } else if (
+      state.shopConversation.actor === "pam" &&
+      (state.shopConversation.step === "offer_help" ||
+        state.shopConversation.step === "reward_ready" ||
+        state.shopConversation.step === "post_capture" ||
+        state.shopConversation.step === "post_midnight")
+    ) {
       const doneBtn = { id: "done", x: boxX + 16, y: boxY + 94, w: 150, h: 30 };
       ctx.fillStyle = "#2f4f7a";
       ctx.fillRect(doneBtn.x, doneBtn.y, doneBtn.w, doneBtn.h);
@@ -2739,11 +3306,150 @@ function drawShopScene() {
   }
 }
 
+function drawDeskScene() {
+  const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  grad.addColorStop(0, "#2d323f");
+  grad.addColorStop(1, "#1e2330");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Desk and office props.
+  ctx.fillStyle = "#2c3748";
+  ctx.fillRect(0, 420, canvas.width, 120);
+  ctx.fillStyle = "#5a4431";
+  ctx.fillRect(126, 286, 708, 152);
+  ctx.fillStyle = "#6c5239";
+  ctx.fillRect(142, 252, 676, 42);
+  ctx.strokeStyle = "#ab845f";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(142, 252, 676, 186);
+  ctx.fillStyle = "#3d2f23";
+  ctx.fillRect(172, 300, 162, 122);
+  ctx.fillRect(626, 300, 162, 122);
+  ctx.fillStyle = "#b9926b";
+  ctx.fillRect(180, 316, 146, 4);
+  ctx.fillRect(634, 316, 146, 4);
+  state.deskBounds = { x: 142, y: 252, w: 676, h: 186 };
+
+  const hasKey = state.saveData.unlocks.jimDeskKey;
+  const drawerX = 392;
+  const drawerY = 330;
+  const drawerW = 178;
+  const drawerH = 86;
+  state.deskDrawerBounds = { x: drawerX, y: drawerY, w: drawerW, h: drawerH };
+
+  ctx.fillStyle = hasKey ? "#84624a" : "#554236";
+  ctx.fillRect(drawerX, drawerY, drawerW, drawerH);
+  ctx.strokeStyle = hasKey ? "#b68b67" : "#6a5648";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(drawerX, drawerY, drawerW, drawerH);
+  ctx.fillStyle = "#d8c3a5";
+  ctx.fillRect(drawerX + 78, drawerY + 33, 22, 10);
+  ctx.fillStyle = "#2a2a2a";
+  ctx.fillRect(drawerX + 86, drawerY + 35, 6, 6);
+
+  if (state.deskDrawerOpen && hasKey) {
+    const trayY = drawerY + 46;
+    ctx.fillStyle = "#21170f";
+    ctx.fillRect(drawerX + 10, trayY, drawerW - 20, 34);
+
+    // Goldenface outfit card art.
+    const cardX = drawerX + 28;
+    const cardY = trayY + 4;
+    const cardW = drawerW - 56;
+    const cardH = 24;
+    ctx.fillStyle = "#d6b255";
+    ctx.fillRect(cardX, cardY, cardW, cardH);
+    ctx.strokeStyle = "#f7da87";
+    ctx.strokeRect(cardX, cardY, cardW, cardH);
+    ctx.fillStyle = "#1c1a1b";
+    ctx.fillRect(cardX + 6, cardY + 6, 8, 12);
+    ctx.fillRect(cardX + 16, cardY + 8, 10, 10);
+    ctx.fillStyle = "#e6bf5e";
+    ctx.fillRect(cardX + 16, cardY + 4, 10, 6);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(cardX + 18, cardY + 11, 6, 1);
+    ctx.fillStyle = "#1c1a1b";
+    ctx.font = "bold 11px Trebuchet MS";
+    ctx.fillText("GOLDENFACE", cardX + 34, cardY + 11);
+    ctx.fillText("SUIT", cardX + 34, cardY + 21);
+    state.deskGoldenfaceBounds = { x: cardX, y: cardY, w: cardW, h: cardH };
+  } else {
+    state.deskGoldenfaceBounds = null;
+  }
+
+  ctx.fillStyle = "#f5e9d0";
+  ctx.font = "bold 30px Trebuchet MS";
+  ctx.fillText("Jim's Desk", 384, 102);
+  ctx.font = "18px Trebuchet MS";
+  if (!hasKey) {
+    ctx.fillText("Desk is locked. Pam has the key.", 332, 136);
+  } else if (!state.deskDrawerOpen) {
+    ctx.fillText("Click the desk drawer to unlock it with Jim's Desk Key.", 250, 136);
+  } else {
+    ctx.fillText("Click the Goldenface outfit card in the drawer to equip it.", 242, 136);
+  }
+  ctx.fillStyle = "#b9d7ff";
+  ctx.font = "17px Trebuchet MS";
+  ctx.fillText("Press Enter to return to the conference room.", 286, 500);
+}
+
+function selectDeskByCanvasPoint(x, y) {
+  const hasKey = state.saveData.unlocks.jimDeskKey;
+
+  if (
+    state.deskGoldenfaceBounds &&
+    x >= state.deskGoldenfaceBounds.x &&
+    x <= state.deskGoldenfaceBounds.x + state.deskGoldenfaceBounds.w &&
+    y >= state.deskGoldenfaceBounds.y &&
+    y <= state.deskGoldenfaceBounds.y + state.deskGoldenfaceBounds.h
+  ) {
+    if (!state.saveData.unlocks.outfitsUnlocked.includes("goldenface")) {
+      state.saveData.unlocks.outfitsUnlocked.push("goldenface");
+    }
+    const runnerId = getRunnerId();
+    state.saveData.unlocks.equippedOutfits[runnerId] = "goldenface";
+    persistSave();
+    showMissionToast("Goldenface equipped. Return to the conference room.");
+    switchScene("menu");
+    return;
+  }
+
+  if (
+    state.deskDrawerBounds &&
+    x >= state.deskDrawerBounds.x &&
+    x <= state.deskDrawerBounds.x + state.deskDrawerBounds.w &&
+    y >= state.deskDrawerBounds.y &&
+    y <= state.deskDrawerBounds.y + state.deskDrawerBounds.h
+  ) {
+    if (!hasKey) {
+      showMissionToast("Desk locked. Pam has Jim's Desk Key.");
+      return;
+    }
+    state.deskDrawerOpen = true;
+    showMissionToast("Drawer unlocked.");
+    return;
+  }
+
+  if (
+    !hasKey &&
+    state.deskBounds &&
+    x >= state.deskBounds.x &&
+    x <= state.deskBounds.x + state.deskBounds.w &&
+    y >= state.deskBounds.y &&
+    y <= state.deskBounds.y + state.deskBounds.h
+  ) {
+    showMissionToast("Desk is locked.");
+  }
+}
+
 function selectShopByCanvasPoint(x, y) {
   if (state.shopTalkBounds.length > 0) {
     for (const target of state.shopTalkBounds) {
       if (x < target.x || x > target.x + target.w || y < target.y || y > target.y + target.h) continue;
       if (target.id === "talk") startJimConversation();
+      else if (target.id === "pam_talk") startPamConversation();
+      else if (state.shopConversation?.actor === "pam") handlePamConversationClick(target.id);
       else handleJimConversationClick(target.id);
       return;
     }
@@ -2755,6 +3461,13 @@ function selectShopByCanvasPoint(x, y) {
     const b = state.shopJimBounds;
     if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
       startJimConversation();
+      return;
+    }
+  }
+  if (state.shopPamBounds) {
+    const b = state.shopPamBounds;
+    if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+      startPamConversation();
       return;
     }
   }
@@ -2774,34 +3487,75 @@ function drawMissionsScene() {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   ctx.fillStyle = "rgba(10,16,28,0.84)";
-  ctx.fillRect(86, 86, 788, 368);
+  ctx.fillRect(64, 54, 832, 476);
   ctx.strokeStyle = "#8bc8ff";
-  ctx.strokeRect(86, 86, 788, 368);
+  ctx.strokeRect(64, 54, 832, 476);
 
   ctx.fillStyle = "#ffe08f";
   ctx.font = "bold 36px Trebuchet MS";
-  ctx.fillText("Missions Board", 386, 140);
+  ctx.fillText("Missions Board", 386, 110);
 
   const savePam = state.saveData.missions.savePam;
+  const capture = state.saveData.missions.captureStrangler;
+  const tlm = state.saveData.missions.threatLevelMidnight;
   ctx.fillStyle = "#f5ead6";
   ctx.font = "bold 22px Trebuchet MS";
-  ctx.fillText("Save Pam", 126, 208);
+  ctx.fillText("Save Pam", 106, 158);
   ctx.font = "18px Trebuchet MS";
   if (!savePam.added) {
-    ctx.fillText("Talk to Jim in the shop to unlock this mission.", 126, 238);
+    ctx.fillText("Talk to Jim in the shop to unlock this mission.", 106, 188);
   } else if (!savePam.warehouseCleared) {
-    ctx.fillText("Finish Warehouse once to trigger Pam search mode.", 126, 238);
+    ctx.fillText("Finish Warehouse once to trigger Pam search mode.", 106, 188);
   } else if (!savePam.completed) {
-    ctx.fillText("Replay Warehouse: press P whenever Pam appears in the background.", 126, 238);
-    ctx.fillText(`Best sightings in one run: ${savePam.sightingsBest || 0}/5`, 126, 268);
+    ctx.fillText("Replay Warehouse: press P whenever Pam appears in the background.", 106, 188);
+    ctx.fillText(`Best sightings in one run: ${savePam.sightingsBest || 0}/5`, 106, 218);
   } else {
-    ctx.fillText("Pam rescued. Jim unlocked the top-row vending machine items.", 126, 238);
+    ctx.fillText("Pam rescued. Talk to her in the shop for your next mission.", 106, 188);
   }
-  ctx.fillText(`Status: ${savePam.completed ? "Completed" : savePam.added ? "Active" : "Not Added"}`, 126, 298);
+  ctx.fillText(`Status: ${savePam.completed ? "Completed" : savePam.added ? "Active" : "Not Added"}`, 106, 248);
+
+  ctx.font = "bold 22px Trebuchet MS";
+  ctx.fillText("Capture The Strangler", 106, 288);
+  ctx.font = "18px Trebuchet MS";
+  if (!capture.added) {
+    ctx.fillText("Talk to Pam in the shop to unlock this mission.", 106, 318);
+  } else if (!capture.completed) {
+    ctx.fillText("Beat Final Pursuit by hitting x10 HARDCORE.", 106, 318);
+  } else if (!state.saveData.unlocks.jimDeskKey) {
+    ctx.fillText("Return to Pam in the shop to claim Jim's Desk Key.", 106, 318);
+  } else {
+    ctx.fillText("Captured. Key claimed from Pam. Top-row machine unlocked.", 106, 318);
+  }
+  ctx.fillText(
+    `Status: ${
+      capture.completed ? (state.saveData.unlocks.jimDeskKey ? "Completed" : "Complete - Reward Unclaimed") : capture.added ? "Active" : "Not Added"
+    }`,
+    106,
+    346
+  );
+
+  ctx.font = "bold 22px Trebuchet MS";
+  ctx.fillText("Threat Level Midnight", 106, 388);
+  ctx.font = "18px Trebuchet MS";
+  if (!tlm.added) {
+    ctx.fillText("Unlock Jim's Desk Key first.", 106, 418);
+  } else if (!tlm.completed) {
+    drawWrappedText(
+      "Press D to open Jim's Desk, equip Goldenface from the drawer, then click Michael's mug in the Conference Room.",
+      106,
+      418,
+      740,
+      22,
+      2
+    );
+  } else {
+    ctx.fillText("Secret warp protocol armed. Michael Scarn mode is ready.", 106, 418);
+  }
+  ctx.fillText(`Status: ${tlm.completed ? "Completed" : tlm.added ? "Active" : "Not Added"}`, 106, 468);
 
   ctx.fillStyle = "#c9ddff";
   ctx.font = "17px Trebuchet MS";
-  ctx.fillText("Press M to close missions and get back to the chaos.", 126, 408);
+  ctx.fillText("Press M to close missions and get back to the chaos.", 106, 524);
 }
 
 function drawAnnexScene() {
@@ -2932,12 +3686,23 @@ function drawAnnexScene() {
     ctx.fillRect(px + 25 * ps, py - 56 * ps, 2 * ps, 2 * ps);
   }
   ctx.fillRect(px + 17 * ps, py - 52 * ps, 8 * ps, 1 * ps);
+  if (equipped === "goldenface") {
+    ctx.fillStyle = "#e4ba53";
+    ctx.fillRect(px + 7 * ps, py - 60 * ps, 28 * ps, 12 * ps);
+    ctx.fillStyle = "#1b1a1c";
+    ctx.fillRect(px + 13 * ps, py - 56 * ps, 2 * ps, 2 * ps);
+    ctx.fillRect(px + 25 * ps, py - 56 * ps, 2 * ps, 2 * ps);
+    ctx.fillRect(px + 16 * ps, py - 52 * ps, 10 * ps, 1 * ps);
+  }
 
   let shirtColor = runnerPreset.color;
   let tieColor = runnerPreset.tieColor;
   if (equipped === "cornell_fit") {
     shirtColor = "#8a2432";
     tieColor = "#f4d76b";
+  } else if (equipped === "goldenface") {
+    shirtColor = "#121316";
+    tieColor = "#d6b255";
   } else if (equipped === "date_mike") {
     shirtColor = "#1e2f4e";
     tieColor = "#9a1f2f";
@@ -2969,15 +3734,31 @@ function drawAnnexScene() {
   }
   if (equipped === "three_hole_gym") {
     ctx.fillStyle = "#0f1118";
-    ctx.fillRect(px + 12 * ps, py - 39 * ps, 4 * ps, 4 * ps);
-    ctx.fillRect(px + 19 * ps, py - 34 * ps, 4 * ps, 4 * ps);
-    ctx.fillRect(px + 26 * ps, py - 37 * ps, 4 * ps, 4 * ps);
+    ctx.fillRect(px + 19 * ps, py - 40 * ps, 4 * ps, 4 * ps);
+    ctx.fillRect(px + 19 * ps, py - 35 * ps, 4 * ps, 4 * ps);
+    ctx.fillRect(px + 19 * ps, py - 30 * ps, 4 * ps, 4 * ps);
+  }
+  if (equipped === "goldenface") {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(px + 16 * ps, py - 44 * ps, 10 * ps, 20 * ps);
+    ctx.fillStyle = "#121316";
+    ctx.fillRect(px + 4 * ps, py - 48 * ps, 8 * ps, 34 * ps);
+    ctx.fillRect(px + 30 * ps, py - 48 * ps, 8 * ps, 34 * ps);
+    ctx.fillRect(px + 12 * ps, py - 44 * ps, 4 * ps, 20 * ps);
+    ctx.fillRect(px + 26 * ps, py - 44 * ps, 4 * ps, 20 * ps);
+  }
+  if (equipped === "goldenface") {
+    ctx.fillStyle = "#1f1d1b";
+    ctx.fillRect(px + 11 * ps, py - 56 * ps, 16 * ps, 3 * ps);
   }
 
   if (equipped === "ryan_beard") {
-    ctx.fillStyle = "#5f3e2f";
-    ctx.fillRect(px + 12 * ps, py - 53 * ps, 16 * ps, 4 * ps);
-    ctx.fillRect(px + 15 * ps, py - 49 * ps, 10 * ps, 2 * ps);
+    ctx.fillStyle = "#151518";
+    ctx.fillRect(px + 9 * ps, py - 55 * ps, 4 * ps, 6 * ps);
+    ctx.fillRect(px + 27 * ps, py - 55 * ps, 4 * ps, 6 * ps);
+    ctx.fillRect(px + 13 * ps, py - 53 * ps, 14 * ps, 3 * ps);
+    ctx.fillRect(px + 13 * ps, py - 50 * ps, 14 * ps, 2 * ps);
+    ctx.fillRect(px + 15 * ps, py - 48 * ps, 10 * ps, 1 * ps);
   } else if (equipped === "date_mike") {
     ctx.fillStyle = "#0d1118";
     ctx.fillRect(px + 6 * ps, py - 68 * ps, 30 * ps, 4 * ps);
@@ -2993,6 +3774,11 @@ function drawAnnexScene() {
   ctx.fillStyle = "#d9ba97";
   ctx.fillRect(px + 1 * ps, py - 40 * ps, 8 * ps, 16 * ps);
   ctx.fillRect(px + 35 * ps, py - 40 * ps, 8 * ps, 16 * ps);
+  if (runnerPreset.label !== "Dwight" && runnerPreset.label !== "Kelly") {
+    ctx.fillStyle = shirtColor;
+    ctx.fillRect(px + 1 * ps, py - 40 * ps, 8 * ps, 7 * ps);
+    ctx.fillRect(px + 35 * ps, py - 40 * ps, 8 * ps, 7 * ps);
+  }
 
   // Legs + shoes.
   ctx.fillStyle = "#202a39";
@@ -3007,9 +3793,9 @@ function drawAnnexScene() {
   const startX = 320;
   const startY = 146;
   const cardW = 160;
-  const cardH = 114;
+  const cardH = 126;
   const colGap = 14;
-  const rowGap = 14;
+  const rowGap = 10;
   for (let i = 0; i < ANNEX_OUTFITS.length; i += 1) {
     const outfit = ANNEX_OUTFITS[i];
     const col = i % 3;
@@ -3025,12 +3811,12 @@ function drawAnnexScene() {
     ctx.fillRect(x, y, cardW, cardH);
     ctx.strokeStyle = isEquipped ? "#b7f5c8" : usable ? "#91d2ff" : "#8e889a";
     ctx.strokeRect(x, y, cardW, cardH);
-    drawOutfitCardThumbnail(x + 116, y + 56, outfit.id);
+    drawOutfitCardThumbnail(x + 116, y + 64, outfit.id);
     ctx.fillStyle = "#f5ead6";
-    ctx.font = "bold 16px Trebuchet MS";
-    drawWrappedText(outfit.name, x + 8, y + 22, 104, 17, 1);
-    ctx.font = "13px Trebuchet MS";
-    drawWrappedText(outfit.tagline, x + 8, y + 42, 104, 15, 2);
+    ctx.font = "bold 14px Trebuchet MS";
+    drawWrappedText(outfit.name, x + 8, y + 20, 104, 15, 2);
+    ctx.font = "12px Trebuchet MS";
+    drawWrappedText(outfit.tagline, x + 8, y + 50, 104, 13, 4);
 
     let badge = isDundieRewardOutfit(outfit) ? "EARN FROM DUNDIE" : `BUY ${outfit.cost} SB`;
     if (!usable) badge = `ONLY ${outfit.character.toUpperCase()}`;
@@ -3039,21 +3825,21 @@ function drawAnnexScene() {
     else if (owned) badge = "EQUIP";
     ctx.fillStyle = isEquipped ? "#d6ffd8" : "#ffe0a8";
     ctx.font = "bold 14px Trebuchet MS";
-    ctx.fillText(badge, x + 8, y + 100);
+    ctx.fillText(badge, x + 8, y + 116);
 
     state.annexCards.push({ x, y, w: cardW, h: cardH, outfitId: outfit.id });
   }
 
   ctx.fillStyle = "rgba(9, 11, 19, 0.8)";
-  ctx.fillRect(64, 434, 868, 34);
+  ctx.fillRect(64, 22, 868, 34);
   ctx.strokeStyle = "#ffbbec";
-  ctx.strokeRect(64, 434, 868, 34);
+  ctx.strokeRect(64, 22, 868, 34);
   ctx.fillStyle = "#f5deef";
   ctx.font = "17px Trebuchet MS";
   ctx.fillText(
     state.annexMessage || "Kelly: Welcome to the Annex Boutique, where confidence is mandatory and glitter is a lifestyle.",
     76,
-    457
+    45
   );
 }
 
@@ -3175,6 +3961,9 @@ function drawFinalCutsceneScene() {
   ctx.fillStyle = "#d9b089";
   ctx.fillRect(dx + 11 * ds + darylShift, dy - 34 * ds + keyTap, 4 * ds, 8 * ds);
   ctx.fillRect(dx + 33 * ds + darylShift, dy - 34 * ds - keyTap, 4 * ds, 8 * ds);
+  ctx.fillStyle = "#4f6da0";
+  ctx.fillRect(dx + 11 * ds + darylShift, dy - 34 * ds + keyTap, 4 * ds, 3 * ds);
+  ctx.fillRect(dx + 33 * ds + darylShift, dy - 34 * ds - keyTap, 4 * ds, 3 * ds);
   ctx.fillStyle = "#1f2736";
   ctx.fillRect(dx + 18 * ds + darylShift, dy - 22 * ds, 5 * ds, 14 * ds);
   ctx.fillRect(dx + 25 * ds + darylShift, dy - 22 * ds, 5 * ds, 14 * ds);
@@ -3222,6 +4011,9 @@ function drawFinalCutsceneScene() {
   ctx.fillStyle = "#d9ba97";
   ctx.fillRect(mx + 3 * s, my - 31 * s - bounce + armSwing, 4 * s, 12 * s);
   ctx.fillRect(mx + 25 * s, my - 31 * s - bounce - armSwing, 4 * s, 12 * s);
+  ctx.fillStyle = "#151820";
+  ctx.fillRect(mx + 3 * s, my - 31 * s - bounce + armSwing, 4 * s, 5 * s);
+  ctx.fillRect(mx + 25 * s, my - 31 * s - bounce - armSwing, 4 * s, 5 * s);
   ctx.fillStyle = "#1f2736";
   ctx.fillRect(mx + 10 * s, my - 10 * s + Math.max(0, -legSwing), 5 * s, 12 * s + Math.abs(legSwing));
   ctx.fillRect(mx + 17 * s, my - 10 * s + Math.max(0, legSwing), 5 * s, 12 * s + Math.abs(legSwing));
@@ -3269,6 +4061,9 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
   if (outfitId === "cornell_fit") {
     shirtColor = "#8a2432";
     tieColor = "#f4d76b";
+  } else if (outfitId === "goldenface") {
+    shirtColor = "#121316";
+    tieColor = "#d6b255";
   } else if (outfitId === "date_mike") {
     shirtColor = "#1e2f4e";
     tieColor = "#9a1f2f";
@@ -3301,6 +4096,14 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
   ctx.fillRect(baseX + 10 * s, baseY + 5 * s, 1 * s, 1 * s);
   ctx.fillRect(baseX + 17 * s, baseY + 5 * s, 1 * s, 1 * s);
   ctx.fillRect(baseX + 12 * s, baseY + 8 * s, 5 * s, 1 * s);
+  if (outfitId === "goldenface") {
+    ctx.fillStyle = "#e4ba53";
+    ctx.fillRect(baseX + 8 * s, baseY + 2 * s, 12 * s, 7 * s);
+    ctx.fillStyle = "#1b1a1c";
+    ctx.fillRect(baseX + 10 * s, baseY + 5 * s, 1 * s, 1 * s);
+    ctx.fillRect(baseX + 17 * s, baseY + 5 * s, 1 * s, 1 * s);
+    ctx.fillRect(baseX + 12 * s, baseY + 8 * s, 5 * s, 1 * s);
+  }
 
   ctx.fillStyle = shirtColor;
   ctx.fillRect(baseX + 6 * s, baseY + 10 * s, 16 * s, 18 * s);
@@ -3313,13 +4116,24 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
   }
   if (outfitId === "three_hole_gym") {
     ctx.fillStyle = "#0f1118";
-    ctx.fillRect(baseX + 10 * s, baseY + 15 * s, 2 * s, 2 * s);
-    ctx.fillRect(baseX + 14 * s, baseY + 18 * s, 2 * s, 2 * s);
-    ctx.fillRect(baseX + 18 * s, baseY + 16 * s, 2 * s, 2 * s);
+    ctx.fillRect(baseX + 14 * s, baseY + 14 * s, 2 * s, 2 * s);
+    ctx.fillRect(baseX + 14 * s, baseY + 17 * s, 2 * s, 2 * s);
+    ctx.fillRect(baseX + 14 * s, baseY + 20 * s, 2 * s, 2 * s);
+  }
+  if (outfitId === "goldenface") {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(baseX + 12 * s, baseY + 12 * s, 4 * s, 10 * s);
+    ctx.fillStyle = "#121316";
+    ctx.fillRect(baseX + 6 * s, baseY + 10 * s, 4 * s, 18 * s);
+    ctx.fillRect(baseX + 18 * s, baseY + 10 * s, 4 * s, 18 * s);
   }
   if (outfitId === "ryan_beard") {
-    ctx.fillStyle = "#5f3e2f";
-    ctx.fillRect(baseX + 10 * s, baseY + 7 * s, 8 * s, 2 * s);
+    ctx.fillStyle = "#151518";
+    ctx.fillRect(baseX + 7 * s, baseY + 6 * s, 2 * s, 4 * s);
+    ctx.fillRect(baseX + 19 * s, baseY + 6 * s, 2 * s, 4 * s);
+    ctx.fillRect(baseX + 9 * s, baseY + 7 * s, 10 * s, 2 * s);
+    ctx.fillRect(baseX + 9 * s, baseY + 9 * s, 10 * s, 1 * s);
+    ctx.fillRect(baseX + 11 * s, baseY + 10 * s, 6 * s, 1 * s);
   }
   if (outfitId === "date_mike") {
     ctx.fillStyle = "#0d1118";
@@ -3415,6 +4229,7 @@ function render() {
   if (state.scene === "menu") drawMenuScene();
   else if (state.scene === "run") drawRunScene();
   else if (state.scene === "shop") drawShopScene();
+  else if (state.scene === "desk") drawDeskScene();
   else if (state.scene === "missions") drawMissionsScene();
   else if (state.scene === "cutscene") drawFinalCutsceneScene();
   else drawAnnexScene();
@@ -3422,13 +4237,16 @@ function render() {
   if (state.missionToastLeft > 0) {
     const alpha = Math.min(1, state.missionToastLeft / 0.3);
     ctx.globalAlpha = alpha;
+    const toastText = state.missionToastText || "";
+    const toastW = Math.min(860, Math.max(420, ctx.measureText(toastText).width + 36));
+    const toastX = Math.max(20, (canvas.width - toastW) * 0.5);
     ctx.fillStyle = "rgba(8, 14, 24, 0.86)";
-    ctx.fillRect(276, 26, 408, 40);
+    ctx.fillRect(toastX, 20, toastW, 48);
     ctx.strokeStyle = "#8fd6ff";
-    ctx.strokeRect(276, 26, 408, 40);
+    ctx.strokeRect(toastX, 20, toastW, 48);
     ctx.fillStyle = "#d8f3ff";
-    ctx.font = "bold 18px Trebuchet MS";
-    ctx.fillText(state.missionToastText, 292, 52);
+    ctx.font = "bold 17px Trebuchet MS";
+    drawWrappedText(toastText, toastX + 14, 40, toastW - 28, 20, 2);
     ctx.globalAlpha = 1;
   }
 }
@@ -3436,7 +4254,10 @@ function render() {
 function update(dt) {
   state.elapsedSec += dt;
   syncDundieOutfitRewards();
+  syncPostKeyMissionRewards();
+  updateCornerTv(dt);
   if (state.scene === "run") updateRun(dt);
+  updateSkarnMusic(dt);
   if (state.scene === "cutscene") {
     state.cutsceneTimeSec += dt;
     state.cutsceneFadeLeft = Math.max(0, state.cutsceneFadeLeft - dt);
@@ -3460,6 +4281,9 @@ function update(dt) {
       state.annexMessage = "Kelly: Welcome to the Annex Boutique, where confidence is mandatory and glitter is a lifestyle.";
     }
   }
+  if (state.cornerLogoRewardCooldown > 0) {
+    state.cornerLogoRewardCooldown = Math.max(0, state.cornerLogoRewardCooldown - dt);
+  }
 }
 
 function selectWorldByCanvasPoint(x, y) {
@@ -3478,6 +4302,36 @@ function selectWorldByCanvasPoint(x, y) {
     setMenuDialogue();
     return;
   }
+}
+
+function handleMenuSpecialClick(x, y) {
+  if (!state.menuMugBounds) return false;
+  const b = state.menuMugBounds;
+  if (x < b.x || x > b.x + b.w || y < b.y || y > b.y + b.h) return false;
+
+  const mission = state.saveData.missions.threatLevelMidnight;
+  const runnerId = getRunnerId();
+  const equipped = getEquippedOutfitId(runnerId);
+  if (equipped !== "goldenface") {
+    state.menuClickWorldId = null;
+    state.menuClickLeft = 0.7;
+    state.menuClickMessage = "NEED GOLDENFACE";
+    return true;
+  }
+
+  if (mission.added && !mission.completed) {
+    mission.completed = true;
+    persistSave();
+    showMissionToast("Mission Complete: Threat Level Midnight");
+  }
+  state.menuClickWorldId = null;
+  state.menuClickLeft = 0.75;
+  state.menuClickMessage = "MICHAEL SCARN";
+  state.selectedWorldId = "skarn";
+  resetRunState("skarn");
+  summaryPanel.hidden = true;
+  nextLevelBtn.hidden = true;
+  return true;
 }
 
 let lastTs = 0;
@@ -3515,7 +4369,7 @@ function handlePress(ev) {
       state.paused = !state.paused;
       return;
     }
-    if (state.scene === "shop" || state.scene === "annex") {
+    if (state.scene === "shop" || state.scene === "annex" || state.scene === "desk") {
       switchScene("menu");
       return;
     }
@@ -3532,6 +4386,7 @@ function handlePress(ev) {
   if (state.scene !== "run") {
     if (ev.code === "KeyS") switchScene("shop");
     if (ev.code === "KeyA") switchScene("annex");
+    if (ev.code === "KeyD") switchScene("desk");
     return;
   }
 
@@ -3580,6 +4435,7 @@ canvas.addEventListener("pointerdown", (ev) => {
   const y = (ev.clientY - rect.top) * scaleY;
 
   if (state.scene === "menu") {
+    if (handleMenuSpecialClick(x, y)) return;
     selectWorldByCanvasPoint(x, y);
     return;
   }
@@ -3589,6 +4445,10 @@ canvas.addEventListener("pointerdown", (ev) => {
   }
   if (state.scene === "annex") {
     selectAnnexByCanvasPoint(x, y);
+    return;
+  }
+  if (state.scene === "desk") {
+    selectDeskByCanvasPoint(x, y);
     return;
   }
 
@@ -3668,6 +4528,15 @@ state.saveData.unlocks.outfitsUnlocked = ANNEX_OUTFITS.map((outfit) => outfit.id
 state.saveData.achievements.hottestInOffice = true;
 state.saveData.achievements.whitestSneakers = true;
 state.saveData.achievements.dontGoInThere = true;
+// Temporary testing override: mark Save Pam quest complete.
+state.saveData.missions.savePam.added = true;
+state.saveData.missions.savePam.warehouseCleared = true;
+state.saveData.missions.savePam.completed = true;
+state.saveData.missions.savePam.sightingsBest = Math.max(state.saveData.missions.savePam.sightingsBest || 0, 5);
+state.saveData.unlocks.pamFound = true;
+if (!state.saveData.missions.captureStrangler.completed) {
+  state.saveData.unlocks.jimDeskKey = false;
+}
 // Reset purchased powerups for clean testing.
 state.saveData.upgrades = {};
 // One-time wallet reset requested by user for the rebalanced economy.

@@ -26,12 +26,56 @@ body {
     linear-gradient(165deg, var(--bg-top) 0%, var(--bg-mid) 46%, var(--bg-bottom) 100%);
 }
 
+.corner-tv {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.corner-tv__logo {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  width: 92px;
+  height: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  font-family: "Trebuchet MS", "Verdana", sans-serif;
+  letter-spacing: 0.02em;
+  color: #040910;
+  background: linear-gradient(145deg, #5fff88, #26b85c);
+  border: 2px solid #04130a;
+  border-radius: 3px;
+  box-shadow: 0 0 12px #78ffab88;
+  will-change: transform;
+}
+
+.corner-tv__logo-main {
+  font-size: 23px;
+  font-weight: 900;
+  font-style: italic;
+  line-height: 1;
+}
+
+.corner-tv__logo-sub {
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+}
+
 .app {
   max-width: 1080px;
   margin: 0 auto;
   padding: 20px;
   display: grid;
   gap: 14px;
+  position: relative;
+  z-index: 1;
 }
 
 .hud {
@@ -148,6 +192,10 @@ kbd {
 }
 
 @media (max-width: 740px) {
+  .corner-tv__logo { width: 76px; height: 44px; }
+  .corner-tv__logo-main { font-size: 19px; }
+  .corner-tv__logo-sub { font-size: 8px; }
+
   .app {
     padding: 12px;
   }
