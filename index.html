@@ -29,15 +29,17 @@
         <p class="help">Menu: click a Sticky Note then <kbd>Enter</kbd>/<kbd>Launch Level</kbd>. Run: <kbd>Enter</kbd> pause, <kbd>Space</kbd> jump/slide, <kbd>J</kbd> PARKOUR, <kbd>K</kbd> hit. Missions: <kbd>M</kbd>. Dunder Mifflin chaos encouraged.</p>
       </section>
 
-      <canvas id="game" width="960" height="540" aria-label="Hardcore Parkour game area"></canvas>
+      <section class="game-stage">
+        <canvas id="game" width="960" height="540" aria-label="Hardcore Parkour game area"></canvas>
 
-      <section class="panel" id="summaryPanel" hidden>
-        <h2>Performance Review</h2>
-        <p id="summaryText"></p>
-        <div class="controls">
-          <button id="retryBtn">Run It Back</button>
-          <button id="nextLevelBtn" hidden>Continue To Next Level</button>
-        </div>
+        <section class="panel panel--review" id="summaryPanel" hidden>
+          <h2>Performance Review</h2>
+          <p id="summaryText"></p>
+          <div class="controls">
+            <button id="retryBtn">Run It Back</button>
+            <button id="nextLevelBtn" hidden>Continue To Next Level</button>
+          </div>
+        </section>
       </section>
     </main>
 

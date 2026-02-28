@@ -18,7 +18,7 @@
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: "Trebuchet MS", "Verdana", "Segoe UI", sans-serif;
+  font-family: "Lucida Console", "Courier New", monospace;
   color: var(--paper);
   background:
     radial-gradient(circle at 12% 10%, #4bc3ff55 0%, transparent 38%),
@@ -91,7 +91,7 @@ body {
 .hud h1 {
   margin: 0 0 10px;
   color: var(--accent);
-  letter-spacing: 0.09em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   text-shadow:
     0 2px 0 #8e5f00,
@@ -112,7 +112,7 @@ label {
 select,
 button {
   font: inherit;
-  border-radius: 10px;
+  border-radius: 2px;
   border: 2px solid #9ad6ff99;
 }
 
@@ -120,7 +120,7 @@ select {
   color: #0e1c32;
   background: linear-gradient(#fffef9, #ece8d9);
   padding: 8px 12px;
-  box-shadow: inset 0 1px 0 #ffffff;
+  box-shadow: inset 0 1px 0 #ffffff, 0 0 0 1px #23395f;
 }
 
 button {
@@ -132,7 +132,8 @@ button {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   box-shadow:
-    0 4px 0 #123886,
+    0 3px 0 #123886,
+    0 0 0 1px #0d2f73,
     0 8px 18px #08215280;
   transition: transform 80ms ease, box-shadow 80ms ease, filter 80ms ease;
 }
@@ -163,12 +164,18 @@ kbd {
   box-shadow: inset 0 1px 0 #ffffff26;
 }
 
+.game-stage {
+  position: relative;
+  justify-self: center;
+  width: min(100%, 1500px);
+}
+
 #game {
   width: min(100%, 1500px);
   max-width: 100%;
   height: auto;
   border: 3px solid #93deff;
-  border-radius: 12px;
+  border-radius: 2px;
   background: linear-gradient(#79c7ff 0%, #a8d9ff 38%, #dadbd4 38%, #dadbd4 100%);
   box-shadow:
     0 14px 36px #041230b3,
@@ -181,7 +188,7 @@ kbd {
 .panel {
   background: linear-gradient(145deg, #0d1f3cdd 0%, #10264add 100%);
   border: 2px solid #7ad3ff88;
-  border-radius: 12px;
+  border-radius: 2px;
   padding: 14px;
   box-shadow: 0 10px 24px #03112a80;
 }
@@ -191,6 +198,41 @@ kbd {
   color: var(--accent);
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+
+.panel--review {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 18px;
+  z-index: 4;
+  background: linear-gradient(145deg, rgba(8, 17, 34, 0.9) 0%, rgba(14, 31, 58, 0.9) 100%);
+  border-color: #92ddff;
+  box-shadow:
+    0 14px 24px rgba(2, 10, 26, 0.55),
+    0 0 0 2px rgba(18, 44, 84, 0.5);
+}
+
+.panel--review h2 {
+  margin: 0 0 4px;
+}
+
+.panel--review p {
+  margin: 0 0 10px;
+  color: #e8f2ff;
+}
+
+.panel--review.review-controls-only {
+  left: auto;
+  right: 18px;
+  bottom: 18px;
+  width: 230px;
+  padding: 10px;
+}
+
+.panel--review.review-controls-only h2,
+.panel--review.review-controls-only p {
+  display: none;
 }
 
 @media (max-width: 740px) {

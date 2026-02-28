@@ -13,6 +13,10 @@ const cornerLogo = document.getElementById("cornerLogo");
 
 const SAVE_KEY = "hardcore_parkour_save_v1";
 const RESET_ONCE_KEY = "hardcore_parkour_reset_once_v1";
+const INVINCIBILITY_CHEAT_CODE = ["KeyB", "KeyE", "KeyE", "KeyT", "KeyS"];
+const PURSUIT_REVEAL_DURATION = 7.4;
+const PURSUIT_END_CARD_DURATION = 3.4;
+const PURSUIT_END_TADA_PATH = "assets/freesound_community-tada-fanfare-a-6313.mp3";
 
 const CHARACTER_PRESETS = {
   michael: {
@@ -67,12 +71,18 @@ const GAME = {
   slideScorePerObstacle: 80,
 };
 
+const COLLECTIBLE_SPAWN = {
+  baseGap: 1.55,
+  randGap: 1.2,
+  minGap: 0.78,
+};
+
 const WORLDS = [
   { id: "bullpen", label: "The Bullpen", subtitle: "Desks, flying cats, chili spills" },
   { id: "warehouse", label: "The Warehouse", subtitle: "Paper piles, shelves, ladders" },
   { id: "streets", label: "Scranton Streets", subtitle: "Lightpoles, snowballs, hydrants" },
   { id: "corporate", label: "NYC Corporate", subtitle: "Desks, folders, bystanders" },
-  { id: "pursuit", label: "Final Pursuit", subtitle: "Catch the Scranton Strangler at x10 Hardcore" },
+  { id: "pursuit", label: "Final Pursuit", subtitle: "Jump on the Strangler's car to catch him" },
 ];
 
 const THEME_OBSTACLE_POOLS = {
@@ -190,7 +200,7 @@ const ANNEX_OUTFITS = [
     requiredAchievement: "hottestInOffice",
     tagline: "Dundie reward. Boardroom outlaw mode with aggressive stubble.",
     kelly:
-      "Kelly: You look like a bad boy back from a corporate retreat... I love it. Here is 500 Schrute Bucks!",
+      "Kelly: You look like a bad boy back from a corporate retreat... I love it. Here is 500 [SB]!",
   },
   {
     id: "date_mike",
@@ -269,16 +279,26 @@ const state = {
   pendingSpaceTapJump: false,
   floatingText: [],
   particles: [],
+  collectibles: [],
   stars: 0,
   earnedSchruteBucks: 0,
   earnedStanleyNickels: 0,
+  runCollectedSchruteBucks: 0,
+  runCollectedStanleyNickels: 0,
   elapsedSec: 0,
   spawnTimerSec: 1.1,
+  collectibleSpawnTimerSec: 0.9,
   screenShake: 0,
   theme: "bullpen",
   worldBannerText: "",
   worldBannerLeft: 0,
   tobyDistance: 100,
+  pursuitEndPending: false,
+  pursuitRevealLeft: 0,
+  pursuitEndCardLeft: 0,
+  pursuitEndCardCuePlayed: false,
+  pursuitEndFade: 0,
+  pursuitPost10Progress: 0,
   audioCtx: null,
   player: null,
   obstacles: [],
@@ -309,7 +329,9 @@ const state = {
   deskBounds: null,
   deskDrawerBounds: null,
   deskGoldenfaceBounds: null,
+  deskPhotoBounds: null,
   deskDrawerOpen: false,
+  deskPhotoViewerOpen: false,
   shopMessage: "",
   shopMessageColor: "#c5d9f2",
   shopMessageLeft: 0,
@@ -336,6 +358,14 @@ const state = {
   cornerLogoHeight: 52,
   cornerLogoColorT: 0,
   cornerLogoRewardCooldown: 0,
+  jackpotRainLeft: 0,
+  jackpotRainSpawnAcc: 0,
+  jackpotRainDrops: [],
+  cheatInvincible: false,
+  cheatProgress: 0,
+  reviewData: null,
+  reviewAnimSec: 0,
+  reviewAnimDuration: 2.6,
   saveData: null,
 };
 
@@ -349,6 +379,7 @@ function createDefaultSave() {
     unlocks: {
       pamFound: false,
       jimDeskKey: false,
+      goldenfaceTakenFromDesk: false,
       shopUnlocked: false,
       outfitsUnlocked: [],
       equippedOutfits: {
@@ -422,6 +453,7 @@ function loadSave() {
       unlocks: {
         ...defaults.unlocks,
         ...parsedUnlocks,
+        goldenfaceTakenFromDesk: Boolean(parsedUnlocks.goldenfaceTakenFromDesk),
         equippedOutfits: {
           ...defaults.unlocks.equippedOutfits,
           ...parsedEquippedOutfits,
@@ -475,6 +507,65 @@ function playThemeSwitchCue() {
     osc.start(now + idx * 0.09);
     osc.stop(now + idx * 0.09 + 0.12);
   });
+}
+
+function playStranglerRevealCue() {
+  const audioCtx = ensureAudioContext();
+  if (!audioCtx) return;
+  if (audioCtx.state === "suspended") audioCtx.resume();
+
+  const now = audioCtx.currentTime;
+  const notes = [220, 277.18, 329.63, 415.3];
+  notes.forEach((frequency, idx) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(frequency, now + idx * 0.08);
+    gain.gain.setValueAtTime(0.0001, now + idx * 0.08);
+    gain.gain.exponentialRampToValueAtTime(0.1, now + idx * 0.08 + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.08 + 0.2);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now + idx * 0.08);
+    osc.stop(now + idx * 0.08 + 0.22);
+  });
+}
+
+function playPursuitEndBumBumCue() {
+  const fallbackSynth = () => {
+    const audioCtx = ensureAudioContext();
+    if (!audioCtx) return;
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    const now = audioCtx.currentTime;
+    const hits = [
+      { f: 523.25, t: 0.0, d: 0.18, level: 0.08, type: "triangle" },
+      { f: 659.25, t: 0.11, d: 0.2, level: 0.09, type: "triangle" },
+      { f: 783.99, t: 0.21, d: 0.28, level: 0.1, type: "triangle" },
+      { f: 1046.5, t: 0.28, d: 0.42, level: 0.11, type: "square" },
+    ];
+    hits.forEach((hit) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = hit.type;
+      osc.frequency.setValueAtTime(hit.f, now + hit.t);
+      gain.gain.setValueAtTime(0.0001, now + hit.t);
+      gain.gain.exponentialRampToValueAtTime(hit.level, now + hit.t + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + hit.t + hit.d);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now + hit.t);
+      osc.stop(now + hit.t + hit.d + 0.02);
+    });
+  };
+
+  try {
+    const audio = new Audio(PURSUIT_END_TADA_PATH);
+    audio.volume = 0.95;
+    audio.currentTime = 0;
+    audio.play().catch(() => fallbackSynth());
+  } catch {
+    fallbackSynth();
+  }
 }
 
 function playCutsceneSingingNote(frequency, durationSec = 0.28) {
@@ -677,6 +768,7 @@ function updateLevelMusic(dt) {
     state.running &&
     !state.paused &&
     !state.gameOver &&
+    !(state.runWorldId === "pursuit" && state.pursuitEndPending) &&
     state.runWorldId !== "skarn";
 
   if (!active) {
@@ -787,8 +879,16 @@ function ownsUpgrade(id) {
   return Boolean(state.saveData.upgrades[id]);
 }
 
+function formatSchruteBucks(amount) {
+  return `${amount} Schrute ${amount === 1 ? "Buck" : "Bucks"}`;
+}
+
+function formatStanleyNickels(amount) {
+  return `${amount} Stanley ${amount === 1 ? "Nickel" : "Nickels"}`;
+}
+
 function shopPriceLabel(item) {
-  return `${item.cost} SN`;
+  return formatStanleyNickels(item.cost);
 }
 
 function showShopMessage(text, color = "#ffe4a8") {
@@ -800,6 +900,43 @@ function showShopMessage(text, color = "#ffe4a8") {
 function showMissionToast(text) {
   state.missionToastText = text;
   state.missionToastLeft = 2.6;
+}
+
+function renderReviewSummaryText() {
+  if (!state.reviewData) return;
+  const progress = Math.max(0, Math.min(1, state.reviewAnimSec / state.reviewAnimDuration));
+  const ease = 1 - Math.pow(1 - progress, 3);
+  const shownSb = Math.round(state.reviewData.prevSb + (state.reviewData.totalSb - state.reviewData.prevSb) * ease);
+  const shownSn = Math.round(state.reviewData.prevSn + (state.reviewData.totalSn - state.reviewData.prevSn) * ease);
+  const shownEarnedSb = Math.round(state.reviewData.earnedSb * ease);
+  const shownEarnedSn = Math.round(state.reviewData.earnedSn * ease);
+  summaryText.textContent = `${state.reviewData.runner} finished ${state.reviewData.world} with ${
+    state.reviewData.stars
+  }/5 stars. Score ${state.reviewData.score}, Style ${state.reviewData.style}, Best Hardcore chain ${
+    state.reviewData.bestChain
+  }. Rewards: +${formatSchruteBucks(shownEarnedSb)}, +${formatStanleyNickels(
+    shownEarnedSn
+  )}. Total Wallet: ${formatSchruteBucks(shownSb)} / ${formatStanleyNickels(shownSn)}. ${
+    state.reviewData.endingLine
+  }${state.reviewData.questEndingLine ? ` ${state.reviewData.questEndingLine}` : ""}`;
+}
+
+function advanceCheatCode(code) {
+  const expected = INVINCIBILITY_CHEAT_CODE[state.cheatProgress];
+  if (code === expected) {
+    state.cheatProgress += 1;
+    if (state.cheatProgress >= INVINCIBILITY_CHEAT_CODE.length) {
+      state.cheatProgress = 0;
+      state.cheatInvincible = !state.cheatInvincible;
+      showMissionToast(
+        state.cheatInvincible
+          ? "Cheat ON: No injuries. (Code: B E E T S)"
+          : "Cheat OFF: Injury is back on."
+      );
+    }
+    return;
+  }
+  state.cheatProgress = code === INVINCIBILITY_CHEAT_CODE[0] ? 1 : 0;
 }
 
 function syncDundieOutfitRewards() {
@@ -853,8 +990,20 @@ function showAnnexMessage(text) {
 function awardCornerTvJackpot() {
   state.saveData.currencies.schruteBucks += 250;
   state.cornerLogoRewardCooldown = 0.8;
+  state.jackpotRainLeft = 2.8;
+  state.jackpotRainSpawnAcc = 0;
+  for (let i = 0; i < 48; i += 1) {
+    state.jackpotRainDrops.push({
+      x: Math.random() * canvas.width,
+      y: -Math.random() * 180,
+      vy: 220 + Math.random() * 230,
+      spin: Math.random() * Math.PI * 2,
+      spinRate: 2 + Math.random() * 4,
+      size: 9 + Math.random() * 5,
+    });
+  }
   persistSave();
-  showMissionToast("Corner hit! +250 Schrute Bucks from the office TV.");
+  showMissionToast("Corner hit! +250 [SB] from the office TV.");
 }
 
 function updateCornerTv(dt) {
@@ -1015,7 +1164,7 @@ function toggleOutfit(outfitId) {
       state.saveData.unlocks.outfitsUnlocked.push(outfit.id);
     } else {
       if (state.saveData.currencies.schruteBucks < outfit.cost) {
-        showAnnexMessage("Kelly: No Schrute Bucks, no boutique magic. This is not a charity runway.");
+        showAnnexMessage("Kelly: No [SB], no boutique magic. This is not a charity runway.");
         return;
       }
       state.saveData.currencies.schruteBucks -= outfit.cost;
@@ -1047,6 +1196,15 @@ function toggleOutfit(outfitId) {
 
 function startJimConversation() {
   if (state.shopForeheadStare) return;
+  const capture = state.saveData.missions.captureStrangler;
+  if (capture.completed) {
+    state.shopConversation = {
+      actor: "jim",
+      step: "post_choice",
+      text: "Jim: You actually caught the Strangler. No mission this time, just office-level conversation.",
+    };
+    return;
+  }
   state.shopConversation = {
     actor: "jim",
     step: "choice",
@@ -1056,6 +1214,33 @@ function startJimConversation() {
 
 function handleJimConversationClick(choiceId) {
   if (!state.shopConversation) return;
+
+  if (state.shopConversation.step === "post_choice") {
+    if (choiceId === "ask_prank") {
+      state.shopConversation = {
+        actor: "jim",
+        step: "post_reply",
+        text: "Jim: Best prank? Putting Dwight's stapler in Jell-O. Timeless. Like jazz, but petty.",
+      };
+      return;
+    }
+    if (choiceId === "ask_desk") {
+      state.shopConversation = {
+        actor: "jim",
+        step: "post_reply",
+        text:
+          "Jim: Desk key still opens my desk. If you find anything weird in there, it is definitely not my handwriting.",
+      };
+      return;
+    }
+    state.shopConversation = null;
+    return;
+  }
+
+  if (state.shopConversation.step === "post_reply") {
+    state.shopConversation = null;
+    return;
+  }
 
   if (state.shopConversation.step === "choice") {
     if (choiceId === "ask") {
@@ -1212,10 +1397,10 @@ function tryBuyShopItem(itemId) {
   if (stanleyWallet < item.cost) {
     if (state.saveData.currencies.schruteBucks > 0) {
       state.shopForeheadStare = true;
-      showShopMessage("You offered Schrute Bucks. Jim locks onto your forehead in silence.", "#ff9ea5");
+      showShopMessage("You offered [SB]. Jim locks onto your forehead in silence.", "#ff9ea5");
       return;
     }
-    showShopMessage("Not enough Stanley Nickels.", "#ffb4a7");
+    showShopMessage("Not enough [SN].", "#ffb4a7");
     return;
   }
 
@@ -1240,7 +1425,10 @@ function switchScene(sceneId) {
   nextLevelBtn.hidden = true;
   if (leavingShop) state.shopForeheadStare = false;
   if (sceneId !== "shop") state.shopConversation = null;
-  if (sceneId === "desk") state.deskDrawerOpen = false;
+  if (sceneId === "desk") {
+    state.deskDrawerOpen = false;
+    state.deskPhotoViewerOpen = false;
+  }
   if (sceneId === "cutscene") {
     state.cutsceneTimeSec = 0;
     state.cutsceneFadeLeft = 0.85;
@@ -1297,6 +1485,7 @@ function resetRunState(worldId = state.selectedWorldId) {
   state.running = true;
   state.paused = false;
   state.gameOver = false;
+  summaryPanel.classList.remove("review-controls-only");
   state.runWorldId = worldId;
   state.theme = worldId;
   state.worldTimeSec = 0;
@@ -1317,11 +1506,15 @@ function resetRunState(worldId = state.selectedWorldId) {
   state.pendingSpaceTapJump = false;
   state.floatingText = [];
   state.particles = [];
+  state.collectibles = [];
   state.stars = 0;
   state.earnedSchruteBucks = 0;
   state.earnedStanleyNickels = 0;
+  state.runCollectedSchruteBucks = 0;
+  state.runCollectedStanleyNickels = 0;
   state.elapsedSec = 0;
   state.spawnTimerSec = 0.7;
+  state.collectibleSpawnTimerSec = 0.85;
   state.screenShake = 0;
   state.worldBannerText = THEME_LABELS[worldId] || worldId;
   state.worldBannerLeft = 1.2;
@@ -1334,6 +1527,14 @@ function resetRunState(worldId = state.selectedWorldId) {
   state.pamX = 0;
   state.pamY = 0;
   state.tobyDistance = 100;
+  state.pursuitEndPending = false;
+  state.pursuitRevealLeft = 0;
+  state.pursuitEndCardLeft = 0;
+  state.pursuitEndCardCuePlayed = false;
+  state.pursuitEndFade = 0;
+  state.pursuitPost10Progress = 0;
+  state.reviewData = null;
+  state.reviewAnimSec = 0;
   state.obstacles = [];
 
   if (pamQuestRun) state.worldBannerText = "Warehouse: Save Pam";
@@ -1386,9 +1587,51 @@ function addHitParticles(x, y, color) {
 
 function getPursuitCarPosition() {
   return {
-    x: canvas.width - 138,
-    y: GAME.floorTop - 48,
+    x: canvas.width - 290,
+    y: GAME.floorTop - 72,
   };
+}
+
+function getPursuitBoardZone() {
+  const car = getPursuitCarPosition();
+  return {
+    x: car.x + 154,
+    y: car.y + 10,
+    width: 44,
+    height: 14,
+  };
+}
+
+function canPromptPursuitJump() {
+  if (state.runWorldId !== "pursuit" || state.pursuitEndPending || state.multiplier < 10 || !state.player) return false;
+  const zone = getPursuitBoardZone();
+  const px = state.player.x + state.player.width * 0.5;
+  return px >= zone.x - 52;
+}
+
+function triggerPursuitBoarding() {
+  if (state.runWorldId !== "pursuit" || state.pursuitEndPending || state.multiplier < 10 || !state.player) return false;
+  if (!canPromptPursuitJump()) return false;
+  const zone = getPursuitBoardZone();
+  state.player.x = zone.x + zone.width * 0.5 - state.player.width * 0.5;
+  state.player.y = zone.y;
+  state.player.vy = 0;
+  state.player.grounded = true;
+  state.player.jumpsUsed = 0;
+  state.pursuitEndPending = true;
+  state.pursuitRevealLeft = PURSUIT_REVEAL_DURATION;
+  state.pursuitEndCardLeft = PURSUIT_END_CARD_DURATION;
+  state.pursuitEndCardCuePlayed = false;
+  state.pursuitEndFade = 1.1;
+  state.speedBoostLeft = 0;
+  state.stumbleLeft = 0;
+  state.levelMusicTimer = 0;
+  state.levelMusicStep = 0;
+  state.levelMusicWorld = null;
+  state.screenShake = Math.max(state.screenShake, 0.24);
+  playStranglerRevealCue();
+  addFloatingText("CAR CAUGHT!", state.player.x - 8, state.player.y - 44, "#ffe7a2");
+  return true;
 }
 
 function spawnObstacle() {
@@ -1420,16 +1663,16 @@ function spawnObstacle() {
   let top = GAME.groundY - size.h + size.topOffset;
   if (state.runWorldId === "pursuit") {
     const car = getPursuitCarPosition();
-    spawnX = car.x + 44 + Math.random() * 10;
+    spawnX = car.x + 178 + Math.random() * 14;
     const ejectY = {
-      folder: car.y + 6,
-      paper_ream: car.y + 14,
-      mung_beans: car.y + 18,
+      folder: car.y - 14,
+      paper_ream: car.y - 8,
+      mung_beans: car.y - 18,
     }[type];
     if (typeof ejectY === "number") top = ejectY;
   }
 
-  state.obstacles.push({
+  const obstacle = {
     type,
     x: spawnX,
     y: top,
@@ -1437,6 +1680,31 @@ function spawnObstacle() {
     height: size.h,
     hp: size.hp,
     hit: false,
+    speedFactor: distanceFactor,
+  };
+
+  if (state.runWorldId === "pursuit" && type === "mung_beans") {
+    obstacle.vy = -340;
+    obstacle.bounceSpeed = 340;
+    obstacle.bounceY = GAME.groundY - size.h + 2;
+  }
+
+  state.obstacles.push(obstacle);
+}
+
+function spawnCollectible() {
+  // More Stanley Nickels than Schrute Bucks.
+  const type = Math.random() < 0.35 ? "schrute_buck" : "stanley_nickel";
+  const elevated = Math.random() < 0.62;
+  const y = elevated ? GAME.groundY - 98 - Math.random() * 48 : GAME.groundY - 24;
+  const difficulty = LEVEL_DIFFICULTY[state.runWorldId] || LEVEL_DIFFICULTY.bullpen;
+  const distanceFactor = Math.min(1.75, 1 + state.worldTimeSec / 75) * difficulty.obstacleSpeedMul;
+  state.collectibles.push({
+    type,
+    x: canvas.width + 24,
+    y,
+    width: type === "schrute_buck" ? 32 : 26,
+    height: type === "schrute_buck" ? 28 : 26,
     speedFactor: distanceFactor,
   });
 }
@@ -1453,10 +1721,18 @@ function calculateStars() {
 function endRun(reason = "time") {
   state.running = false;
   state.gameOver = true;
+  // Clear pursuit reveal/fade state so summary never sits behind a black overlay.
+  state.pursuitEndPending = false;
+  state.pursuitRevealLeft = 0;
+  state.pursuitEndCardLeft = 0;
+  state.pursuitEndCardCuePlayed = false;
+  state.pursuitEndFade = 0;
   state.stars = reason === "toby_caught" && state.runWorldId === "pursuit" ? 5 : calculateStars();
-  // Economy v2: much lower payouts. Example target: 5-star run => 50 SB and 10 SN.
-  state.earnedSchruteBucks = state.stars * 10;
-  state.earnedStanleyNickels = state.stars * 2;
+  // Economy v3: only currency collected inside the level is rewarded.
+  state.earnedSchruteBucks = state.runCollectedSchruteBucks;
+  state.earnedStanleyNickels = state.runCollectedStanleyNickels;
+  const prevSb = state.saveData.currencies.schruteBucks;
+  const prevSn = state.saveData.currencies.stanleyNickels;
 
   state.saveData.currencies.schruteBucks += state.earnedSchruteBucks;
   state.saveData.currencies.stanleyNickels += state.earnedStanleyNickels;
@@ -1531,16 +1807,26 @@ function endRun(reason = "time") {
     endingLine = "Finale unlocked: You caught Toby's car. The Scranton Strangler was Toby.";
   }
 
-  summaryText.textContent = `${state.player.preset.label} finished ${THEME_LABELS[state.runWorldId]} with ${
-    state.stars
-  }/5 stars. Score ${Math.floor(state.score)}, Style ${Math.floor(state.style)}, Best Hardcore chain ${
-    state.bestChain
-  }. Rewards: +${state.earnedSchruteBucks} Schrute Bucks, +${
-    state.earnedStanleyNickels
-  } Stanley Nickels. Total Wallet: ${state.saveData.currencies.schruteBucks} SB / ${
-    state.saveData.currencies.stanleyNickels
-  } SN. ${endingLine}${questEndingLine ? ` ${questEndingLine}` : ""}`;
+  state.reviewData = {
+    runner: state.player.preset.label,
+    world: THEME_LABELS[state.runWorldId],
+    stars: state.stars,
+    score: Math.floor(state.score),
+    style: Math.floor(state.style),
+    bestChain: state.bestChain,
+    earnedSb: state.earnedSchruteBucks,
+    earnedSn: state.earnedStanleyNickels,
+    prevSb,
+    prevSn,
+    totalSb: state.saveData.currencies.schruteBucks,
+    totalSn: state.saveData.currencies.stanleyNickels,
+    endingLine,
+    questEndingLine,
+  };
+  state.reviewAnimSec = 0;
+  renderReviewSummaryText();
   summaryPanel.hidden = false;
+  summaryPanel.classList.add("review-controls-only");
 }
 
 function spawnPamAppearance() {
@@ -1649,6 +1935,13 @@ function intersects(a, b) {
 function handleObstacleCollision(obstacle) {
   if (obstacle.hit) return;
   obstacle.hit = true;
+
+  if (state.cheatInvincible) {
+    state.style += 8;
+    addFloatingText("NOPE", state.player.x + 8, state.player.y - 28, "#a5ffcf");
+    addHitParticles(obstacle.x + obstacle.width * 0.5, obstacle.y + obstacle.height * 0.5, "#9ef7cf");
+    return;
+  }
 
   if (obstacle.type === "shelf" && state.player.preset.canBreakWeakFloorboard) {
     state.score += 85;
@@ -1799,12 +2092,29 @@ function updateRun(dt) {
   const runSpeed = state.slideActive ? movementSpeed + state.slideSpeed : movementSpeed;
 
   if (state.runWorldId === "pursuit") {
-    if (state.multiplier >= 10) {
-      endRun("toby_caught");
+    if (state.pursuitEndPending) {
+      if (state.pursuitRevealLeft > 0) {
+        state.pursuitRevealLeft = Math.max(0, state.pursuitRevealLeft - dt);
+      } else if (state.pursuitEndCardLeft > 0) {
+        if (!state.pursuitEndCardCuePlayed) {
+          state.pursuitEndCardCuePlayed = true;
+          playPursuitEndBumBumCue();
+        }
+        state.pursuitEndCardLeft = Math.max(0, state.pursuitEndCardLeft - dt);
+      } else {
+        state.pursuitEndFade = Math.max(0, state.pursuitEndFade - dt);
+        if (state.pursuitEndFade <= 0) endRun("toby_caught");
+      }
       return;
     }
-    const chaseProgress = Math.max(0, Math.min(1, (state.multiplier - 1) / 9));
-    const targetX = state.stumbleLeft > 0 ? 66 : 84 + chaseProgress * 292;
+    if (state.multiplier < 10) {
+      state.pursuitPost10Progress = 0;
+    } else {
+      state.pursuitPost10Progress = Math.min(1, state.pursuitPost10Progress + dt * 0.55);
+    }
+    const pre10 = Math.max(0, Math.min(1, (Math.min(state.multiplier, 10) - 1) / 9));
+    const chaseProgress = state.multiplier < 10 ? pre10 * 0.78 : 0.78 + state.pursuitPost10Progress * 0.22;
+    const targetX = state.stumbleLeft > 0 ? 66 : 84 + chaseProgress * 752;
     state.player.x += (targetX - state.player.x) * Math.min(1, dt * 9);
     state.tobyDistance = Math.max(0, 100 - chaseProgress * 100);
   }
@@ -1830,6 +2140,16 @@ function updateRun(dt) {
     state.spawnTimerSec = Math.max(difficulty.spawnMin, spawnGap - state.worldTimeSec * 0.004);
   }
 
+  state.collectibleSpawnTimerSec -= dt;
+  if (state.collectibleSpawnTimerSec <= 0) {
+    spawnCollectible();
+    const gap = COLLECTIBLE_SPAWN.baseGap + Math.random() * COLLECTIBLE_SPAWN.randGap;
+    state.collectibleSpawnTimerSec = Math.max(
+      COLLECTIBLE_SPAWN.minGap,
+      gap - state.worldTimeSec * 0.0025
+    );
+  }
+
   const hitboxW = player.width * player.preset.hitboxScale;
   const hitboxHBase = player.height * player.preset.hitboxScale;
   const hitboxH = state.slideActive ? hitboxHBase * 0.55 : hitboxHBase;
@@ -1840,11 +2160,30 @@ function updateRun(dt) {
     height: hitboxH,
   };
 
+  if (state.runWorldId === "pursuit" && state.multiplier >= 10 && !state.pursuitEndPending && canPromptPursuitJump()) {
+    const zone = getPursuitBoardZone();
+    const playerBottom = playerBox.y + playerBox.height;
+    const landingFromAbove = player.vy > 40 && playerBottom <= zone.y + 12;
+    if (landingFromAbove && intersects(playerBox, zone)) {
+      triggerPursuitBoarding();
+      return;
+    }
+  }
+
   handleAttackHits(playerBox);
 
   for (const obstacle of state.obstacles) {
     const prevX = obstacle.x;
     obstacle.x -= runSpeed * dt * obstacle.speedFactor;
+    if (state.runWorldId === "pursuit" && obstacle.type === "mung_beans") {
+      const groundY = typeof obstacle.bounceY === "number" ? obstacle.bounceY : GAME.groundY - obstacle.height + 2;
+      obstacle.vy = (obstacle.vy || 0) + 1160 * dt;
+      obstacle.y += obstacle.vy * dt;
+      if (obstacle.y >= groundY) {
+        obstacle.y = groundY;
+        obstacle.vy = -(obstacle.bounceSpeed || 340);
+      }
+    }
     if (obstacle.hit) continue;
     const slidingIntoChili = obstacle.type === "chili_spill" && (state.slideActive || state.spaceHeld || state.spaceHoldSec > 0);
     const touching = intersects(playerBox, obstacle);
@@ -1923,6 +2262,23 @@ function updateRun(dt) {
   }
 
   state.obstacles = state.obstacles.filter((obs) => obs.x + obs.width > -20 && !obs.hit);
+
+  for (const coin of state.collectibles) {
+    coin.x -= runSpeed * dt * (coin.speedFactor || 1);
+    const coinBox = { x: coin.x, y: coin.y, width: coin.width, height: coin.height };
+    if (!intersects(playerBox, coinBox)) continue;
+    coin.hit = true;
+    if (coin.type === "schrute_buck") {
+      state.runCollectedSchruteBucks += 5;
+      addFloatingText("+5", coin.x - 2, coin.y - 8, "#ffe07c");
+      addHitParticles(coin.x + 10, coin.y + 10, "#ffd774");
+    } else {
+      state.runCollectedStanleyNickels += 1;
+      addFloatingText("+1", coin.x - 2, coin.y - 8, "#cfe8ff");
+      addHitParticles(coin.x + 10, coin.y + 10, "#c6e2ff");
+    }
+  }
+  state.collectibles = state.collectibles.filter((coin) => !coin.hit && coin.x + coin.width > -30);
 
   for (const text of state.floatingText) {
     text.age += dt;
@@ -2379,6 +2735,110 @@ function drawRunBackground() {
     }
   }
 
+  // 16-bit detail pass: extra themed props and texture density per world.
+  if (state.theme === "bullpen") {
+    // Bulletin strips + tiny desk props.
+    ctx.fillStyle = "#f9f4df";
+    for (let i = 0; i < 10; i += 1) {
+      const x = i * 98 - ((xShift * 0.34) % 98);
+      ctx.fillRect(x + 10, 126, 16, 8);
+      ctx.fillStyle = "#d74f4f";
+      ctx.fillRect(x + 14, 128, 2, 2);
+      ctx.fillStyle = "#f9f4df";
+    }
+    ctx.fillStyle = "#42536a";
+    for (let i = 0; i < 7; i += 1) {
+      const x = i * 142 - ((xShift * 0.52) % 142);
+      ctx.fillRect(x + 18, 268, 36, 8);
+      ctx.fillStyle = "#86c9ff";
+      ctx.fillRect(x + 22, 270, 12, 4);
+      ctx.fillStyle = "#42536a";
+    }
+  } else if (state.theme === "warehouse") {
+    // Safety stripes, crate labels, hanging chain silhouettes.
+    for (let i = 0; i < 10; i += 1) {
+      const x = i * 112 - ((xShift * 0.5) % 112);
+      ctx.fillStyle = "#f6d25f";
+      ctx.fillRect(x + 8, 314, 18, 4);
+      ctx.fillStyle = "#2f3643";
+      ctx.fillRect(x + 14, 314, 4, 4);
+    }
+    ctx.fillStyle = "#d9e2f0";
+    for (let i = 0; i < 8; i += 1) {
+      const x = i * 126 - ((xShift * 0.46) % 126);
+      ctx.fillRect(x + 20, 232, 14, 4);
+      ctx.fillRect(x + 22, 238, 10, 2);
+    }
+    ctx.fillStyle = "rgba(38,46,58,0.55)";
+    for (let i = 0; i < 6; i += 1) {
+      const x = i * 168 - ((xShift * 0.18) % 168);
+      ctx.fillRect(x + 40, 70, 2, 52);
+      ctx.fillRect(x + 44, 84, 2, 38);
+    }
+  } else if (state.theme === "corporate") {
+    // Glass building depth: mullion grid and warm office pockets.
+    for (let i = 0; i < 6; i += 1) {
+      const x = i * 168 - ((xShift * 0.18) % 168);
+      ctx.fillStyle = "rgba(44,98,127,0.44)";
+      for (let gy = 66; gy < 188; gy += 20) ctx.fillRect(x + 28, gy, 112, 1);
+      ctx.fillStyle = "rgba(255,214,160,0.5)";
+      ctx.fillRect(x + 42, 98, 10, 8);
+      ctx.fillRect(x + 88, 138, 10, 8);
+    }
+    ctx.fillStyle = "rgba(255,255,255,0.14)";
+    for (let i = 0; i < 18; i += 1) {
+      const x = i * 58 - ((xShift * 0.66) % 58);
+      ctx.fillRect(x, 228, 26, 1);
+    }
+  } else if (state.theme === "streets") {
+    // Extra street realism: window trims, curb noise, snow ridge highlights.
+    ctx.fillStyle = "rgba(210, 225, 246, 0.55)";
+    for (let i = 0; i < 16; i += 1) {
+      const x = i * 72 - ((xShift * 0.88) % 72);
+      ctx.fillRect(x + 4, GAME.floorTop + 9, 20, 1);
+      ctx.fillRect(x + 30, GAME.floorTop + 10, 10, 1);
+    }
+    ctx.fillStyle = "rgba(248, 252, 255, 0.5)";
+    for (let i = 0; i < 10; i += 1) {
+      const x = i * 128 - ((xShift * 0.64) % 128);
+      ctx.fillRect(x + 14, GAME.floorTop + 20, 44, 2);
+    }
+  } else if (state.theme === "pursuit") {
+    // Chase road richness: shoulder reflectors + distant overpass.
+    ctx.fillStyle = "#2a3240";
+    ctx.fillRect(0, GAME.floorTop - 6, canvas.width, 6);
+    ctx.fillStyle = "#d8e1ee";
+    for (let i = 0; i < 28; i += 1) {
+      const x = i * 44 - ((xShift * 1.22) % 44);
+      ctx.fillRect(x + 6, GAME.floorTop + 14, 3, 2);
+      ctx.fillRect(x + 6, canvas.height - 10, 3, 2);
+    }
+    ctx.fillStyle = "rgba(255,190,120,0.5)";
+    for (let i = 0; i < 9; i += 1) {
+      const x = i * 136 - ((xShift * 0.52) % 136);
+      ctx.fillRect(x + 18, 288, 10, 4);
+    }
+  } else if (state.theme === "skarn") {
+    // 80s stage vibes: neon grid + speaker towers.
+    ctx.strokeStyle = "rgba(255,176,230,0.35)";
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 10; i += 1) {
+      const x = i * 110 - ((xShift * 0.35) % 110);
+      ctx.beginPath();
+      ctx.moveTo(x, GAME.floorTop + 6);
+      ctx.lineTo(x + 80, canvas.height - 2);
+      ctx.stroke();
+    }
+    for (let i = 0; i < 3; i += 1) {
+      const sx = 30 + i * 300;
+      ctx.fillStyle = "#1d1630";
+      ctx.fillRect(sx, 320, 28, 80);
+      ctx.fillStyle = "#4d3a6d";
+      ctx.fillRect(sx + 6, 330, 16, 16);
+      ctx.fillRect(sx + 6, 352, 16, 16);
+    }
+  }
+
   // Soft scanline pass to keep the crunchy 8-bit feel.
   ctx.fillStyle = "rgba(0, 0, 0, 0.06)";
   for (let y = 0; y < canvas.height; y += 4) {
@@ -2399,26 +2859,64 @@ function drawPlayer() {
   const runCycleOpp = Math.sin(state.worldTimeSec * 18 + Math.PI);
   const bob = player.grounded ? Math.abs(Math.sin(state.worldTimeSec * 18)) * 2 : -2;
   const bodyY = y + (state.slideActive ? 10 : 14) + bob;
+  const skinBase = player.preset.label === "Darryl" ? "#8b664b" : player.preset.label === "Kelly" ? "#a47657" : "#efcfab";
+  const skinShade = player.preset.label === "Darryl" ? "#6e4f3c" : player.preset.label === "Kelly" ? "#8b6348" : "#c9a682";
+  const skinHighlight = player.preset.label === "Darryl" ? "#a17858" : player.preset.label === "Kelly" ? "#b48462" : "#f4dcc1";
+  const hairBase =
+    player.preset.label === "Dwight"
+      ? "#34251a"
+      : player.preset.label === "Pam"
+      ? "#6a4a34"
+      : player.preset.label === "Jim"
+      ? "#2f231c"
+      : "#3a281d";
+  const hairShade =
+    player.preset.label === "Dwight"
+      ? "#251a13"
+      : player.preset.label === "Pam"
+      ? "#4e3728"
+      : player.preset.label === "Jim"
+      ? "#221913"
+      : "#2b1f17";
 
   ctx.fillStyle = "rgba(0,0,0,0.2)";
   ctx.beginPath();
   ctx.ellipse(x + 21, GAME.groundY + 4, 22, 7, 0, 0, Math.PI * 2);
   ctx.fill();
 
+  // Subtle grounding edge (avoid full-box artifact lines around sprite).
+  ctx.fillStyle = "rgba(6, 10, 18, 0.32)";
+  ctx.fillRect(x + 8, y + 14 + bob, 1, state.slideActive ? 18 : 34);
+  ctx.fillRect(x + 34, y + 14 + bob, 1, state.slideActive ? 18 : 34);
+
   // Head + hair.
-  ctx.fillStyle = "#efcfab";
+  ctx.fillStyle = skinBase;
   ctx.fillRect(x + 7, y + 2 + bob, 28, state.slideActive ? 9 : 12);
-  ctx.fillStyle = "#2a1e16";
+  ctx.fillStyle = hairBase;
   ctx.fillRect(x + 6, y - 2 + bob, 30, 5);
   ctx.fillRect(x + 5, y + 1 + bob, 6, 3);
+  ctx.fillStyle = hairShade;
+  ctx.fillRect(x + 6, y - 2 + bob, 30, 1);
+  ctx.fillRect(x + 34, y + 1 + bob, 2, 3);
+  if (!state.slideActive) {
+    ctx.fillStyle = skinShade;
+    ctx.fillRect(x + 6, y + 6 + bob, 1, 4);
+    ctx.fillRect(x + 35, y + 6 + bob, 1, 4);
+  }
   if (player.preset.label === "Dwight") {
     // Dwight hairline: receded forehead + center split.
-    ctx.fillStyle = "#efcfab";
+    ctx.fillStyle = skinBase;
     ctx.fillRect(x + 14, y - 1 + bob, 14, 4);
     ctx.fillRect(x + 19, y - 2 + bob, 2, 6);
-    ctx.fillStyle = "#2a1e16";
+    ctx.fillStyle = hairBase;
     ctx.fillRect(x + 12, y - 1 + bob, 3, 2);
     ctx.fillRect(x + 27, y - 1 + bob, 3, 2);
+    ctx.fillStyle = hairShade;
+    ctx.fillRect(x + 20, y - 1 + bob, 1, 4);
+  }
+  if (!state.slideActive) {
+    ctx.fillStyle = skinShade;
+    ctx.fillRect(x + 16, y + 13 + bob, 10, 2);
   }
 
   // Face details.
@@ -2436,10 +2934,24 @@ function drawPlayer() {
     ctx.fillRect(x + 14, y + 7 + bob, 1, 1);
     ctx.fillRect(x + 26, y + 7 + bob, 1, 1);
   } else {
+    ctx.fillStyle = "#e8f2ff";
+    ctx.fillRect(x + 12, y + 6 + bob, 4, 3);
+    ctx.fillRect(x + 24, y + 6 + bob, 4, 3);
+    ctx.fillStyle = "#1b2230";
     ctx.fillRect(x + 13, y + 6 + bob, 2, 2);
     ctx.fillRect(x + 25, y + 6 + bob, 2, 2);
   }
+  ctx.fillStyle = "rgba(25,30,42,0.5)";
+  ctx.fillRect(x + 12, y + 5 + bob, 4, 1);
+  ctx.fillRect(x + 24, y + 5 + bob, 4, 1);
+  ctx.fillStyle = skinShade;
+  ctx.fillRect(x + 20, y + 8 + bob, 1, 2);
   ctx.fillRect(x + 17, y + 10 + bob, 8, 1);
+  // Face shading.
+  ctx.fillStyle = "rgba(90, 60, 45, 0.28)";
+  ctx.fillRect(x + 8, y + 11 + bob, 26, 2);
+  ctx.fillStyle = skinHighlight;
+  ctx.fillRect(x + 10, y + 3 + bob, 14, 1);
   if (outfitId === "goldenface") {
     ctx.fillStyle = "#e4ba53";
     ctx.fillRect(x + 7, y + 2 + bob, 28, state.slideActive ? 9 : 12);
@@ -2487,6 +2999,13 @@ function drawPlayer() {
   ctx.fillRect(x + 24, bodyY + 1, 11, state.slideActive ? 20 : 32);
   ctx.fillStyle = "rgba(0,0,0,0.12)";
   ctx.fillRect(x + 4, bodyY + 1, 5, state.slideActive ? 20 : 32);
+  // Fine fabric striping for 16-bit density.
+  ctx.fillStyle = "rgba(255,255,255,0.08)";
+  for (let sy = 0; sy < (state.slideActive ? 20 : 32); sy += 4) {
+    ctx.fillRect(x + 9, bodyY + 2 + sy, 15, 1);
+  }
+  ctx.fillStyle = "rgba(0,0,0,0.22)";
+  ctx.fillRect(x + 4, bodyY + (state.slideActive ? 21 : 33), 34, 1);
 
   // Collar + tie.
   ctx.fillStyle = "#f4ead9";
@@ -2530,7 +3049,7 @@ function drawPlayer() {
   const hasSleeves = player.preset.label !== "Dwight" && player.preset.label !== "Kelly";
   const sleeveH = state.slideActive ? 4 : 7;
   // Back arm first for depth.
-  ctx.fillStyle = "#c9a682";
+  ctx.fillStyle = skinShade;
   ctx.fillRect(x - 1, state.slideActive ? slideArmBackY : armBackY, 8, state.slideActive ? 7 : 16);
   if (hasSleeves) {
     ctx.fillStyle = shirtColor;
@@ -2541,12 +3060,12 @@ function drawPlayer() {
       ctx.fillStyle = shirtColor;
       ctx.fillRect(x + 35, y + (state.slideActive ? 15 : 18) + bob, 8, sleeveH);
     }
-    ctx.fillStyle = "#c9a682";
+    ctx.fillStyle = skinShade;
     ctx.fillRect(x + 34, y + (state.slideActive ? 15 : 18) + bob, 14, 8);
     ctx.fillStyle = "#ffe189";
     ctx.fillRect(x + 48, y + (state.slideActive ? 17 : 20) + bob, 18, 4);
   } else {
-    ctx.fillStyle = "#d9ba97";
+    ctx.fillStyle = skinBase;
     ctx.fillRect(x + 35, state.slideActive ? slideArmFrontY : armFrontY, 8, state.slideActive ? 7 : 16);
     if (hasSleeves) {
       ctx.fillStyle = shirtColor;
@@ -2569,12 +3088,30 @@ function drawPlayer() {
     ctx.fillRect(x - 2, GAME.floorTop + 1, 8, 2);
     ctx.fillRect(x - 10, GAME.floorTop + 3, 6, 2);
     ctx.fillRect(x - 16, GAME.floorTop + 5, 5, 1);
+    ctx.fillStyle = "rgba(255,255,255,0.14)";
+    ctx.fillRect(x + 12, slideLegY + 1, 10, 1);
+    ctx.fillRect(x + 28, slideLegY + 6, 8, 1);
   } else {
     ctx.fillRect(x + 10, y + 48 + Math.max(0, -legBack), 9, 14 + Math.abs(legBack));
     ctx.fillRect(x + 24, y + 48 + Math.max(0, -legFront), 9, 14 + Math.abs(legFront));
     ctx.fillStyle = "#141a25";
     ctx.fillRect(x + 9, y + 62 + Math.max(0, -legBack), 10, 3);
     ctx.fillRect(x + 24, y + 62 + Math.max(0, -legFront), 10, 3);
+  }
+
+  // 16-bit detail pass: collar points + belt + shoe highlights.
+  if (!state.slideActive) {
+    ctx.fillStyle = "#f9f3e8";
+    ctx.fillRect(x + 14, bodyY + 3, 2, 2);
+    ctx.fillRect(x + 24, bodyY + 3, 2, 2);
+    ctx.fillStyle = "#0e1520";
+    ctx.fillRect(x + 11, bodyY + 30, 20, 2);
+    ctx.fillStyle = "rgba(255,255,255,0.15)";
+    ctx.fillRect(x + 12, bodyY + 31, 4, 1);
+    ctx.fillRect(x + 26, bodyY + 31, 4, 1);
+    ctx.fillStyle = "rgba(255,255,255,0.18)";
+    ctx.fillRect(x + 10, y + 63 + Math.max(0, -legBack), 4, 1);
+    ctx.fillRect(x + 25, y + 63 + Math.max(0, -legFront), 4, 1);
   }
 }
 
@@ -2592,6 +3129,15 @@ function drawObstacleSprite(obs) {
     ctx.fillStyle = "#c4a58c";
     ctx.fillRect(obs.x + 7, obs.y + 22, 14, 8);
     ctx.fillRect(obs.x + 30, obs.y + 22, 14, 8);
+    ctx.fillStyle = "#503625";
+    ctx.fillRect(obs.x + 4, obs.y + 34, 4, 14);
+    ctx.fillRect(obs.x + obs.width - 8, obs.y + 34, 4, 14);
+    ctx.fillStyle = "#d9e1ea";
+    ctx.fillRect(obs.x + 19, obs.y + 12, 10, 6);
+    ctx.fillStyle = "#9ca7b4";
+    ctx.fillRect(obs.x + 20, obs.y + 13, 8, 4);
+    ctx.fillStyle = "#36465c";
+    ctx.fillRect(obs.x + 24, obs.y + 9, 4, 3);
   } else if (obs.type === "angela_cat") {
     const wobble = Math.sin(state.worldTimeSec * 22 + obs.x * 0.03) * 1.5;
     ctx.fillStyle = "#d6bd99";
@@ -2607,6 +3153,12 @@ function drawObstacleSprite(obs) {
     ctx.fillRect(obs.x + 22, obs.y + 9 + wobble, 2, 2);
     ctx.fillRect(obs.x + 27, obs.y + 9 + wobble, 2, 2);
     ctx.fillRect(obs.x + 25, obs.y + 12 + wobble, 2, 2);
+    ctx.fillStyle = "#b49772";
+    ctx.fillRect(obs.x + 10, obs.y + 11 + wobble, 12, 1);
+    ctx.fillRect(obs.x + 9, obs.y + 15 + wobble, 14, 1);
+    ctx.fillStyle = "#2b2b2b";
+    ctx.fillRect(obs.x + 29, obs.y + 13 + wobble, 2, 1);
+    ctx.fillRect(obs.x + 29, obs.y + 14 + wobble, 2, 1);
   } else if (obs.type === "chili_spill") {
     // Kevin-level chili disaster: floor-anchored tipped pot + thick spill.
     const baseY = obs.y + obs.height;
@@ -2629,11 +3181,20 @@ function drawObstacleSprite(obs) {
     ctx.fillRect(obs.x + 19, baseY - 14, 2, 4);
     ctx.fillStyle = "#474f5f";
     ctx.fillRect(obs.x + 5, baseY - 14, 12, 5);
+    ctx.fillStyle = "#1e232d";
+    ctx.fillRect(obs.x + 8, baseY - 17, 6, 1);
+    ctx.fillRect(obs.x + 18, baseY - 15, 3, 1);
+    ctx.fillStyle = "rgba(255,255,255,0.22)";
+    ctx.fillRect(obs.x + 7, baseY - 13, 6, 1);
   } else if (obs.type === "paper_pile") {
     ctx.fillStyle = "#f0f3f8";
     ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
     ctx.fillStyle = "#d8deea";
     for (let i = 0; i < 3; i += 1) ctx.fillRect(obs.x + 4, obs.y + 6 + i * 7, obs.width - 8, 2);
+    ctx.fillStyle = "#f8fbff";
+    ctx.fillRect(obs.x + obs.width - 9, obs.y + 2, 7, 4);
+    ctx.fillStyle = "#cbd4e2";
+    ctx.fillRect(obs.x + obs.width - 5, obs.y + 2, 1, 4);
   } else if (obs.type === "shelf") {
     // Industrial steel shelving with beams and rivets.
     ctx.fillStyle = "#5f6c7d";
@@ -2657,11 +3218,22 @@ function drawObstacleSprite(obs) {
       ctx.fillRect(obs.x + 5, ry, 2, 2);
       ctx.fillRect(obs.x + obs.width - 7, ry, 2, 2);
     }
+    ctx.fillStyle = "#eac25b";
+    ctx.fillRect(obs.x + 20, obs.y + 14, 10, 4);
+    ctx.fillRect(obs.x + 34, obs.y + 28, 10, 4);
+    ctx.fillStyle = "#4b4b4b";
+    ctx.fillRect(obs.x + 24, obs.y + 15, 2, 2);
+    ctx.fillRect(obs.x + 38, obs.y + 29, 2, 2);
   } else if (obs.type === "ladder") {
     ctx.fillStyle = "#c89e58";
     ctx.fillRect(obs.x + 6, obs.y, 6, obs.height);
     ctx.fillRect(obs.x + obs.width - 12, obs.y, 6, obs.height);
     for (let i = 0; i < 4; i += 1) ctx.fillRect(obs.x + 12, obs.y + 8 + i * 10, obs.width - 24, 4);
+    ctx.fillStyle = "#9c7743";
+    for (let i = 0; i < 4; i += 1) ctx.fillRect(obs.x + 13, obs.y + 9 + i * 10, obs.width - 26, 1);
+    ctx.fillStyle = "#ecd79e";
+    ctx.fillRect(obs.x + 6, obs.y + 3, 2, obs.height - 6);
+    ctx.fillRect(obs.x + obs.width - 10, obs.y + 3, 2, obs.height - 6);
   } else if (obs.type === "lightpole") {
     const poleW = Math.max(8, Math.floor(obs.width * 0.28));
     const poleX = obs.x + Math.floor((obs.width - poleW) * 0.5);
@@ -2680,6 +3252,7 @@ function drawObstacleSprite(obs) {
     // Support arm.
     ctx.fillStyle = "#5a6679";
     ctx.fillRect(poleX - 4, armY, 4, 3);
+    ctx.fillRect(poleX + poleW, armY + 2, 3, 2);
 
     // Main pole with subtle metallic shading.
     ctx.fillStyle = "#4f5a6f";
@@ -2702,6 +3275,8 @@ function drawObstacleSprite(obs) {
     ctx.fill();
     ctx.fillStyle = "#dbe5f2";
     ctx.fillRect(obs.x + 8, obs.y + 6, 4, 3);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(obs.x + 7, obs.y + 5, 3, 2);
   } else if (obs.type === "hydrant") {
     const bodyX = obs.x + 8;
     const bodyW = obs.width - 16;
@@ -2742,6 +3317,8 @@ function drawObstacleSprite(obs) {
     ctx.fillRect(obs.x + obs.width - 8, obs.y + 16, 2, 2);
     ctx.fillRect(bodyX + 2, obs.y + obs.height - 4, 2, 2);
     ctx.fillRect(bodyX + bodyW - 4, obs.y + obs.height - 4, 2, 2);
+    ctx.fillStyle = "#ffd4cc";
+    ctx.fillRect(bodyX + 4, bodyY + 4, 2, bodyH - 8);
   } else if (obs.type === "hockey_puck") {
     ctx.fillStyle = "#1a1d24";
     ctx.fillRect(obs.x, obs.y + 2, obs.width, obs.height - 2);
@@ -2764,11 +3341,18 @@ function drawObstacleSprite(obs) {
     ctx.fillStyle = "#111722";
     ctx.fillRect(obs.x + 10, obs.y + obs.height - 2, 6, 2);
     ctx.fillRect(obs.x + obs.width - 16, obs.y + obs.height - 2, 6, 2);
+    ctx.fillStyle = "#f5df95";
+    ctx.fillRect(obs.x + 11, obs.y + 3, obs.width - 22, 2);
+    ctx.fillStyle = "#0a0c12";
+    ctx.fillRect(obs.x + 18, obs.y + 11, obs.width - 36, 1);
   } else if (obs.type === "jan_folder" || obs.type === "folder") {
     ctx.fillStyle = "#d6a95c";
     ctx.fillRect(obs.x, obs.y + 3, obs.width, obs.height - 3);
     ctx.fillStyle = "#e8c480";
     ctx.fillRect(obs.x + 4, obs.y, 12, 4);
+    ctx.fillStyle = "#b9883f";
+    ctx.fillRect(obs.x + 3, obs.y + 8, obs.width - 6, 1);
+    ctx.fillRect(obs.x + 3, obs.y + 12, obs.width - 6, 1);
   } else if (obs.type === "bystander") {
     // More realistic bystander silhouette.
     const skin = "#f0cfb2";
@@ -2799,6 +3383,8 @@ function drawObstacleSprite(obs) {
     ctx.fillStyle = skin;
     ctx.fillRect(obs.x + 4, obs.y + 22, 3, 11);
     ctx.fillRect(obs.x + obs.width - 7, obs.y + 22, 3, 11);
+    ctx.fillStyle = "#27425f";
+    ctx.fillRect(obs.x + 17, obs.y + 20, 2, 9);
 
     ctx.fillStyle = pants;
     ctx.fillRect(obs.x + 10, obs.y + 35, 5, obs.height - 35);
@@ -2812,6 +3398,8 @@ function drawObstacleSprite(obs) {
     ctx.fillStyle = "#d1dae8";
     ctx.fillRect(obs.x + 4, obs.y + 6, obs.width - 8, 2);
     ctx.fillRect(obs.x + 4, obs.y + 12, obs.width - 8, 2);
+    ctx.fillStyle = "#aeb8c8";
+    ctx.fillRect(obs.x + obs.width - 6, obs.y + 2, 1, obs.height - 4);
   } else if (obs.type === "mung_beans") {
     ctx.fillStyle = "#8db34c";
     ctx.beginPath();
@@ -2819,16 +3407,210 @@ function drawObstacleSprite(obs) {
     ctx.arc(obs.x + 14, obs.y + 8, 5, 0, Math.PI * 2);
     ctx.arc(obs.x + 11, obs.y + 15, 5, 0, Math.PI * 2);
     ctx.fill();
+    ctx.fillStyle = "#7a9d3f";
+    ctx.fillRect(obs.x + 4, obs.y + 10, 3, 1);
+    ctx.fillRect(obs.x + 13, obs.y + 8, 3, 1);
   } else {
     ctx.fillStyle = "#b79e6a";
     ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
     ctx.fillStyle = "#d9c38b";
     ctx.fillRect(obs.x + 6, obs.y + 5, obs.width - 12, 4);
   }
+
+  // 16-bit detail pass for all obstacles: edge contrast + texture strip.
+  ctx.fillStyle = "rgba(10, 14, 24, 0.28)";
+  ctx.fillRect(obs.x, obs.y + obs.height - 1, obs.width, 1);
+  ctx.fillStyle = "rgba(255,255,255,0.16)";
+  ctx.fillRect(obs.x + 1, obs.y + 1, Math.max(0, obs.width - 2), 1);
+
+  // Type-specific extra detail accents.
+  if (obs.type === "desk") {
+    ctx.fillStyle = "#d8bca7";
+    ctx.fillRect(obs.x + 6, obs.y + 14, obs.width - 12, 2);
+    ctx.fillStyle = "#5a3f2a";
+    ctx.fillRect(obs.x + 10, obs.y + 32, 6, 2);
+    ctx.fillRect(obs.x + obs.width - 16, obs.y + 32, 6, 2);
+  } else if (obs.type === "angela_cat") {
+    ctx.fillStyle = "#b39b7d";
+    ctx.fillRect(obs.x + 11, obs.y + 14, 10, 1);
+    ctx.fillStyle = "#2b2b2b";
+    ctx.fillRect(obs.x + 20, obs.y + 12, 1, 1);
+    ctx.fillRect(obs.x + 27, obs.y + 12, 1, 1);
+  } else if (obs.type === "chili_spill") {
+    ctx.fillStyle = "rgba(0,0,0,0.24)";
+    ctx.fillRect(obs.x + 10, obs.y + obs.height - 3, obs.width - 20, 2);
+    ctx.fillStyle = "#d37456";
+    ctx.fillRect(obs.x + 30, obs.y + obs.height - 8, 7, 1);
+  } else if (obs.type === "paper_pile" || obs.type === "paper_ream") {
+    ctx.fillStyle = "#c8cfdb";
+    for (let yy = 0; yy < obs.height; yy += 5) ctx.fillRect(obs.x + 2, obs.y + yy, obs.width - 4, 1);
+  } else if (obs.type === "shelf") {
+    ctx.fillStyle = "#bcc7d8";
+    ctx.fillRect(obs.x + 8, obs.y + 6, obs.width - 16, 1);
+    ctx.fillRect(obs.x + 8, obs.y + 20, obs.width - 16, 1);
+    ctx.fillRect(obs.x + 8, obs.y + 34, obs.width - 16, 1);
+  } else if (obs.type === "ladder") {
+    ctx.fillStyle = "#e0bb73";
+    for (let ry = 0; ry < obs.height; ry += 10) ctx.fillRect(obs.x + 12, obs.y + ry + 2, obs.width - 24, 1);
+  } else if (obs.type === "lightpole") {
+    ctx.fillStyle = "rgba(255,224,160,0.25)";
+    ctx.fillRect(obs.x + Math.floor(obs.width * 0.2), obs.y + 8, Math.floor(obs.width * 0.6), 20);
+  } else if (obs.type === "hydrant") {
+    ctx.fillStyle = "#df5b4c";
+    ctx.fillRect(obs.x + 10, obs.y + 12, obs.width - 20, 2);
+    ctx.fillRect(obs.x + 10, obs.y + 24, obs.width - 20, 2);
+  } else if (obs.type === "bystander" || obs.type === "goldenface_minion") {
+    ctx.fillStyle = "rgba(255,255,255,0.12)";
+    ctx.fillRect(obs.x + 8, obs.y + 24, obs.width - 16, 2);
+  } else if (obs.type === "jan_folder" || obs.type === "folder") {
+    ctx.fillStyle = "#efcc8b";
+    ctx.fillRect(obs.x + 3, obs.y + 5, obs.width - 8, 1);
+    ctx.fillStyle = "#b28546";
+    ctx.fillRect(obs.x + 3, obs.y + obs.height - 1, obs.width - 6, 1);
+  } else if (obs.type === "mung_beans") {
+    ctx.fillStyle = "#7ca43f";
+    ctx.fillRect(obs.x + 8, obs.y + 6, 3, 1);
+    ctx.fillRect(obs.x + 12, obs.y + 12, 3, 1);
+  } else if (obs.type === "jim_snowball") {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(obs.x + 9, obs.y + 8, 2, 2);
+  } else if (obs.type === "hockey_puck") {
+    ctx.fillStyle = "#546079";
+    ctx.fillRect(obs.x + 5, obs.y + 2, obs.width - 10, 1);
+  }
 }
 
 function drawObstacles() {
   for (const obs of state.obstacles) drawObstacleSprite(obs);
+}
+
+function drawCollectibles() {
+  for (const coin of state.collectibles) {
+    const x = coin.x;
+    const y = coin.y;
+    if (coin.type === "schrute_buck") {
+      // Bill-style pickup, matching Schrute Buck vibe.
+      ctx.fillStyle = "#c9d8d4";
+      ctx.fillRect(x + 1, y + 4, 30, 18);
+      ctx.fillStyle = "#93a9a4";
+      ctx.fillRect(x + 2, y + 5, 28, 16);
+      ctx.fillStyle = "#dde9e6";
+      ctx.fillRect(x + 4, y + 7, 24, 12);
+      ctx.strokeStyle = "#4d6460";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 2.5, y + 5.5, 27, 15);
+      ctx.fillStyle = "#49615d";
+      ctx.fillRect(x + 12, y + 8, 8, 10);
+      ctx.fillStyle = "#f0f6f4";
+      ctx.fillRect(x + 15, y + 9, 2, 8);
+      ctx.fillStyle = "#516b66";
+      ctx.font = "bold 8px Trebuchet MS";
+      ctx.fillText("$", x + 7, y + 13);
+      ctx.fillText("1", x + 4, y + 21);
+      ctx.fillText("1", x + 25, y + 21);
+    } else {
+      // Nickel-style pickup, coin on the right.
+      ctx.fillStyle = "#9298a2";
+      ctx.beginPath();
+      ctx.arc(x + 13, y + 13, 11, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#cfd4db";
+      ctx.beginPath();
+      ctx.arc(x + 13, y + 13, 8.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#5c6370";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(x + 13, y + 13, 10.5, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = "#7f8792";
+      ctx.fillRect(x + 12, y + 8, 2, 10);
+      ctx.fillStyle = "#565e6a";
+      ctx.font = "bold 7px Trebuchet MS";
+      ctx.fillText("5", x + 11, y + 15);
+    }
+  }
+}
+
+function drawCurrencyIcon(type, x, y, scale = 1) {
+  if (type === "schrute_buck") {
+    ctx.fillStyle = "#c9d8d4";
+    ctx.fillRect(x + 1 * scale, y + 2 * scale, 14 * scale, 10 * scale);
+    ctx.fillStyle = "#93a9a4";
+    ctx.fillRect(x + 2 * scale, y + 3 * scale, 12 * scale, 8 * scale);
+    ctx.fillStyle = "#dde9e6";
+    ctx.fillRect(x + 3 * scale, y + 4 * scale, 10 * scale, 6 * scale);
+    ctx.strokeStyle = "#4d6460";
+    ctx.lineWidth = Math.max(1, scale * 0.8);
+    ctx.strokeRect(x + 2.5 * scale, y + 3.5 * scale, 11 * scale, 7 * scale);
+    ctx.fillStyle = "#49615d";
+    ctx.fillRect(x + 6 * scale, y + 4 * scale, 3 * scale, 5 * scale);
+    ctx.fillStyle = "#f0f6f4";
+    ctx.fillRect(x + 7 * scale, y + 5 * scale, 1 * scale, 3 * scale);
+    return 16 * scale;
+  }
+
+  ctx.fillStyle = "#9298a2";
+  ctx.beginPath();
+  ctx.arc(x + 7 * scale, y + 7 * scale, 6 * scale, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#cfd4db";
+  ctx.beginPath();
+  ctx.arc(x + 7 * scale, y + 7 * scale, 4.5 * scale, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#5c6370";
+  ctx.lineWidth = Math.max(1, scale * 0.8);
+  ctx.beginPath();
+  ctx.arc(x + 7 * scale, y + 7 * scale, 5.5 * scale, 0, Math.PI * 2);
+  ctx.stroke();
+  return 15 * scale;
+}
+
+function drawWrappedTextWithCurrencyIcons(text, x, y, maxWidth, lineHeight, maxLines = 2) {
+  const tokens = String(text || "").split(" ");
+  const spaceW = ctx.measureText(" ").width;
+  const lines = [];
+  let line = [];
+  let lineW = 0;
+
+  const tokenWidth = (token) => {
+    if (token === "[SB]") return 18;
+    if (token === "[SN]") return 16;
+    return ctx.measureText(token).width;
+  };
+
+  for (const token of tokens) {
+    const tW = tokenWidth(token);
+    const nextW = line.length === 0 ? tW : lineW + spaceW + tW;
+    if (nextW <= maxWidth || line.length === 0) {
+      line.push(token);
+      lineW = nextW;
+      continue;
+    }
+    lines.push(line);
+    if (lines.length >= maxLines) break;
+    line = [token];
+    lineW = tW;
+  }
+  if (line.length > 0 && lines.length < maxLines) lines.push(line);
+
+  for (let i = 0; i < lines.length; i += 1) {
+    let cx = x;
+    const baseline = y + i * lineHeight;
+    const row = lines[i];
+    for (let j = 0; j < row.length; j += 1) {
+      const token = row[j];
+      if (j > 0) cx += spaceW;
+      if (token === "[SB]") {
+        cx += drawCurrencyIcon("schrute_buck", cx, baseline - 12, 0.9);
+      } else if (token === "[SN]") {
+        cx += drawCurrencyIcon("stanley_nickel", cx, baseline - 11, 0.9);
+      } else {
+        ctx.fillText(token, cx, baseline);
+        cx += ctx.measureText(token).width;
+      }
+    }
+  }
 }
 
 function drawPamQuestBackgroundSprite() {
@@ -2889,8 +3671,7 @@ function drawPamQuestBackgroundSprite() {
 }
 
 function drawHud() {
-  ctx.fillStyle = "rgba(15,20,30,0.74)";
-  ctx.fillRect(12, 12, 450, 136);
+  drawPixelPanel(12, 12, 450, 188, "rgba(18,28,46,0.86)", "rgba(10,18,34,0.86)", "#7ecfff", "rgba(218,236,255,0.65)");
 
   ctx.fillStyle = "#fff";
   ctx.font = "16px Trebuchet MS";
@@ -2898,7 +3679,20 @@ function drawHud() {
   ctx.fillText(`HP: ${state.player.hp}`, 20, 56);
   ctx.fillText(`Score: ${Math.floor(state.score)}`, 20, 78);
   ctx.fillText(`Style: ${Math.floor(state.style)}`, 20, 100);
-  ctx.fillText(`Wallet: ${state.saveData.currencies.schruteBucks} SB / ${state.saveData.currencies.stanleyNickels} SN`, 20, 122);
+  ctx.fillText("Wallet:", 20, 122);
+  const walletY = 109;
+  const sbIconW = drawCurrencyIcon("schrute_buck", 86, walletY, 1.05);
+  ctx.fillStyle = "#f5f8ff";
+  ctx.fillText(`${state.saveData.currencies.schruteBucks}`, 86 + sbIconW + 6, 122);
+  const snIconW = drawCurrencyIcon("stanley_nickel", 166, walletY + 1, 1.05);
+  ctx.fillText(`${state.saveData.currencies.stanleyNickels}`, 166 + snIconW + 6, 122);
+  ctx.fillStyle = "#ffdfa6";
+  ctx.fillText("Run Loot:", 20, 146);
+  const runY = 133;
+  const runSbIconW = drawCurrencyIcon("schrute_buck", 98, runY, 1.0);
+  ctx.fillText(`+${state.runCollectedSchruteBucks}`, 98 + runSbIconW + 6, 146);
+  const runSnIconW = drawCurrencyIcon("stanley_nickel", 176, runY + 1, 1.0);
+  ctx.fillText(`+${state.runCollectedStanleyNickels}`, 176 + runSnIconW + 6, 146);
 
   ctx.fillStyle = "#ffd54d";
   ctx.fillText(`x${state.multiplier} Hardcore`, 210, 56);
@@ -2916,7 +3710,7 @@ function drawHud() {
   }
   ctx.fillStyle = "#d4e6ff";
   if (state.runWorldId === "skarn") ctx.fillText(`Parkour: J  Hit: LOCKED  Pause: Enter`, 500, 122);
-  else ctx.fillText(`Parkour: J  Hit: K  Pause: Enter`, 500, 122);
+  else if (state.runWorldId !== "pursuit") ctx.fillText(`Parkour: J  Hit: K  Pause: Enter`, 500, 122);
 
   if (state.slideActive) {
     ctx.fillStyle = "#8fdcff";
@@ -2930,7 +3724,14 @@ function drawHud() {
   if (state.runWorldId === "pursuit") {
     ctx.fillStyle = "#ffe38f";
     ctx.fillText(`Catch Strangler: ${Math.ceil(state.tobyDistance)}m`, 480, 78);
-    ctx.fillText(`Goal: reach x10 Hardcore`, 480, 100);
+    ctx.fillText(`Goal: Get a high multiplier to catch up`, 480, 100);
+    ctx.fillText(`with the car and jump on it`, 480, 120);
+    ctx.fillStyle = "#d4e6ff";
+    ctx.fillText(`Parkour: J  Hit: K  Pause: Enter`, 500, 146);
+  }
+  if (state.cheatInvincible) {
+    ctx.fillStyle = "#9dffd0";
+    ctx.fillText("Cheat: No Injury (BEETS)", 480, 56);
   }
 
   if (state.pendingLanding && state.landingWindowLeft > 0) {
@@ -2946,31 +3747,178 @@ function drawHud() {
   }
 }
 
+function drawPerformanceReviewOverlay() {
+  if (!state.gameOver || !state.reviewData) return;
+
+  const progress = Math.max(0, Math.min(1, state.reviewAnimSec / state.reviewAnimDuration));
+  const ease = 1 - Math.pow(1 - progress, 3);
+  const shownSb = Math.round(state.reviewData.prevSb + (state.reviewData.totalSb - state.reviewData.prevSb) * ease);
+  const shownSn = Math.round(state.reviewData.prevSn + (state.reviewData.totalSn - state.reviewData.prevSn) * ease);
+  const shownEarnedSb = Math.round(state.reviewData.earnedSb * ease);
+  const shownEarnedSn = Math.round(state.reviewData.earnedSn * ease);
+  const targetStars = Math.max(1, Math.min(5, state.reviewData.stars || 1));
+  const starCount = Math.max(1, Math.ceil(targetStars * progress));
+  const pulse = 1 + Math.sin(state.elapsedSec * 8) * 0.05;
+
+  const panel = { x: 88, y: 84, w: 784, h: 370 };
+  drawPixelPanel(panel.x, panel.y, panel.w, panel.h, "rgba(11,24,48,0.9)", "rgba(8,18,36,0.9)", "#94dcff", "rgba(220,240,255,0.72)");
+
+  ctx.fillStyle = "#ffd66e";
+  ctx.font = "bold 40px Trebuchet MS";
+  ctx.fillText("PERFORMANCE REVIEW", panel.x + 24, panel.y + 52);
+
+  ctx.fillStyle = "#ffe8ad";
+  ctx.font = "bold 24px Trebuchet MS";
+  let stars = "";
+  for (let i = 0; i < 5; i += 1) stars += i < starCount ? "★ " : "☆ ";
+  ctx.fillText(stars.trim(), panel.x + 26, panel.y + 86);
+  ctx.fillStyle = "#d5e9ff";
+  ctx.font = "bold 21px Trebuchet MS";
+  ctx.fillText(`${state.reviewData.runner} - ${state.reviewData.world}`, panel.x + 24, panel.y + 118);
+
+  ctx.font = "20px Trebuchet MS";
+  ctx.fillStyle = "#f2f6ff";
+  ctx.fillText(`Score: ${state.reviewData.score}`, panel.x + 24, panel.y + 156);
+  ctx.fillText(`Style: ${state.reviewData.style}`, panel.x + 24, panel.y + 184);
+  ctx.fillText(`Best Hardcore Chain: ${state.reviewData.bestChain}`, panel.x + 24, panel.y + 212);
+
+  ctx.fillStyle = "#ffd87d";
+  ctx.font = "bold 26px Trebuchet MS";
+  const reviewSbIconW = drawCurrencyIcon("schrute_buck", panel.x + 24, panel.y + 238, 1.55);
+  ctx.fillText(`+${shownEarnedSb}`, panel.x + 24 + reviewSbIconW + 12, panel.y + 254);
+  const reviewSnIconW = drawCurrencyIcon("stanley_nickel", panel.x + 24, panel.y + 270, 1.55);
+  ctx.fillText(`+${shownEarnedSn}`, panel.x + 24 + reviewSnIconW + 12, panel.y + 286);
+  ctx.fillStyle = "#b9ffd0";
+  ctx.font = "bold 20px Trebuchet MS";
+  ctx.fillText("Wallet:", panel.x + 24, panel.y + 320);
+  const walletSbIconW = drawCurrencyIcon("schrute_buck", panel.x + 106, panel.y + 306, 1.15);
+  ctx.fillText(`${shownSb}`, panel.x + 106 + walletSbIconW + 8, panel.y + 320);
+  const walletSnIconW = drawCurrencyIcon("stanley_nickel", panel.x + 196, panel.y + 307, 1.15);
+  ctx.fillText(`${shownSn}`, panel.x + 196 + walletSnIconW + 8, panel.y + 320);
+
+  // David Wallace portrait card.
+  const px = panel.x + panel.w - 252;
+  const py = panel.y + 62;
+  const pw = 212;
+  const ph = 252;
+  drawPixelPanel(px, py, pw, ph, "rgba(18,38,70,0.96)", "rgba(13,29,53,0.96)", "#8dcfff", "rgba(212,233,255,0.72)");
+
+  const cx = px + 40;
+  const cy = py + 18;
+  const s = 4;
+  ctx.fillStyle = "#becde2";
+  ctx.fillRect(cx + 4 * s, cy + 3 * s, 28 * s, 36 * s);
+  ctx.fillStyle = "#d7b99e";
+  ctx.fillRect(cx + 10 * s, cy + 7 * s, 16 * s, 15 * s);
+  ctx.fillStyle = "#c7a78b";
+  ctx.fillRect(cx + 11 * s, cy + 19 * s, 14 * s, 3 * s);
+  ctx.fillStyle = "#2d1f18";
+  ctx.fillRect(cx + 9 * s, cy + 3 * s, 18 * s, 5 * s);
+  ctx.fillRect(cx + 10 * s, cy + 6 * s, 4 * s, 2 * s);
+  ctx.fillRect(cx + 22 * s, cy + 6 * s, 4 * s, 2 * s);
+  // center part + subtle side hair wings
+  ctx.fillStyle = "#4b352a";
+  ctx.fillRect(cx + 17 * s, cy + 3 * s, 2 * s, 5 * s);
+  // ears
+  ctx.fillStyle = "#d6b395";
+  ctx.fillRect(cx + 9 * s, cy + 12 * s, 1 * s, 3 * s);
+  ctx.fillRect(cx + 26 * s, cy + 12 * s, 1 * s, 3 * s);
+  // eyes, brows, nose, mouth
+  ctx.fillStyle = "#2c3748";
+  ctx.fillRect(cx + 13 * s, cy + 10 * s, 2 * s, 2 * s);
+  ctx.fillRect(cx + 21 * s, cy + 10 * s, 2 * s, 2 * s);
+  ctx.fillRect(cx + 13 * s, cy + 9 * s, 2 * s, 1 * s);
+  ctx.fillRect(cx + 21 * s, cy + 9 * s, 2 * s, 1 * s);
+  // glasses
+  ctx.strokeStyle = "#8fa3bd";
+  ctx.lineWidth = 1.4;
+  ctx.strokeRect(cx + 12 * s + 0.5, cy + 9 * s + 0.5, 4 * s, 3 * s);
+  ctx.strokeRect(cx + 20 * s + 0.5, cy + 9 * s + 0.5, 4 * s, 3 * s);
+  ctx.beginPath();
+  ctx.moveTo(cx + 16 * s, cy + 11 * s);
+  ctx.lineTo(cx + 20 * s, cy + 11 * s);
+  ctx.stroke();
+  ctx.fillStyle = "#b68e71";
+  ctx.fillRect(cx + 17 * s, cy + 12 * s, 1 * s, 3 * s);
+  ctx.fillStyle = "#2f3b4e";
+  ctx.fillRect(cx + 14 * s, cy + 16 * s, 8 * s, 1 * s);
+  // suit + lapels + shirt + tie
+  ctx.fillStyle = "#0f1722";
+  ctx.fillRect(cx + 8 * s, cy + 22 * s, 20 * s, 17 * s);
+  ctx.fillStyle = "#1a2534";
+  ctx.fillRect(cx + 8 * s, cy + 22 * s, 6 * s, 17 * s);
+  ctx.fillRect(cx + 22 * s, cy + 22 * s, 6 * s, 17 * s);
+  ctx.fillStyle = "#f6f8fc";
+  ctx.fillRect(cx + 15 * s, cy + 25 * s, 6 * s, 14 * s);
+  ctx.fillStyle = "#d9dee8";
+  ctx.fillRect(cx + 17 * s, cy + 24 * s, 2 * s, 10 * s);
+  ctx.fillRect(cx + 16 * s, cy + 35 * s, 4 * s, 4 * s);
+
+  // Bottom caption area clipped to card bounds so text can never hang out.
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(px + 10, py + 186, pw - 20, ph - 194);
+  ctx.clip();
+  ctx.fillStyle = "#d7e8ff";
+  ctx.font = "bold 16px Trebuchet MS";
+  drawWrappedText("David Wallace", px + 14, py + 202, pw - 28, 16, 1);
+  ctx.fillStyle = "#ffe9bc";
+  ctx.font = "bold 11px Trebuchet MS";
+  drawWrappedText(state.reviewData.endingLine, px + 12, py + 219, pw - 24, 11, 4);
+  ctx.restore();
+
+  ctx.globalAlpha = 0.36 + ease * 0.54;
+  ctx.fillStyle = "#ffe7aa";
+  ctx.fillRect(panel.x + 18, panel.y + panel.h - 14, (panel.w - 36) * ease * pulse, 6);
+  ctx.globalAlpha = 1;
+}
+
 function drawPursuitTarget() {
   if (state.runWorldId !== "pursuit") return;
 
   const { x: carX, y: carY } = getPursuitCarPosition();
 
-  ctx.fillStyle = "rgba(0,0,0,0.25)";
+  ctx.fillStyle = "rgba(0,0,0,0.24)";
   ctx.beginPath();
-  ctx.ellipse(carX + 40, GAME.floorTop + 8, 48, 9, 0, 0, Math.PI * 2);
+  ctx.ellipse(carX + 100, GAME.floorTop + 13, 104, 13, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Rear view of the strangler's car fixed on the far-right road lane.
-  ctx.fillStyle = "#252a33";
-  ctx.fillRect(carX + 2, carY + 12, 76, 22);
-  ctx.fillStyle = "#1c212a";
-  ctx.fillRect(carX + 10, carY + 4, 60, 12);
-  ctx.fillStyle = "#6f90b8";
-  ctx.fillRect(carX + 16, carY + 6, 48, 8);
-  ctx.fillStyle = "#0f1319";
-  ctx.fillRect(carX + 8, carY + 28, 14, 8);
-  ctx.fillRect(carX + 58, carY + 28, 14, 8);
-  ctx.fillStyle = "#d94343";
-  ctx.fillRect(carX + 6, carY + 20, 6, 4);
-  ctx.fillRect(carX + 68, carY + 20, 6, 4);
-  ctx.fillStyle = "#f6e7b8";
-  ctx.fillRect(carX + 34, carY + 22, 12, 3);
+  // Large black car.
+  ctx.fillStyle = "#12161d";
+  ctx.fillRect(carX + 8, carY + 30, 202, 24);   // lower body
+  ctx.fillRect(carX + 28, carY + 21, 164, 11);  // shoulder
+  ctx.fillRect(carX + 52, carY + 7, 116, 15);   // roof/cabin
+  ctx.fillRect(carX + 2, carY + 36, 10, 10);    // front bumper
+  ctx.fillRect(carX + 204, carY + 33, 10, 12);  // rear bumper
+
+  ctx.fillStyle = "#232a35";
+  ctx.fillRect(carX + 8, carY + 52, 202, 2);
+  ctx.fillRect(carX + 178, carY + 10, 10, 12);
+
+  // Windows and frame.
+  ctx.fillStyle = "#26384f";
+  ctx.fillRect(carX + 60, carY + 10, 90, 10);
+  ctx.fillStyle = "#7da1c7";
+  ctx.fillRect(carX + 64, carY + 12, 30, 6);
+  ctx.fillRect(carX + 98, carY + 12, 48, 6);
+  ctx.fillStyle = "#344a64";
+  ctx.fillRect(carX + 96, carY + 10, 3, 10);
+
+  // Lights and plate.
+  ctx.fillStyle = "#ffe2a8";
+  ctx.fillRect(carX + 4, carY + 37, 4, 5);
+  ctx.fillStyle = "#7e1717";
+  ctx.fillRect(carX + 206, carY + 37, 4, 6);
+  ctx.fillStyle = "#f1e7c4";
+  ctx.fillRect(carX + 156, carY + 42, 16, 4);
+
+  // Wheels.
+  ctx.fillStyle = "#07090d";
+  ctx.fillRect(carX + 48, carY + 48, 24, 16);
+  ctx.fillRect(carX + 144, carY + 48, 24, 16);
+  ctx.fillStyle = "#151b24";
+  ctx.fillRect(carX + 54, carY + 52, 12, 8);
+  ctx.fillRect(carX + 150, carY + 52, 12, 8);
 }
 
 function drawFloatingText() {
@@ -3016,6 +3964,36 @@ function drawWrappedText(text, x, y, maxWidth, lineHeight, maxLines = 3) {
   }
 }
 
+function drawPixelTexture(x, y, w, h, tint = "rgba(8,14,24,0.12)", light = "rgba(255,255,255,0.08)") {
+  ctx.fillStyle = tint;
+  for (let py = y + 2; py < y + h - 2; py += 6) {
+    const xShift = ((py - y) / 6) % 2 === 0 ? 0 : 3;
+    for (let px = x + 2 + xShift; px < x + w - 3; px += 12) {
+      ctx.fillRect(px, py, 3, 1);
+    }
+  }
+  ctx.fillStyle = light;
+  for (let py = y + 1; py < y + h; py += 4) ctx.fillRect(x + 1, py, w - 2, 1);
+}
+
+function drawPixelPanel(x, y, w, h, fillTop, fillBottom, border = "#8bc8ff", bevel = "#dcefff") {
+  const g = ctx.createLinearGradient(x, y, x, y + h);
+  g.addColorStop(0, fillTop);
+  g.addColorStop(1, fillBottom);
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, w, h);
+  drawPixelTexture(x, y, w, h);
+  ctx.strokeStyle = border;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, w, h);
+  ctx.fillStyle = bevel;
+  ctx.fillRect(x + 1, y + 1, w - 2, 1);
+  ctx.fillRect(x + 1, y + 1, 1, h - 2);
+  ctx.fillStyle = "rgba(10,14,22,0.42)";
+  ctx.fillRect(x + w - 1, y + 1, 1, h - 2);
+  ctx.fillRect(x + 1, y + h - 1, w - 2, 1);
+}
+
 function drawParticles() {
   for (const p of state.particles) {
     const alpha = 1 - p.age / p.ttl;
@@ -3035,11 +4013,10 @@ function drawMenuScene() {
   grad.addColorStop(1, "#243958");
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawPixelTexture(0, 0, canvas.width, canvas.height, "rgba(8,14,24,0.1)", "rgba(255,255,255,0.05)");
 
-  ctx.fillStyle = "#313f52";
-  ctx.fillRect(boardOuter.x, boardOuter.y, boardOuter.w, boardOuter.h);
-  ctx.fillStyle = "#f4f2e7";
-  ctx.fillRect(boardInner.x, boardInner.y, boardInner.w, boardInner.h);
+  drawPixelPanel(boardOuter.x, boardOuter.y, boardOuter.w, boardOuter.h, "#40526a", "#32445c", "#8cd6ff", "rgba(223,239,255,0.7)");
+  drawPixelPanel(boardInner.x, boardInner.y, boardInner.w, boardInner.h, "#f7f4e8", "#ede7d7", "#9f988a", "rgba(255,255,255,0.84)");
 
   ctx.strokeStyle = "#8b2e2e";
   ctx.lineWidth = 2;
@@ -3399,11 +4376,19 @@ function drawShopScene() {
   grad.addColorStop(1, "#d9ae68");
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // 16-bit break room wallpaper + floor tile.
+  ctx.fillStyle = "rgba(90, 63, 33, 0.18)";
+  for (let x = 0; x < canvas.width; x += 40) ctx.fillRect(x, 0, 2, 300);
+  ctx.fillStyle = "rgba(70, 49, 27, 0.18)";
+  for (let y = 70; y < 300; y += 28) ctx.fillRect(0, y, canvas.width, 1);
+  ctx.fillStyle = "#594a36";
+  ctx.fillRect(0, 300, canvas.width, 240);
+  for (let y = 304; y < 540; y += 16) {
+    ctx.fillStyle = "rgba(210,188,154,0.12)";
+    ctx.fillRect(0, y, canvas.width, 1);
+  }
 
-  ctx.fillStyle = "rgba(14,17,21,0.72)";
-  ctx.fillRect(44, 72, 872, 402);
-  ctx.strokeStyle = "#f1b864";
-  ctx.strokeRect(44, 72, 872, 402);
+  drawPixelPanel(44, 72, 872, 402, "rgba(26,32,44,0.84)", "rgba(18,24,35,0.84)", "#f1b864", "rgba(255,232,186,0.65)");
 
   ctx.fillStyle = "#ffd480";
   ctx.font = "bold 34px Trebuchet MS";
@@ -3412,21 +4397,20 @@ function drawShopScene() {
   ctx.fillStyle = "#f4ead7";
   ctx.font = "18px Trebuchet MS";
   const questLine = state.saveData.unlocks.jimDeskKey
-    ? "Pam gave you Jim's Desk Key. Top row is officially de-gelled."
+    ? "You found Pam. Top row is officially de-gelled."
     : "Quest lock active: Save Pam, then complete 'Capture The Strangler' to get the key.";
   drawWrappedText(questLine, 58, 162, 240, 20, 3);
-  ctx.fillText(`Wallet: ${state.saveData.currencies.schruteBucks} Schrute Bucks`, 58, 226);
-  ctx.fillText(`Wallet: ${state.saveData.currencies.stanleyNickels} Stanley Nickels`, 58, 252);
+  ctx.fillText("Wallet:", 58, 226);
+  const shopSbW = drawCurrencyIcon("schrute_buck", 132, 214, 1.12);
+  ctx.fillText(`${state.saveData.currencies.schruteBucks}`, 132 + shopSbW + 8, 226);
+  const shopSnW = drawCurrencyIcon("stanley_nickel", 206, 214, 1.12);
+  ctx.fillText(`${state.saveData.currencies.stanleyNickels}`, 206 + shopSnW + 8, 226);
 
   const vmX = 316;
   const vmY = 150;
   const vmW = 404;
   const vmH = 262;
-  ctx.fillStyle = "#2f394f";
-  ctx.fillRect(vmX, vmY, vmW, vmH);
-  ctx.strokeStyle = "#9fd7ff";
-  ctx.lineWidth = 3;
-  ctx.strokeRect(vmX, vmY, vmW, vmH);
+  drawPixelPanel(vmX, vmY, vmW, vmH, "#3a4762", "#2f3b53", "#9fd7ff", "rgba(217,240,255,0.64)");
   ctx.fillStyle = "#9aa5b7";
   ctx.fillRect(vmX + vmW - 78, vmY + 22, 58, vmH - 44);
   ctx.fillStyle = "#252b38";
@@ -3598,8 +4582,14 @@ function drawShopScene() {
 
     ctx.fillStyle = owned ? "#b7f2bb" : "#ffe4a8";
     ctx.font = "bold 14px Trebuchet MS";
-    const badge = owned ? "OWNED" : lockedByKey ? "LOCKED" : `BUY ${shopPriceLabel(item)}`;
-    ctx.fillText(badge, x + 10, y + 80);
+    if (owned) {
+      ctx.fillText("OWNED", x + 10, y + 80);
+    } else if (lockedByKey) {
+      ctx.fillText("LOCKED", x + 10, y + 80);
+    } else {
+      ctx.fillText(`BUY ${item.cost}`, x + 10, y + 80);
+      drawCurrencyIcon("stanley_nickel", x + 62, y + 67, 1.05);
+    }
 
     // Top row is visually encased in yellow Jell-O until each item is purchased.
     if (row === 0 && !owned) {
@@ -3620,10 +4610,14 @@ function drawShopScene() {
 
   ctx.fillStyle = state.shopForeheadStare ? "#ff9ea5" : state.shopMessageColor || "#c5d9f2";
   ctx.font = "17px Trebuchet MS";
-  ctx.fillText(
+  drawPixelPanel(82, 436, 836, 36, "rgba(10,15,24,0.82)", "rgba(7,10,18,0.82)", "#8bc8ff", "rgba(216,236,255,0.62)");
+  drawWrappedTextWithCurrencyIcons(
     state.shopMessage || "Jim says this machine is 90% Jell-O, 10% disappointment, and 100% policy.",
     92,
-    457
+    457,
+    820,
+    20,
+    1
   );
   if (state.shopForeheadStare) {
     ctx.fillStyle = "rgba(12, 14, 22, 0.55)";
@@ -3640,10 +4634,7 @@ function drawShopScene() {
     const boxY = 278;
     const boxW = 798;
     const boxH = 136;
-    ctx.fillStyle = "rgba(8, 11, 20, 0.85)";
-    ctx.fillRect(boxX, boxY, boxW, boxH);
-    ctx.strokeStyle = "#8bc8ff";
-    ctx.strokeRect(boxX, boxY, boxW, boxH);
+    drawPixelPanel(boxX, boxY, boxW, boxH, "rgba(14,22,38,0.92)", "rgba(8,12,22,0.92)", "#8bc8ff", "rgba(208,233,255,0.64)");
     ctx.fillStyle = "#f5ead6";
     ctx.font = "18px Trebuchet MS";
     drawWrappedText(state.shopConversation.text, boxX + 14, boxY + 30, boxW - 28, 23, 3);
@@ -3664,6 +4655,23 @@ function drawShopScene() {
       ctx.font = "bold 16px Trebuchet MS";
       ctx.fillText("Leave", leaveBtn.x + 52, leaveBtn.y + 20);
       state.shopTalkBounds.push(askBtn, leaveBtn);
+    } else if (state.shopConversation.actor === "jim" && state.shopConversation.step === "post_choice") {
+      const prankBtn = { id: "ask_prank", x: boxX + 16, y: boxY + 94, w: 260, h: 30 };
+      const deskBtn = { id: "ask_desk", x: boxX + 292, y: boxY + 94, w: 260, h: 30 };
+      const leaveBtn = { id: "leave", x: boxX + 568, y: boxY + 94, w: 160, h: 30 };
+      for (const btn of [prankBtn, deskBtn, leaveBtn]) {
+        ctx.fillStyle = "#2f4f7a";
+        ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
+        ctx.strokeStyle = "#8bc8ff";
+        ctx.strokeRect(btn.x, btn.y, btn.w, btn.h);
+      }
+      ctx.fillStyle = "#f5ead6";
+      ctx.font = "bold 14px Trebuchet MS";
+      drawWrappedText("Best prank ever?", prankBtn.x + 10, prankBtn.y + 19, prankBtn.w - 16, 14, 1);
+      drawWrappedText("What's in your desk now?", deskBtn.x + 10, deskBtn.y + 19, deskBtn.w - 16, 14, 1);
+      ctx.font = "bold 16px Trebuchet MS";
+      ctx.fillText("Leave", leaveBtn.x + 52, leaveBtn.y + 20);
+      state.shopTalkBounds.push(prankBtn, deskBtn, leaveBtn);
     } else if (state.shopConversation.actor === "jim" && state.shopConversation.step === "pam_info") {
       const doneBtn = { id: "done", x: boxX + 16, y: boxY + 94, w: 150, h: 30 };
       ctx.fillStyle = "#2f4f7a";
@@ -3673,6 +4681,16 @@ function drawShopScene() {
       ctx.fillStyle = "#f5ead6";
       ctx.font = "bold 16px Trebuchet MS";
       ctx.fillText("Got it", doneBtn.x + 50, doneBtn.y + 20);
+      state.shopTalkBounds.push(doneBtn);
+    } else if (state.shopConversation.actor === "jim" && state.shopConversation.step === "post_reply") {
+      const doneBtn = { id: "done", x: boxX + 16, y: boxY + 94, w: 150, h: 30 };
+      ctx.fillStyle = "#2f4f7a";
+      ctx.fillRect(doneBtn.x, doneBtn.y, doneBtn.w, doneBtn.h);
+      ctx.strokeStyle = "#8bc8ff";
+      ctx.strokeRect(doneBtn.x, doneBtn.y, doneBtn.w, doneBtn.h);
+      ctx.fillStyle = "#f5ead6";
+      ctx.font = "bold 16px Trebuchet MS";
+      ctx.fillText("Nice", doneBtn.x + 56, doneBtn.y + 20);
       state.shopTalkBounds.push(doneBtn);
     } else if (state.shopConversation.actor === "pam" && state.shopConversation.step === "intro") {
       const askBtn = { id: "ask_how", x: boxX + 16, y: boxY + 94, w: 280, h: 30 };
@@ -3728,6 +4746,15 @@ function drawDeskScene() {
   grad.addColorStop(1, "#1e2330");
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawPixelTexture(0, 0, canvas.width, canvas.height, "rgba(6,10,16,0.1)", "rgba(255,255,255,0.04)");
+  // Office wall details.
+  ctx.fillStyle = "#3a4253";
+  for (let x = 34; x < canvas.width - 40; x += 122) {
+    ctx.fillRect(x, 72, 92, 58);
+    ctx.fillStyle = "#55617a";
+    ctx.fillRect(x + 6, 78, 80, 46);
+    ctx.fillStyle = "#3a4253";
+  }
 
   // Desk and office props.
   ctx.fillStyle = "#2c3748";
@@ -3739,6 +4766,7 @@ function drawDeskScene() {
   ctx.strokeStyle = "#ab845f";
   ctx.lineWidth = 3;
   ctx.strokeRect(142, 252, 676, 186);
+  drawPixelTexture(142, 252, 676, 186, "rgba(26,16,10,0.18)", "rgba(255,231,200,0.08)");
   ctx.fillStyle = "#3d2f23";
   ctx.fillRect(172, 300, 162, 122);
   ctx.fillRect(626, 300, 162, 122);
@@ -3768,30 +4796,67 @@ function drawDeskScene() {
     const trayY = drawerY + 46;
     ctx.fillStyle = "#21170f";
     ctx.fillRect(drawerX + 10, trayY, drawerW - 20, 34);
-
-    // Goldenface outfit card art.
     const cardX = drawerX + 28;
     const cardY = trayY + 4;
     const cardW = drawerW - 56;
     const cardH = 24;
-    ctx.fillStyle = "#d6b255";
-    ctx.fillRect(cardX, cardY, cardW, cardH);
-    ctx.strokeStyle = "#f7da87";
-    ctx.strokeRect(cardX, cardY, cardW, cardH);
-    ctx.fillStyle = "#1c1a1b";
-    ctx.fillRect(cardX + 6, cardY + 6, 8, 12);
-    ctx.fillRect(cardX + 16, cardY + 8, 10, 10);
-    ctx.fillStyle = "#e6bf5e";
-    ctx.fillRect(cardX + 16, cardY + 4, 10, 6);
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(cardX + 18, cardY + 11, 6, 1);
-    ctx.fillStyle = "#1c1a1b";
-    ctx.font = "bold 11px Trebuchet MS";
-    ctx.fillText("GOLDENFACE", cardX + 34, cardY + 11);
-    ctx.fillText("SUIT", cardX + 34, cardY + 21);
-    state.deskGoldenfaceBounds = { x: cardX, y: cardY, w: cardW, h: cardH };
+    if (!state.saveData.unlocks.goldenfaceTakenFromDesk) {
+      // Goldenface outfit card art.
+      ctx.fillStyle = "#d6b255";
+      ctx.fillRect(cardX, cardY, cardW, cardH);
+      ctx.strokeStyle = "#f7da87";
+      ctx.strokeRect(cardX, cardY, cardW, cardH);
+      ctx.fillStyle = "#1c1a1b";
+      ctx.fillRect(cardX + 6, cardY + 6, 8, 12);
+      ctx.fillRect(cardX + 16, cardY + 8, 10, 10);
+      ctx.fillStyle = "#e6bf5e";
+      ctx.fillRect(cardX + 16, cardY + 4, 10, 6);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(cardX + 18, cardY + 11, 6, 1);
+      ctx.fillStyle = "#1c1a1b";
+      ctx.font = "bold 11px Trebuchet MS";
+      ctx.fillText("GOLDENFACE", cardX + 34, cardY + 11);
+      ctx.fillText("SUIT", cardX + 34, cardY + 21);
+      state.deskGoldenfaceBounds = { x: cardX, y: cardY, w: cardW, h: cardH };
+      state.deskPhotoBounds = null;
+    } else {
+      // Post-claim desk content: Jim + Pam photo.
+      ctx.fillStyle = "#e8e2d1";
+      ctx.fillRect(cardX, cardY, cardW, cardH);
+      ctx.strokeStyle = "#b6a98c";
+      ctx.strokeRect(cardX, cardY, cardW, cardH);
+      ctx.fillStyle = "#89a6c7";
+      ctx.fillRect(cardX + 4, cardY + 4, 32, 16);
+      // Jim (left)
+      ctx.fillStyle = "#2b1f17";
+      ctx.fillRect(cardX + 6, cardY + 6, 8, 2);
+      ctx.fillStyle = "#efd0b2";
+      ctx.fillRect(cardX + 7, cardY + 8, 6, 4);
+      ctx.fillStyle = "#1c2435";
+      ctx.fillRect(cardX + 7, cardY + 12, 6, 6);
+      // Pam (right)
+      ctx.fillStyle = "#7e5139";
+      ctx.fillRect(cardX + 22, cardY + 6, 8, 2);
+      ctx.fillStyle = "#f1cfb3";
+      ctx.fillRect(cardX + 23, cardY + 8, 6, 4);
+      ctx.fillStyle = "#d9eef9";
+      ctx.fillRect(cardX + 23, cardY + 12, 6, 6);
+      // Cece (center baby)
+      ctx.fillStyle = "#f4dcc7";
+      ctx.fillRect(cardX + 15, cardY + 12, 4, 3);
+      ctx.fillStyle = "#f7e5b5";
+      ctx.fillRect(cardX + 14, cardY + 15, 6, 3);
+      ctx.fillStyle = "#30384a";
+      ctx.font = "bold 10px Trebuchet MS";
+      ctx.fillText("JIM + PAM + CECE", cardX + 42, cardY + 12);
+      ctx.font = "9px Trebuchet MS";
+      ctx.fillText("Click to view photo", cardX + 42, cardY + 21);
+      state.deskPhotoBounds = { x: cardX, y: cardY, w: cardW, h: cardH };
+      state.deskGoldenfaceBounds = null;
+    }
   } else {
     state.deskGoldenfaceBounds = null;
+    state.deskPhotoBounds = null;
   }
 
   ctx.fillStyle = "#f5e9d0";
@@ -3803,14 +4868,149 @@ function drawDeskScene() {
   } else if (!state.deskDrawerOpen) {
     ctx.fillText("Click the desk drawer to unlock it with Jim's Desk Key.", 250, 136);
   } else {
-    ctx.fillText("Click the Goldenface outfit card in the drawer to equip it.", 242, 136);
+    ctx.fillText(
+      state.saveData.unlocks.goldenfaceTakenFromDesk
+        ? "Goldenface was taken. Click the Jim + Pam photo to view it."
+        : "Click the Goldenface outfit card in the drawer to equip it.",
+      216,
+      136
+    );
   }
   ctx.fillStyle = "#b9d7ff";
   ctx.font = "17px Trebuchet MS";
   ctx.fillText("Press Enter to return to the conference room.", 286, 500);
+
+  if (state.deskPhotoViewerOpen) {
+    ctx.fillStyle = "rgba(8, 12, 22, 0.82)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const px = 220;
+    const py = 108;
+    const pw = 520;
+    const ph = 300;
+    ctx.fillStyle = "#f1ead8";
+    ctx.fillRect(px, py, pw, ph);
+    ctx.strokeStyle = "#bda780";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(px, py, pw, ph);
+    // Inner matte + photo area.
+    ctx.fillStyle = "#d7c9a9";
+    ctx.fillRect(px + 12, py + 12, pw - 24, ph - 24);
+    ctx.fillStyle = "#89a3c2";
+    ctx.fillRect(px + 24, py + 24, pw - 48, ph - 96);
+
+    const fx = px + 36;
+    const fy = py + 34;
+    const fw = pw - 72;
+    const fh = ph - 118;
+    const p = 2; // 16-bit pixel scale
+
+    // Detailed office-photo background.
+    ctx.fillStyle = "#9ab2cf";
+    ctx.fillRect(fx, fy, fw, fh);
+    ctx.fillStyle = "#7f98b7";
+    ctx.fillRect(fx, fy + 22, fw, 3);
+    ctx.fillRect(fx, fy + 56, fw, 2);
+    ctx.fillStyle = "#6f87a7";
+    ctx.fillRect(fx + 28, fy + 12, 54, 28);
+    ctx.fillRect(fx + 334, fy + 10, 56, 30);
+    ctx.fillStyle = "#b9cade";
+    ctx.fillRect(fx + 32, fy + 16, 46, 18);
+    ctx.fillRect(fx + 338, fy + 14, 48, 20);
+
+    // Floor/foreground strip.
+    ctx.fillStyle = "#738ba8";
+    ctx.fillRect(fx, fy + fh - 32, fw, 32);
+
+    // Jim (left) - 16-bit detail.
+    const jx = fx + 88;
+    const jy = fy + 24;
+    ctx.fillStyle = "#2c2119";
+    ctx.fillRect(jx + 4 * p, jy + 0 * p, 30 * p, 8 * p);
+    ctx.fillRect(jx + 2 * p, jy + 6 * p, 8 * p, 6 * p);
+    ctx.fillRect(jx + 28 * p, jy + 6 * p, 8 * p, 6 * p);
+    ctx.fillStyle = "#efcfb3";
+    ctx.fillRect(jx + 7 * p, jy + 8 * p, 24 * p, 18 * p);
+    ctx.fillStyle = "#dcb79a";
+    ctx.fillRect(jx + 9 * p, jy + 20 * p, 20 * p, 3 * p);
+    ctx.fillStyle = "#2c3748";
+    ctx.fillRect(jx + 12 * p, jy + 13 * p, 3 * p, 3 * p);
+    ctx.fillRect(jx + 22 * p, jy + 13 * p, 3 * p, 3 * p);
+    ctx.fillRect(jx + 14 * p, jy + 19 * p, 10 * p, 2 * p);
+    ctx.fillStyle = "#1a2230";
+    ctx.fillRect(jx + 6 * p, jy + 26 * p, 26 * p, 30 * p);
+    ctx.fillStyle = "#f5f7fb";
+    ctx.fillRect(jx + 16 * p, jy + 28 * p, 6 * p, 24 * p);
+    ctx.fillStyle = "#d8dfea";
+    ctx.fillRect(jx + 18 * p, jy + 27 * p, 2 * p, 14 * p);
+    ctx.fillRect(jx + 15 * p, jy + 49 * p, 8 * p, 4 * p);
+    ctx.fillStyle = "#263446";
+    ctx.fillRect(jx + 6 * p, jy + 26 * p, 8 * p, 30 * p);
+    ctx.fillRect(jx + 24 * p, jy + 26 * p, 8 * p, 30 * p);
+
+    // Pam (right) - longer hair + cardigan detail.
+    const px2 = fx + 252;
+    const py2 = fy + 24;
+    ctx.fillStyle = "#7b503a";
+    ctx.fillRect(px2 + 4 * p, py2 + 0 * p, 30 * p, 8 * p);
+    ctx.fillRect(px2 + 2 * p, py2 + 6 * p, 8 * p, 18 * p);
+    ctx.fillRect(px2 + 28 * p, py2 + 6 * p, 8 * p, 18 * p);
+    ctx.fillStyle = "#f1cfb3";
+    ctx.fillRect(px2 + 7 * p, py2 + 8 * p, 24 * p, 18 * p);
+    ctx.fillStyle = "#dfbda0";
+    ctx.fillRect(px2 + 9 * p, py2 + 20 * p, 20 * p, 3 * p);
+    ctx.fillStyle = "#2b3343";
+    ctx.fillRect(px2 + 12 * p, py2 + 13 * p, 3 * p, 3 * p);
+    ctx.fillRect(px2 + 22 * p, py2 + 13 * p, 3 * p, 3 * p);
+    ctx.fillRect(px2 + 14 * p, py2 + 19 * p, 10 * p, 2 * p);
+    ctx.fillStyle = "#d9eef9";
+    ctx.fillRect(px2 + 6 * p, py2 + 26 * p, 26 * p, 30 * p);
+    ctx.fillStyle = "#7f96bf";
+    ctx.fillRect(px2 + 6 * p, py2 + 26 * p, 6 * p, 30 * p);
+    ctx.fillRect(px2 + 26 * p, py2 + 26 * p, 6 * p, 30 * p);
+    ctx.fillStyle = "#5f78a7";
+    ctx.fillRect(px2 + 16 * p, py2 + 27 * p, 4 * p, 20 * p);
+
+    // Baby Cece center/front with blanket.
+    const cx = fx + 196;
+    const cy = fy + 90;
+    ctx.fillStyle = "#f5decb";
+    ctx.fillRect(cx + 8 * p, cy + 0 * p, 14 * p, 10 * p);
+    ctx.fillStyle = "#dcb79a";
+    ctx.fillRect(cx + 10 * p, cy + 8 * p, 10 * p, 2 * p);
+    ctx.fillStyle = "#e9c88a";
+    ctx.fillRect(cx + 6 * p, cy + 10 * p, 18 * p, 12 * p);
+    ctx.fillStyle = "#f7e5b5";
+    ctx.fillRect(cx + 3 * p, cy + 14 * p, 24 * p, 11 * p);
+    ctx.fillStyle = "#2f384b";
+    ctx.fillRect(cx + 12 * p, cy + 4 * p, 2 * p, 2 * p);
+    ctx.fillRect(cx + 17 * p, cy + 4 * p, 2 * p, 2 * p);
+    ctx.fillRect(cx + 12 * p, cy + 7 * p, 7 * p, 1 * p);
+    ctx.fillStyle = "#d7b065";
+    ctx.fillRect(cx + 5 * p, cy + 18 * p, 20 * p, 2 * p);
+
+    // Film-grain / scanline look for 16-bit photo texture.
+    ctx.fillStyle = "rgba(10, 16, 30, 0.09)";
+    for (let yy = fy; yy < fy + fh; yy += 4) ctx.fillRect(fx, yy, fw, 1);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.12)";
+    ctx.fillRect(fx + 6, fy + 6, fw - 12, 6);
+
+    // Matte label strip.
+    ctx.fillStyle = "#e3d6bb";
+    ctx.fillRect(px + 24, py + ph - 64, pw - 48, 32);
+    ctx.fillStyle = "#f9d97f";
+    ctx.font = "bold 23px Trebuchet MS";
+    ctx.fillText("Jim + Pam + Cece", px + 184, py + 242);
+    ctx.fillStyle = "#2e3544";
+    ctx.font = "bold 16px Trebuchet MS";
+    ctx.fillText("Click anywhere to close", px + 182, py + 271);
+  }
 }
 
 function selectDeskByCanvasPoint(x, y) {
+  if (state.deskPhotoViewerOpen) {
+    state.deskPhotoViewerOpen = false;
+    return;
+  }
   const hasKey = state.saveData.unlocks.jimDeskKey;
 
   if (
@@ -3825,9 +5025,21 @@ function selectDeskByCanvasPoint(x, y) {
     }
     const runnerId = getRunnerId();
     state.saveData.unlocks.equippedOutfits[runnerId] = "goldenface";
+    state.saveData.unlocks.goldenfaceTakenFromDesk = true;
     persistSave();
     showMissionToast("Goldenface equipped. Return to the conference room.");
     switchScene("menu");
+    return;
+  }
+
+  if (
+    state.deskPhotoBounds &&
+    x >= state.deskPhotoBounds.x &&
+    x <= state.deskPhotoBounds.x + state.deskPhotoBounds.w &&
+    y >= state.deskPhotoBounds.y &&
+    y <= state.deskPhotoBounds.y + state.deskPhotoBounds.h
+  ) {
+    state.deskPhotoViewerOpen = true;
     return;
   }
 
@@ -3901,11 +5113,9 @@ function drawMissionsScene() {
   grad.addColorStop(1, "#12213a");
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawPixelTexture(0, 0, canvas.width, canvas.height, "rgba(6,14,28,0.12)", "rgba(255,255,255,0.05)");
 
-  ctx.fillStyle = "rgba(10,16,28,0.84)";
-  ctx.fillRect(64, 54, 832, 476);
-  ctx.strokeStyle = "#8bc8ff";
-  ctx.strokeRect(64, 54, 832, 476);
+  drawPixelPanel(64, 54, 832, 476, "rgba(14,23,40,0.9)", "rgba(9,16,30,0.9)", "#8bc8ff", "rgba(217,236,255,0.68)");
 
   ctx.fillStyle = "#ffe08f";
   ctx.font = "bold 36px Trebuchet MS";
@@ -3984,12 +5194,16 @@ function drawAnnexScene() {
   grad.addColorStop(1, "#b977ac");
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawPixelTexture(0, 0, canvas.width, canvas.height, "rgba(35,10,36,0.12)", "rgba(255,255,255,0.04)");
+  // Boutique runway floor.
+  ctx.fillStyle = "#6e4e6d";
+  ctx.fillRect(0, 408, canvas.width, 132);
+  for (let x = 0; x < canvas.width; x += 48) {
+    ctx.fillStyle = "rgba(255,220,255,0.12)";
+    ctx.fillRect(x + 8, 430, 24, 2);
+  }
 
-  ctx.fillStyle = "rgba(22, 16, 28, 0.74)";
-  ctx.fillRect(42, 68, 916, 412);
-  ctx.strokeStyle = "#ffd787";
-  ctx.lineWidth = 2;
-  ctx.strokeRect(42, 68, 916, 412);
+  drawPixelPanel(42, 68, 916, 412, "rgba(38,22,46,0.82)", "rgba(27,17,35,0.82)", "#ffd787", "rgba(255,232,186,0.6)");
 
   ctx.fillStyle = "#ffe6ab";
   ctx.font = "bold 36px Trebuchet MS";
@@ -3998,9 +5212,11 @@ function drawAnnexScene() {
   ctx.fillStyle = "#f7edf7";
   ctx.font = "18px Trebuchet MS";
   ctx.fillText(`Runner: ${runnerPreset.label}`, 64, 154);
-  ctx.fillText(`Wallet: ${state.saveData.currencies.schruteBucks} Schrute Bucks`, 64, 178);
+  ctx.fillText("Wallet:", 64, 178);
+  const annexSbW = drawCurrencyIcon("schrute_buck", 136, 166, 1.08);
+  ctx.fillText(`${state.saveData.currencies.schruteBucks}`, 136 + annexSbW + 8, 178);
   ctx.fillText(`Dundies: ${Object.values(state.saveData.achievements).filter(Boolean).length}/3`, 64, 202);
-  ctx.fillText("Kelly only accepts Schrute Bucks.", 64, 226);
+  drawWrappedTextWithCurrencyIcons("Kelly only accepts [SB].", 64, 226, 320, 18, 1);
 
   // Dundie shelf.
   state.annexAchievementBounds = [];
@@ -4234,7 +5450,7 @@ function drawAnnexScene() {
     ctx.font = "12px Trebuchet MS";
     drawWrappedText(outfit.tagline, x + 8, y + 50, 104, 13, 4);
 
-    let badge = isDundieRewardOutfit(outfit) ? "EARN FROM DUNDIE" : `BUY ${outfit.cost} SB`;
+    let badge = isDundieRewardOutfit(outfit) ? "EARN FROM DUNDIE" : `BUY ${formatSchruteBucks(outfit.cost)}`;
     if (!usable) badge = `ONLY ${outfit.character.toUpperCase()}`;
     else if (isDundieRewardOutfit(outfit) && !reqMet) badge = "LOCKED (DUNDIE)";
     else if (isEquipped) badge = "EQUIPPED";
@@ -4246,16 +5462,16 @@ function drawAnnexScene() {
     state.annexCards.push({ x, y, w: cardW, h: cardH, outfitId: outfit.id });
   }
 
-  ctx.fillStyle = "rgba(9, 11, 19, 0.8)";
-  ctx.fillRect(64, 22, 868, 34);
-  ctx.strokeStyle = "#ffbbec";
-  ctx.strokeRect(64, 22, 868, 34);
+  drawPixelPanel(64, 22, 868, 34, "rgba(18,12,30,0.9)", "rgba(11,7,20,0.9)", "#ffbbec", "rgba(255,224,246,0.58)");
   ctx.fillStyle = "#f5deef";
   ctx.font = "17px Trebuchet MS";
-  ctx.fillText(
+  drawWrappedTextWithCurrencyIcons(
     state.annexMessage || "Kelly: Welcome to the Annex Boutique, where confidence is mandatory and glitter is a lifestyle.",
     76,
-    45
+    45,
+    848,
+    18,
+    1
   );
 }
 
@@ -4603,6 +5819,7 @@ function drawRunScene() {
   drawPamQuestBackgroundSprite();
   drawPursuitTarget();
   drawObstacles();
+  drawCollectibles();
   drawPlayer();
   drawParticles();
   drawFloatingText();
@@ -4635,9 +5852,128 @@ function drawRunScene() {
     ctx.globalAlpha = 1;
   }
 
+  if (
+    state.runWorldId === "pursuit" &&
+    !state.pursuitEndPending &&
+    state.multiplier >= 10 &&
+    canPromptPursuitJump()
+  ) {
+    const promptX = state.player.x + 4;
+    const promptY = state.player.y - state.player.height - 30;
+    const pulse = 0.65 + Math.abs(Math.sin(state.worldTimeSec * 10)) * 0.35;
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = "rgba(18, 24, 38, 0.9)";
+    ctx.fillRect(promptX - 2, promptY - 18, 54, 18);
+    ctx.strokeStyle = "#ffe28c";
+    ctx.strokeRect(promptX - 2, promptY - 18, 54, 18);
+    ctx.fillStyle = "#ffe9ac";
+    ctx.font = "bold 14px Trebuchet MS";
+    ctx.fillText("JUMP!", promptX + 4, promptY - 5);
+    ctx.globalAlpha = 1;
+  }
+
+  if (state.runWorldId === "pursuit" && state.pursuitEndPending && state.pursuitRevealLeft > 0) {
+    const revealProgress = 1 - state.pursuitRevealLeft / PURSUIT_REVEAL_DURATION;
+    const panelW = 430;
+    const panelH = 190;
+    const panelX = (canvas.width - panelW) * 0.5;
+    const panelY = 92;
+    const pulse = 0.25 + Math.abs(Math.sin(state.worldTimeSec * 18)) * 0.25;
+    ctx.fillStyle = `rgba(10, 14, 24, ${0.82 + pulse * 0.3})`;
+    ctx.fillRect(panelX, panelY, panelW, panelH);
+    ctx.strokeStyle = revealProgress > 0.56 ? "#ffb39c" : "#8bb7ff";
+    ctx.strokeRect(panelX, panelY, panelW, panelH);
+
+    const cX = panelX + 84;
+    const cY = panelY + 52;
+    const s = 2.2;
+
+    ctx.fillStyle = "#efcfab";
+    ctx.fillRect(cX + 8 * s, cY + 8 * s, 14 * s, 10 * s);
+    ctx.fillStyle = "#2b1f17";
+    ctx.fillRect(cX + 7 * s, cY + 4 * s, 16 * s, 5 * s);
+    ctx.fillStyle = "#1b2230";
+    ctx.fillRect(cX + 12 * s, cY + 12 * s, 2 * s, 2 * s);
+    ctx.fillRect(cX + 18 * s, cY + 12 * s, 2 * s, 2 * s);
+    ctx.fillRect(cX + 13 * s, cY + 16 * s, 7 * s, 1 * s);
+
+    const maskOffset = revealProgress < 0.46 ? 0 : Math.min(20 * s, (revealProgress - 0.46) * 64 * s);
+    const maskLift = revealProgress < 0.46 ? 0 : Math.sin(revealProgress * 26) * 1.8 * s;
+    if (maskOffset < 18 * s) {
+      ctx.fillStyle = "#151820";
+      ctx.fillRect(cX + 7 * s + maskOffset, cY + 8 * s - maskLift, 16 * s, 11 * s);
+      ctx.fillStyle = "#8ea2bf";
+      ctx.fillRect(cX + 11 * s + maskOffset, cY + 12 * s - maskLift, 3 * s, 2 * s);
+      ctx.fillRect(cX + 17 * s + maskOffset, cY + 12 * s - maskLift, 3 * s, 2 * s);
+    }
+
+    ctx.fillStyle = "#f0d890";
+    ctx.font = "bold 24px Trebuchet MS";
+    ctx.fillText("UNMASKING...", panelX + 30, panelY + 38);
+    if (revealProgress >= 0.58) {
+      const flash = Math.max(0, 1 - (revealProgress - 0.58) * 6);
+      if (flash > 0) {
+        ctx.globalAlpha = flash * 0.65;
+        ctx.fillStyle = "#fff2d8";
+        ctx.fillRect(panelX + 6, panelY + 6, panelW - 12, panelH - 12);
+        ctx.globalAlpha = 1;
+      }
+      ctx.fillStyle = "#ffb9b0";
+      ctx.font = "bold 24px Trebuchet MS";
+      drawWrappedText("THE SCRANTON STRANGLER IS TOBY.", panelX + 30, panelY + 156, panelW - 60, 28, 2);
+      ctx.fillStyle = "#ffe7bc";
+      ctx.font = "bold 18px Trebuchet MS";
+      drawWrappedText("MICHAEL: NO. NO. GOD. NOOOO!", panelX + 64, panelY + 66, panelW - 120, 20, 2);
+    }
+  }
+
+  if (
+    state.runWorldId === "pursuit" &&
+    state.pursuitEndPending &&
+    state.pursuitRevealLeft <= 0 &&
+    state.pursuitEndCardLeft > 0
+  ) {
+    const t = 1 - state.pursuitEndCardLeft / PURSUIT_END_CARD_DURATION;
+    const colors = ["#ffce56", "#ff6d8f", "#6edbff", "#95f38f", "#ffe9aa"];
+
+    for (let i = 0; i < 24; i += 1) {
+      const y = 72 + ((i * 23) % 320);
+      const sway = Math.sin(state.worldTimeSec * 9 + i * 1.7) * 8;
+      const spread = t * (170 + (i % 6) * 18);
+
+      const lx = -14 + spread + sway;
+      const rx = canvas.width + 14 - spread - sway;
+      ctx.fillStyle = colors[i % colors.length];
+      ctx.fillRect(lx, y + Math.sin(state.worldTimeSec * 12 + i) * 5, 6, 14);
+      ctx.fillRect(rx, y + Math.cos(state.worldTimeSec * 11 + i) * 5, 6, 14);
+    }
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.32)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#f5ca5b";
+    ctx.font = "bold 66px Trebuchet MS";
+    ctx.fillText("THE END", 336, 278);
+    ctx.fillStyle = "#fff3c9";
+    ctx.font = "bold 66px Trebuchet MS";
+    ctx.fillText("THE END", 332, 274);
+    ctx.fillStyle = "#f5dfad";
+    ctx.font = "bold 22px Trebuchet MS";
+    ctx.fillText("Strangler caught. Scranton can exhale.", 286, 316);
+  }
+
+  if (state.runWorldId === "pursuit" && state.pursuitEndPending) {
+    const alpha =
+      state.pursuitRevealLeft > 0 || state.pursuitEndCardLeft > 0
+        ? 0
+        : Math.max(0, Math.min(1, 1 - state.pursuitEndFade / 0.75));
+    ctx.fillStyle = `rgba(0,0,0,${alpha})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
   if (state.gameOver) {
     ctx.fillStyle = "rgba(15,20,30,0.66)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    drawPerformanceReviewOverlay();
   }
 }
 
@@ -4649,6 +5985,19 @@ function render() {
   else if (state.scene === "missions") drawMissionsScene();
   else if (state.scene === "cutscene") drawFinalCutsceneScene();
   else drawAnnexScene();
+
+  if (state.jackpotRainDrops.length > 0) {
+    for (const drop of state.jackpotRainDrops) {
+      const tilt = Math.sin(drop.spin) * 2.5;
+      ctx.fillStyle = "#f0c44d";
+      ctx.fillRect(drop.x + tilt, drop.y, drop.size, drop.size * 0.62);
+      ctx.fillStyle = "#fff2b8";
+      ctx.fillRect(drop.x + 2 + tilt, drop.y + 1, Math.max(2, drop.size - 4), Math.max(2, drop.size * 0.62 - 2));
+      ctx.fillStyle = "#8a5d08";
+      ctx.font = "bold 9px Trebuchet MS";
+      ctx.fillText("$", drop.x + 3 + tilt, drop.y + Math.max(8, drop.size * 0.5));
+    }
+  }
 
   if (state.missionToastLeft > 0) {
     const alpha = Math.min(1, state.missionToastLeft / 0.3);
@@ -4662,7 +6011,7 @@ function render() {
     ctx.strokeRect(toastX, 20, toastW, 48);
     ctx.fillStyle = "#d8f3ff";
     ctx.font = "bold 17px Trebuchet MS";
-    drawWrappedText(toastText, toastX + 14, 40, toastW - 28, 20, 2);
+    drawWrappedTextWithCurrencyIcons(toastText, toastX + 14, 40, toastW - 28, 20, 2);
     ctx.globalAlpha = 1;
   }
 }
@@ -4673,12 +6022,38 @@ function update(dt) {
   syncPostKeyMissionRewards();
   updateCornerTv(dt);
   if (state.scene === "run") updateRun(dt);
+  if (state.scene === "run" && state.gameOver && state.reviewData) {
+    state.reviewAnimSec = Math.min(state.reviewAnimDuration, state.reviewAnimSec + dt);
+    renderReviewSummaryText();
+  }
   updateLevelMusic(dt);
   updateSkarnMusic(dt);
   if (state.scene === "cutscene") {
     state.cutsceneTimeSec += dt;
     state.cutsceneFadeLeft = Math.max(0, state.cutsceneFadeLeft - dt);
     updateCutsceneSong(dt);
+  }
+  if (state.jackpotRainLeft > 0 || state.jackpotRainDrops.length > 0) {
+    if (state.jackpotRainLeft > 0) {
+      state.jackpotRainLeft = Math.max(0, state.jackpotRainLeft - dt);
+      state.jackpotRainSpawnAcc += dt;
+      while (state.jackpotRainSpawnAcc >= 0.045) {
+        state.jackpotRainSpawnAcc -= 0.045;
+        state.jackpotRainDrops.push({
+          x: Math.random() * canvas.width,
+          y: -16 - Math.random() * 42,
+          vy: 250 + Math.random() * 210,
+          spin: Math.random() * Math.PI * 2,
+          spinRate: 2 + Math.random() * 4,
+          size: 9 + Math.random() * 4,
+        });
+      }
+    }
+    for (const drop of state.jackpotRainDrops) {
+      drop.y += drop.vy * dt;
+      drop.spin += drop.spinRate * dt;
+    }
+    state.jackpotRainDrops = state.jackpotRainDrops.filter((drop) => drop.y < canvas.height + 20);
   }
   if (state.menuClickLeft > 0) {
     state.menuClickLeft = Math.max(0, state.menuClickLeft - dt);
@@ -4762,6 +6137,7 @@ function loop(ts) {
 
 function handlePress(ev) {
   ensureAudioContext();
+  if (ev.code.startsWith("Key")) advanceCheatCode(ev.code);
 
   if (ev.code === "KeyM") {
     ev.preventDefault();
