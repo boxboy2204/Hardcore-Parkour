@@ -38,8 +38,8 @@ body {
   position: absolute;
   left: 8px;
   top: 8px;
-  width: 92px;
-  height: 52px;
+  width: 230px;
+  height: 132px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -56,20 +56,20 @@ body {
 }
 
 .corner-tv__logo-main {
-  font-size: 23px;
+  font-size: 56px;
   font-weight: 900;
   font-style: italic;
   line-height: 1;
 }
 
 .corner-tv__logo-sub {
-  font-size: 9px;
+  font-size: 21px;
   font-weight: 800;
   line-height: 1;
 }
 
 .app {
-  max-width: 1080px;
+  max-width: min(96vw, 1560px);
   margin: 0 auto;
   padding: 20px;
   display: grid;
@@ -164,7 +164,8 @@ kbd {
 }
 
 #game {
-  width: 100%;
+  width: min(100%, 1500px);
+  max-width: 100%;
   height: auto;
   border: 3px solid #93deff;
   border-radius: 12px;
@@ -174,6 +175,7 @@ kbd {
     0 0 0 4px #0d274f;
   image-rendering: crisp-edges;
   text-rendering: geometricPrecision;
+  justify-self: center;
 }
 
 .panel {

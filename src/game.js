@@ -298,6 +298,9 @@ const state = {
   cutsceneLyricLine: 0,
   skarnMusicTimer: 0,
   skarnMusicStep: 0,
+  levelMusicTimer: 0,
+  levelMusicStep: 0,
+  levelMusicWorld: null,
   shopCards: [],
   shopJimBounds: null,
   shopPamBounds: null,
@@ -327,8 +330,8 @@ const state = {
   pamY: 0,
   cornerLogoX: 8,
   cornerLogoY: 8,
-  cornerLogoVX: 118,
-  cornerLogoVY: 96,
+  cornerLogoVX: 154,
+  cornerLogoVY: 126,
   cornerLogoWidth: 92,
   cornerLogoHeight: 52,
   cornerLogoColorT: 0,
@@ -538,6 +541,181 @@ function playSkarnRetroNote(frequency, durationSec = 0.18, type = "square", leve
   osc.stop(now + Math.max(0.09, durationSec) + 0.01);
 }
 
+function playLevelNote(frequency, durationSec, type, level) {
+  const audioCtx = ensureAudioContext();
+  if (!audioCtx) return;
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  const now = audioCtx.currentTime;
+
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(frequency, now);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(level, now + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + Math.max(0.08, durationSec));
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start(now);
+  osc.stop(now + Math.max(0.09, durationSec) + 0.01);
+}
+
+const LEVEL_MUSIC = {
+  bullpen: {
+    // Sunny, goofy pep rally (major pentatonic).
+    stepLen: 0.36,
+    bass: [
+      98.0, null, 110.0, null, 123.47, null, 110.0, null,
+      87.31, null, 98.0, null, 110.0, null, 98.0, null,
+    ],
+    lead: [
+      392.0, 440.0, 493.88, 440.0, 392.0, 440.0, 493.88, 523.25,
+      493.88, 440.0, 392.0, 440.0, 392.0, 440.0, 392.0, 349.23,
+    ],
+    arp: [
+      659.25, 739.99, 783.99, 739.99, 659.25, 739.99, 783.99, 739.99,
+      659.25, 739.99, 783.99, 739.99, 659.25, 739.99, 783.99, 739.99,
+    ],
+    level: 0.028,
+    leadType: "triangle",
+    bassType: "triangle",
+    arpType: "square",
+  },
+  warehouse: {
+    // Industrial, clanky minor groove.
+    stepLen: 0.3,
+    bass: [
+      98.0, 98.0, null, 110.0, 123.47, null, 110.0, 98.0,
+      110.0, null, 123.47, 130.81, null, 110.0, 98.0, null,
+    ],
+    lead: [
+      392.0, null, 440.0, 392.0, 523.25, null, 493.88, 440.0,
+      392.0, null, 440.0, 392.0, 440.0, null, 392.0, 349.23,
+    ],
+    arp: [
+      587.33, 659.25, null, 739.99, 659.25, null, 587.33, null,
+      739.99, null, 659.25, 587.33, null, 659.25, null, 587.33,
+    ],
+    level: 0.032,
+    leadType: "square",
+    bassType: "sawtooth",
+    arpType: "square",
+  },
+  streets: {
+    // Snowy glide with bell-like arps.
+    stepLen: 0.26,
+    bass: [
+      110.0, null, 123.47, null, 130.81, null, 146.83, null,
+      123.47, null, 110.0, null, 123.47, null, 130.81, null,
+    ],
+    lead: [
+      523.25, 587.33, 659.25, null, 587.33, 523.25, null, 587.33,
+      659.25, 698.46, null, 659.25, 587.33, null, 523.25, 587.33,
+    ],
+    arp: [
+      987.77, 880.0, 783.99, 739.99, 783.99, 880.0, 987.77, 1046.5,
+      987.77, 880.0, 783.99, 739.99, 783.99, 880.0, 987.77, 1046.5,
+    ],
+    bells: [
+      // Jingle Bells melody in G major, two phrases long.
+      1567.98, 1567.98, 1567.98, null, 1567.98, 1567.98, 1567.98, null,
+      1567.98, 1975.53, 1318.51, 1480.0, 1567.98, null, null, null,
+      1760.0, 1760.0, 1760.0, 1760.0, 1760.0, 1567.98, 1567.98, null,
+      1567.98, 1480.0, 1480.0, 1567.98, 1480.0, 1975.53, null, null,
+    ],
+    level: 0.034,
+    leadType: "triangle",
+    bassType: "triangle",
+    arpType: "square",
+    bellType: "triangle",
+  },
+  corporate: {
+    // Sleek, tense boardroom funk.
+    stepLen: 0.22,
+    bass: [
+      123.47, null, 130.81, null, 146.83, null, 164.81, null,
+      146.83, null, 130.81, null, 123.47, null, 130.81, null,
+    ],
+    lead: [
+      493.88, 523.25, null, 587.33, 659.25, null, 587.33, 523.25,
+      493.88, null, 523.25, 587.33, null, 659.25, 587.33, 523.25,
+    ],
+    arp: [
+      783.99, null, 880.0, 987.77, null, 1046.5, 987.77, null,
+      880.0, 783.99, null, 880.0, 987.77, null, 1046.5, 987.77,
+    ],
+    level: 0.04,
+    leadType: "sawtooth",
+    bassType: "square",
+    arpType: "square",
+  },
+  pursuit: {
+    // Aggressive, fast chase.
+    stepLen: 0.18,
+    bass: [
+      130.81, 146.83, 164.81, 174.61, 164.81, 146.83, 130.81, 146.83,
+      174.61, 196.0, 220.0, 196.0, 174.61, 164.81, 146.83, 130.81,
+    ],
+    lead: [
+      523.25, 587.33, 698.46, 659.25, 587.33, 523.25, 587.33, 659.25,
+      698.46, 783.99, 880.0, 783.99, 698.46, 659.25, 587.33, 523.25,
+    ],
+    arp: [
+      1046.5, 1174.66, 987.77, 880.0, 987.77, 1046.5, 1174.66, 987.77,
+      880.0, 987.77, 1046.5, 1174.66, 1318.51, 1174.66, 1046.5, 987.77,
+    ],
+    level: 0.048,
+    leadType: "sawtooth",
+    bassType: "sawtooth",
+    arpType: "square",
+  },
+};
+
+function updateLevelMusic(dt) {
+  const active =
+    state.scene === "run" &&
+    state.running &&
+    !state.paused &&
+    !state.gameOver &&
+    state.runWorldId !== "skarn";
+
+  if (!active) {
+    state.levelMusicTimer = 0;
+    state.levelMusicStep = 0;
+    state.levelMusicWorld = null;
+    return;
+  }
+
+  const config = LEVEL_MUSIC[state.runWorldId];
+  if (!config) return;
+
+  if (state.levelMusicWorld !== state.runWorldId) {
+    state.levelMusicWorld = state.runWorldId;
+    state.levelMusicTimer = 0;
+    state.levelMusicStep = 0;
+  }
+
+  state.levelMusicTimer -= dt;
+  while (state.levelMusicTimer <= 0) {
+    const idx = state.levelMusicStep % config.bass.length;
+    const bassNote = config.bass[idx];
+    const leadNote = config.lead[idx];
+    const arpNote = config.arp[idx];
+    if (bassNote) playLevelNote(bassNote, config.stepLen * 0.8, config.bassType, config.level * 0.9);
+    if (leadNote) playLevelNote(leadNote, config.stepLen * 0.6, config.leadType, config.level);
+    if (arpNote) playLevelNote(arpNote, config.stepLen * 0.45, config.arpType, config.level * 0.7);
+    if (config.bells) {
+      const bellNote = config.bells[idx % config.bells.length];
+      if (bellNote) playLevelNote(bellNote, config.stepLen * 0.6, config.bellType || "triangle", config.level * 0.9);
+    }
+    if (idx % 4 === 0 && leadNote) {
+      playLevelNote(leadNote * 0.5, config.stepLen * 0.35, "square", config.level * 0.5);
+    }
+    state.levelMusicStep += 1;
+    state.levelMusicTimer += config.stepLen;
+  }
+}
+
 function updateSkarnMusic(dt) {
   const active =
     state.scene === "run" && state.runWorldId === "skarn" && state.running && !state.paused && !state.gameOver;
@@ -680,12 +858,13 @@ function awardCornerTvJackpot() {
 }
 
 function updateCornerTv(dt) {
-  if (!cornerTv || !cornerLogo || !state.saveData) return;
+  if (!cornerTv || !cornerLogo) return;
 
-  const logoW = cornerLogo.clientWidth || state.cornerLogoWidth;
-  const logoH = cornerLogo.clientHeight || state.cornerLogoHeight;
-  const maxX = Math.max(0, cornerTv.clientWidth - logoW);
-  const maxY = Math.max(0, cornerTv.clientHeight - logoH);
+  const rect = cornerLogo.getBoundingClientRect();
+  const logoW = Math.max(1, Math.round(rect.width || cornerLogo.clientWidth || state.cornerLogoWidth));
+  const logoH = Math.max(1, Math.round(rect.height || cornerLogo.clientHeight || state.cornerLogoHeight));
+  const maxX = Math.max(0, window.innerWidth - logoW);
+  const maxY = Math.max(0, window.innerHeight - logoH);
   if (maxX <= 0 || maxY <= 0) return;
 
   state.cornerLogoX += state.cornerLogoVX * dt;
@@ -714,18 +893,10 @@ function updateCornerTv(dt) {
     hitY = true;
   }
 
-  if (hitX || hitY) {
-    if (Math.random() < 0.01) {
-      const cornerX = Math.random() < 0.5 ? 0 : maxX;
-      const cornerY = Math.random() < 0.5 ? 0 : maxY;
-      state.cornerLogoX = cornerX;
-      state.cornerLogoY = cornerY;
-      state.cornerLogoVX = cornerX === 0 ? Math.abs(state.cornerLogoVX) : -Math.abs(state.cornerLogoVX);
-      state.cornerLogoVY = cornerY === 0 ? Math.abs(state.cornerLogoVY) : -Math.abs(state.cornerLogoVY);
-      if (state.cornerLogoRewardCooldown <= 0) awardCornerTvJackpot();
-    } else if (hitX && hitY) {
-      // Keep true corner events rare (1/100 chance).
-      state.cornerLogoY = Math.max(1, Math.min(maxY - 1, state.cornerLogoY + (state.cornerLogoVY > 0 ? 1 : -1)));
+  if (hitX && hitY) {
+    // Only reward actual corner collisions, and keep jackpot rare.
+    if (Math.random() < 0.01 && state.cornerLogoRewardCooldown <= 0 && state.saveData) {
+      awardCornerTvJackpot();
     }
   }
 
@@ -748,7 +919,9 @@ function updateCornerTv(dt) {
   const darkB = Math.round(b * 0.45);
   cornerLogo.style.background = `linear-gradient(145deg, rgb(${r}, ${g}, ${b}), rgb(${darkR}, ${darkG}, ${darkB}))`;
   cornerLogo.style.boxShadow = `0 0 12px rgba(${r}, ${g}, ${b}, 0.55)`;
-  cornerLogo.style.transform = `translate(${Math.round(state.cornerLogoX)}px, ${Math.round(state.cornerLogoY)}px)`;
+  cornerLogo.style.left = `${Math.round(state.cornerLogoX)}px`;
+  cornerLogo.style.top = `${Math.round(state.cornerLogoY)}px`;
+  cornerLogo.style.transform = "none";
 }
 
 function getRunnerId() {
@@ -1173,7 +1346,7 @@ function resetRunState(worldId = state.selectedWorldId) {
 
   state.player = {
     preset,
-    x: 180,
+    x: worldId === "pursuit" ? 90 : 180,
     y: GAME.groundY,
     width: 42,
     height: 62,
@@ -1212,10 +1385,9 @@ function addHitParticles(x, y, color) {
 }
 
 function getPursuitCarPosition() {
-  const t = Math.max(0, Math.min(1, 1 - state.tobyDistance / 100));
   return {
-    x: 760 + t * 120,
-    y: 365 - t * 30,
+    x: canvas.width - 138,
+    y: GAME.floorTop - 48,
   };
 }
 
@@ -1232,7 +1404,7 @@ function spawnObstacle() {
     paper_pile: { w: 46, h: 30, topOffset: 8, hp: 1 },
     shelf: { w: 58, h: 54, topOffset: 0, hp: 1 },
     ladder: { w: 64, h: 48, topOffset: -22, hp: 1 },
-    lightpole: { w: 24, h: 76, topOffset: -20, hp: 1 },
+    lightpole: { w: 24, h: 76, topOffset: 4, hp: 1 },
     jim_snowball: { w: 24, h: 24, topOffset: -24, hp: 1 },
     hydrant: { w: 36, h: 40, topOffset: 4, hp: 1 },
     jan_folder: { w: 34, h: 18, topOffset: -36, hp: 1 },
@@ -1426,8 +1598,14 @@ function attack() {
 function stumbleFail() {
   state.pendingLanding = false;
   state.landingWindowLeft = 0;
+  const lostPursuitChain = state.runWorldId === "pursuit" && state.multiplier > 1;
   state.stumbleLeft = GAME.stumbleSec * (state.player?.runtimeStumbleMul || 1);
   state.multiplier = 1;
+  if (lostPursuitChain) {
+    state.player.x = 66;
+    state.stumbleLeft = Math.max(state.stumbleLeft, 1.2);
+    addFloatingText("SETBACK!", state.player.x + 2, state.player.y - 44, "#ffbe7a");
+  }
   addFloatingText("OOF", state.player.x + 10, state.player.y - 24, "#ffffff");
 }
 
@@ -1493,11 +1671,17 @@ function handleObstacleCollision(obstacle) {
     else persistSave();
   }
 
+  const lostPursuitChain = state.runWorldId === "pursuit" && state.multiplier > 1;
   state.player.hp -= 1;
   state.multiplier = 1;
   state.score = Math.max(0, state.score - 80);
   state.speedBoostLeft = 0;
   state.stumbleLeft = 0.6;
+  if (lostPursuitChain) {
+    state.player.x = 66;
+    state.stumbleLeft = Math.max(state.stumbleLeft, 1.25);
+    addFloatingText("LOST GROUND!", state.player.x - 14, state.player.y - 44, "#ffbe7a");
+  }
   state.screenShake = 0.22;
   addFloatingText("Injury", state.player.x + 4, state.player.y - 28, "#ff7062");
   addHitParticles(state.player.x + state.player.width, state.player.y - 16, "#ff8f7d");
@@ -1619,7 +1803,10 @@ function updateRun(dt) {
       endRun("toby_caught");
       return;
     }
-    state.tobyDistance = Math.min(100, state.tobyDistance + 8 * dt);
+    const chaseProgress = Math.max(0, Math.min(1, (state.multiplier - 1) / 9));
+    const targetX = state.stumbleLeft > 0 ? 66 : 84 + chaseProgress * 292;
+    state.player.x += (targetX - state.player.x) * Math.min(1, dt * 9);
+    state.tobyDistance = Math.max(0, 100 - chaseProgress * 100);
   }
 
   state.score += runSpeed * dt * 0.1;
@@ -1780,6 +1967,17 @@ function drawRunBackground() {
       ctx.fillRect(84 + i * 182, 16, 120, 10);
       ctx.fillRect(94 + i * 182, 26, 100, 3);
     }
+    // Pin dots + paper tabs.
+    ctx.fillStyle = "#ffe8a8";
+    for (let i = 0; i < 10; i += 1) {
+      const px = 70 + i * 90;
+      ctx.fillRect(px, 112, 2, 2);
+    }
+    ctx.fillStyle = "#f9fbff";
+    for (let i = 0; i < 6; i += 1) {
+      const tx = 60 + i * 150;
+      ctx.fillRect(tx, 118, 10, 6);
+    }
 
     for (let i = 0; i < 8; i += 1) {
       const x = i * 132 - ((xShift * 0.56) % 132);
@@ -1802,6 +2000,17 @@ function drawRunBackground() {
     for (let i = 0; i < 14; i += 1) {
       const x = i * 74 - ((xShift * 0.12) % 74);
       ctx.fillRect(x, 0, 2, GAME.floorTop);
+    }
+    // Overhead pipes and vent panels.
+    ctx.fillStyle = "#5f6a7b";
+    ctx.fillRect(0, 54, canvas.width, 6);
+    ctx.fillStyle = "#92a0b3";
+    for (let i = 0; i < 6; i += 1) {
+      const vx = 90 + i * 150;
+      ctx.fillRect(vx, 66, 52, 10);
+      ctx.fillStyle = "#6f7e92";
+      ctx.fillRect(vx + 6, 69, 40, 4);
+      ctx.fillStyle = "#92a0b3";
     }
 
     ctx.fillStyle = "#697587";
@@ -1847,11 +2056,17 @@ function drawRunBackground() {
       ctx.fillRect(x + 20, 44, 128, 156);
       ctx.fillStyle = "#9cd4f2";
       ctx.fillRect(x + 28, 54, 112, 136);
+      // Glass reflections.
+      ctx.fillStyle = "rgba(255,255,255,0.22)";
+      ctx.fillRect(x + 34, 60, 6, 124);
+      ctx.fillRect(x + 76, 60, 6, 124);
       ctx.fillStyle = "#c8ecff";
       ctx.fillRect(x + 34, 60, 24, 124);
       ctx.fillRect(x + 66, 60, 24, 124);
       ctx.fillRect(x + 98, 60, 24, 124);
     }
+    ctx.fillStyle = "#b5d7ee";
+    ctx.fillRect(0, 220, canvas.width, 6);
 
     for (let i = 0; i < 7; i += 1) {
       const x = i * 140 - ((xShift * 0.56) % 140);
@@ -1875,8 +2090,9 @@ function drawRunBackground() {
     ctx.fillStyle = "rgba(255,255,255,0.48)";
     for (let i = 0; i < 5; i += 1) {
       const x = i * 210 - ((xShift * 0.2) % 1100) - 80;
+      const y = 82 + (i % 2) * 30;
       ctx.beginPath();
-      ctx.ellipse(x, 82 + (i % 2) * 30, 74, 22, 0, 0, Math.PI * 2);
+      ctx.ellipse(x, y, 74, 22, 0, 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -1899,10 +2115,68 @@ function drawRunBackground() {
     for (let i = 0; i < 10; i += 1) {
       const x = i * 118 - ((xShift * 0.42) % 118);
       const h = 96 + (i % 4) * 35;
+      const baseY = 300 - h;
       ctx.fillStyle = "#516481";
-      ctx.fillRect(x - 12, 300 - h, 108, h);
+      ctx.fillRect(x - 12, baseY, 108, h);
       ctx.fillStyle = "#8fb0dd";
-      for (let w = 0; w < 3; w += 1) ctx.fillRect(x + 4 + w * 30, 300 - h + 14, 16, h - 24);
+      for (let w = 0; w < 3; w += 1) ctx.fillRect(x + 4 + w * 30, baseY + 14, 16, h - 24);
+      // Extra facade detail.
+      ctx.fillStyle = "rgba(255,255,255,0.18)";
+      ctx.fillRect(x + 4, baseY + 10, 80, 2);
+      ctx.fillRect(x + 4, baseY + 34, 80, 2);
+      ctx.fillStyle = "rgba(10, 20, 40, 0.3)";
+      ctx.fillRect(x + 88, baseY + 8, 6, h - 16);
+      // Window grid with mixed warm/cool lights.
+      for (let row = 0; row < 4; row += 1) {
+        const wy = baseY + 18 + row * 18;
+        for (let col = 0; col < 4; col += 1) {
+          const wx = x + 6 + col * 18;
+          ctx.fillStyle = (row + col + i) % 3 === 0 ? "rgba(255,216,150,0.8)" : "rgba(170,200,230,0.6)";
+          ctx.fillRect(wx, wy, 8, 10);
+          ctx.fillStyle = "rgba(30,40,60,0.45)";
+          ctx.fillRect(wx - 1, wy - 1, 10, 1);
+        }
+      }
+      // Fire escape lines.
+      ctx.fillStyle = "rgba(25, 35, 55, 0.6)";
+      ctx.fillRect(x + 64, baseY + 12, 3, h - 24);
+      ctx.fillRect(x + 48, baseY + 40, 22, 2);
+      ctx.fillRect(x + 48, baseY + 64, 22, 2);
+      // Balconies + railings.
+      ctx.fillStyle = "#2f3b52";
+      ctx.fillRect(x + 18, baseY + 52, 40, 6);
+      ctx.fillRect(x + 18, baseY + 78, 40, 6);
+      ctx.fillStyle = "#55627a";
+      ctx.fillRect(x + 18, baseY + 50, 40, 2);
+      ctx.fillRect(x + 18, baseY + 76, 40, 2);
+      // Awning strip.
+      ctx.fillStyle = "#3b4a63";
+      ctx.fillRect(x - 12, baseY + h - 18, 108, 6);
+      ctx.fillStyle = "#c9d2e2";
+      for (let s = 0; s < 6; s += 1) ctx.fillRect(x - 8 + s * 16, baseY + h - 17, 8, 4);
+      // Rooftop props.
+      ctx.fillStyle = "#3f4f67";
+      ctx.fillRect(x + 2, baseY - 8, 24, 8);
+      ctx.fillRect(x + 70, baseY - 10, 16, 10);
+      ctx.fillStyle = "#2c394d";
+      ctx.fillRect(x + 30, baseY - 6, 8, 6);
+      // Neon corner sign.
+      ctx.fillStyle = "#ffb06a";
+      ctx.fillRect(x + 88, baseY + 18, 6, 18);
+      ctx.fillStyle = "#ffe1a4";
+      ctx.fillRect(x + 89, baseY + 19, 2, 16);
+      // Wall graffiti.
+      ctx.fillStyle = "#7aa1c8";
+      ctx.fillRect(x + 10, baseY + h - 30, 22, 3);
+      ctx.fillRect(x + 12, baseY + h - 26, 14, 2);
+    }
+    // Snowbanks and icy curb (keep them on the ground line).
+    ctx.fillStyle = "#eaf4ff";
+    for (let i = 0; i < 7; i += 1) {
+      const x = i * 150 - ((xShift * 0.55) % 150);
+      ctx.beginPath();
+      ctx.ellipse(x + 40, GAME.floorTop + 10, 44, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
     }
 
     ctx.fillStyle = "#6a84aa";
@@ -1930,10 +2204,54 @@ function drawRunBackground() {
     for (let i = 0; i < 11; i += 1) {
       const x = i * 114 - ((xShift * 0.58) % 114);
       const h = 118 + (i % 4) * 38;
+      const baseY = 300 - h;
       ctx.fillStyle = "#1f2f6d";
-      ctx.fillRect(x - 10, 300 - h, 108, h);
+      ctx.fillRect(x - 10, baseY, 108, h);
       ctx.fillStyle = "#89b2ff";
-      for (let w = 0; w < 3; w += 1) ctx.fillRect(x + 6 + w * 28, 300 - h + 12, 14, h - 22);
+      for (let w = 0; w < 3; w += 1) ctx.fillRect(x + 6 + w * 28, baseY + 12, 14, h - 22);
+      // Denser window grid and trims.
+      for (let row = 0; row < 4; row += 1) {
+        const wy = baseY + 16 + row * 20;
+        for (let col = 0; col < 4; col += 1) {
+          const wx = x + 10 + col * 16;
+          ctx.fillStyle = (row + col + i) % 4 === 0 ? "rgba(255,200,140,0.75)" : "rgba(130,170,230,0.5)";
+          ctx.fillRect(wx, wy, 6, 8);
+          ctx.fillStyle = "rgba(12, 20, 40, 0.4)";
+          ctx.fillRect(wx - 1, wy - 1, 8, 1);
+        }
+      }
+      ctx.fillStyle = "rgba(15, 25, 55, 0.35)";
+      ctx.fillRect(x - 10, baseY, 108, 4);
+      ctx.fillRect(x - 10, baseY + 30, 108, 2);
+      ctx.fillRect(x - 10, baseY + 60, 108, 2);
+      ctx.fillStyle = "#2c3c7a";
+      ctx.fillRect(x + 74, baseY + 8, 6, h - 16);
+      // Rooftop units.
+      ctx.fillStyle = "#22315e";
+      ctx.fillRect(x + 8, baseY - 10, 22, 10);
+      ctx.fillRect(x + 42, baseY - 8, 18, 8);
+      // Fire escape strip.
+      ctx.fillStyle = "#1b2854";
+      ctx.fillRect(x + 60, baseY + 18, 3, h - 26);
+      ctx.fillRect(x + 44, baseY + 44, 28, 2);
+      ctx.fillRect(x + 44, baseY + 72, 28, 2);
+      // Water tower + ladder.
+      if (i % 3 === 0) {
+        ctx.fillStyle = "#1a2448";
+        ctx.fillRect(x + 72, baseY - 22, 18, 12);
+        ctx.fillRect(x + 76, baseY - 30, 10, 8);
+        ctx.fillStyle = "#3a4a7a";
+        ctx.fillRect(x + 80, baseY - 22, 2, 12);
+      }
+      // Final pursuit: only a few buildings get large neon signs.
+      if (state.theme === "pursuit" && (i % 5 === 1 || i % 5 === 3)) {
+        ctx.fillStyle = "#ff8f63";
+        ctx.fillRect(x - 6, baseY + 26, 14, 44);
+        ctx.fillStyle = "#ffd3a8";
+        ctx.fillRect(x - 3, baseY + 30, 8, 36);
+        ctx.fillStyle = "rgba(255, 170, 120, 0.25)";
+        ctx.fillRect(x - 10, baseY + 22, 22, 52);
+      }
     }
 
     ctx.fillStyle = "#2d437c";
@@ -1965,6 +2283,19 @@ function drawRunBackground() {
       ctx.fillRect(x + 6, GAME.floorTop + 4, 2, 10);
       ctx.fillRect(x + 6, canvas.height - 16, 2, 10);
     }
+    // Guardrail posts.
+    ctx.fillStyle = "#4b5667";
+    for (let i = 0; i < 18; i += 1) {
+      const x = i * 64 - ((xShift * 1.1) % 64);
+      ctx.fillRect(x + 2, GAME.floorTop + 12, 4, 18);
+    }
+    // Extra building detail for the pursuit skyline.
+    ctx.fillStyle = "rgba(255, 210, 150, 0.6)";
+    for (let i = 0; i < 14; i += 1) {
+      const x = i * 86 - ((xShift * 0.72) % 86);
+      ctx.fillRect(x + 10, 310, 10, 4);
+      ctx.fillRect(x + 28, 310, 10, 4);
+    }
   } else if (state.theme === "skarn") {
     ctx.fillStyle = "#322447";
     ctx.fillRect(0, GAME.floorTop, canvas.width, canvas.height - GAME.floorTop);
@@ -1977,6 +2308,17 @@ function drawRunBackground() {
     for (let i = 0; i < 14; i += 1) {
       const x = i * 82 - ((xShift * 1.2) % 82);
       ctx.fillRect(x + 10, GAME.floorTop + 30, 40, 5);
+    }
+    // Spotlight beams for stage energy.
+    ctx.fillStyle = "rgba(255, 210, 235, 0.18)";
+    for (let i = 0; i < 4; i += 1) {
+      const sx = 120 + i * 210;
+      ctx.beginPath();
+      ctx.moveTo(sx, 0);
+      ctx.lineTo(sx + 70, GAME.floorTop);
+      ctx.lineTo(sx - 70, GAME.floorTop);
+      ctx.closePath();
+      ctx.fill();
     }
   } else {
     const floorColor = state.theme === "streets" ? "#4f5668" : "#d7ddd8";
@@ -2013,13 +2355,21 @@ function drawRunBackground() {
     for (let i = 0; i < 9; i += 1) {
       const x = i * 126 - ((xShift * 0.55) % 126);
       const h = 108 + (i % 3) * 24;
+      const baseY = 300 - h;
       ctx.fillStyle = "#582a52";
-      ctx.fillRect(x + 4, 300 - h, 104, h);
+      ctx.fillRect(x + 4, baseY, 104, h);
       ctx.fillStyle = "#ffdd8a";
-      ctx.fillRect(x + 14, 300 - h + 18, 14, 6);
-      ctx.fillRect(x + 34, 300 - h + 18, 14, 6);
-      ctx.fillRect(x + 54, 300 - h + 18, 14, 6);
-      ctx.fillRect(x + 74, 300 - h + 18, 14, 6);
+      ctx.fillRect(x + 14, baseY + 18, 14, 6);
+      ctx.fillRect(x + 34, baseY + 18, 14, 6);
+      ctx.fillRect(x + 54, baseY + 18, 14, 6);
+      ctx.fillRect(x + 74, baseY + 18, 14, 6);
+      // Stage-world building detail (posters, balcony ledges).
+      ctx.fillStyle = "rgba(255, 230, 190, 0.55)";
+      ctx.fillRect(x + 12, baseY + 40, 20, 10);
+      ctx.fillRect(x + 40, baseY + 52, 18, 8);
+      ctx.fillStyle = "rgba(30, 20, 40, 0.4)";
+      ctx.fillRect(x + 10, baseY + 38, 60, 2);
+      ctx.fillRect(x + 10, baseY + 64, 60, 2);
     }
   } else {
     ctx.fillStyle = "rgba(0,0,0,0.12)";
@@ -2313,10 +2663,38 @@ function drawObstacleSprite(obs) {
     ctx.fillRect(obs.x + obs.width - 12, obs.y, 6, obs.height);
     for (let i = 0; i < 4; i += 1) ctx.fillRect(obs.x + 12, obs.y + 8 + i * 10, obs.width - 24, 4);
   } else if (obs.type === "lightpole") {
-    ctx.fillStyle = "#49546a";
-    ctx.fillRect(obs.x + 8, obs.y, 8, obs.height);
-    ctx.fillStyle = "#ffe78a";
-    ctx.fillRect(obs.x + 3, obs.y, 18, 8);
+    const poleW = Math.max(8, Math.floor(obs.width * 0.28));
+    const poleX = obs.x + Math.floor((obs.width - poleW) * 0.5);
+    const lampH = 10;
+    const baseH = 8;
+    const armY = obs.y + 8;
+
+    // Lamp housing and lens.
+    ctx.fillStyle = "#2f3848";
+    ctx.fillRect(obs.x + 3, obs.y, obs.width - 6, lampH);
+    ctx.fillStyle = "#ffd88f";
+    ctx.fillRect(obs.x + 6, obs.y + 3, obs.width - 12, 4);
+    ctx.fillStyle = "rgba(255, 240, 170, 0.45)";
+    ctx.fillRect(obs.x + 8, obs.y + 4, obs.width - 16, 1);
+
+    // Support arm.
+    ctx.fillStyle = "#5a6679";
+    ctx.fillRect(poleX - 4, armY, 4, 3);
+
+    // Main pole with subtle metallic shading.
+    ctx.fillStyle = "#4f5a6f";
+    ctx.fillRect(poleX, obs.y + lampH, poleW, obs.height - lampH - baseH);
+    ctx.fillStyle = "#6f7d95";
+    ctx.fillRect(poleX + 1, obs.y + lampH, 2, obs.height - lampH - baseH);
+    ctx.fillStyle = "#3a4353";
+    ctx.fillRect(poleX + poleW - 2, obs.y + lampH, 2, obs.height - lampH - baseH);
+
+    // Base plate + bolts.
+    ctx.fillStyle = "#2c3442";
+    ctx.fillRect(poleX - 4, obs.y + obs.height - baseH, poleW + 8, baseH);
+    ctx.fillStyle = "#94a3ba";
+    ctx.fillRect(poleX - 2, obs.y + obs.height - 4, 2, 2);
+    ctx.fillRect(poleX + poleW, obs.y + obs.height - 4, 2, 2);
   } else if (obs.type === "jim_snowball") {
     ctx.fillStyle = "#f2f7ff";
     ctx.beginPath();
@@ -2325,9 +2703,45 @@ function drawObstacleSprite(obs) {
     ctx.fillStyle = "#dbe5f2";
     ctx.fillRect(obs.x + 8, obs.y + 6, 4, 3);
   } else if (obs.type === "hydrant") {
-    ctx.fillStyle = "#d34136";
-    ctx.fillRect(obs.x + 8, obs.y + 4, obs.width - 16, obs.height - 4);
-    ctx.fillRect(obs.x, obs.y + 14, obs.width, 8);
+    const bodyX = obs.x + 8;
+    const bodyW = obs.width - 16;
+    const bodyY = obs.y + 10;
+    const bodyH = obs.height - 14;
+
+    // Main red cast-iron body.
+    ctx.fillStyle = "#bb2f2b";
+    ctx.fillRect(bodyX, bodyY, bodyW, bodyH);
+    ctx.fillStyle = "#d9473f";
+    ctx.fillRect(bodyX + 2, bodyY + 2, 3, bodyH - 4);
+    ctx.fillStyle = "#8e1f1f";
+    ctx.fillRect(bodyX + bodyW - 3, bodyY + 2, 2, bodyH - 4);
+
+    // Top cap and bonnet.
+    ctx.fillStyle = "#c73731";
+    ctx.fillRect(bodyX + 2, obs.y + 4, bodyW - 4, 6);
+    ctx.fillStyle = "#7f1818";
+    ctx.fillRect(bodyX + 6, obs.y + 1, bodyW - 12, 3);
+
+    // Side nozzles.
+    ctx.fillStyle = "#c73731";
+    ctx.fillRect(obs.x + 2, obs.y + 18, 8, 7);
+    ctx.fillRect(obs.x + obs.width - 10, obs.y + 18, 8, 7);
+    ctx.fillStyle = "#7f1818";
+    ctx.fillRect(obs.x + 1, obs.y + 20, 2, 3);
+    ctx.fillRect(obs.x + obs.width - 3, obs.y + 20, 2, 3);
+
+    // Flange ring and base.
+    ctx.fillStyle = "#a42925";
+    ctx.fillRect(obs.x + 3, obs.y + 15, obs.width - 6, 3);
+    ctx.fillStyle = "#6f1616";
+    ctx.fillRect(obs.x + 2, obs.y + obs.height - 3, obs.width - 4, 3);
+
+    // Bolt details.
+    ctx.fillStyle = "#f1b9ad";
+    ctx.fillRect(obs.x + 6, obs.y + 16, 2, 2);
+    ctx.fillRect(obs.x + obs.width - 8, obs.y + 16, 2, 2);
+    ctx.fillRect(bodyX + 2, obs.y + obs.height - 4, 2, 2);
+    ctx.fillRect(bodyX + bodyW - 4, obs.y + obs.height - 4, 2, 2);
   } else if (obs.type === "hockey_puck") {
     ctx.fillStyle = "#1a1d24";
     ctx.fillRect(obs.x, obs.y + 2, obs.width, obs.height - 2);
@@ -2516,7 +2930,7 @@ function drawHud() {
   if (state.runWorldId === "pursuit") {
     ctx.fillStyle = "#ffe38f";
     ctx.fillText(`Catch Strangler: ${Math.ceil(state.tobyDistance)}m`, 480, 78);
-    ctx.fillText(`Goal: reach x5 Hardcore`, 480, 100);
+    ctx.fillText(`Goal: reach x10 Hardcore`, 480, 100);
   }
 
   if (state.pendingLanding && state.landingWindowLeft > 0) {
@@ -2539,22 +2953,24 @@ function drawPursuitTarget() {
 
   ctx.fillStyle = "rgba(0,0,0,0.25)";
   ctx.beginPath();
-  ctx.ellipse(carX + 38, carY + 34, 46, 8, 0, 0, Math.PI * 2);
+  ctx.ellipse(carX + 40, GAME.floorTop + 8, 48, 9, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = "#2f3139";
-  ctx.fillRect(carX, carY + 10, 76, 20);
-  ctx.fillRect(carX + 12, carY, 44, 14);
-  ctx.fillStyle = "#9dc4ff";
-  ctx.fillRect(carX + 16, carY + 2, 16, 8);
-  ctx.fillRect(carX + 34, carY + 2, 16, 8);
-  ctx.fillStyle = "#111";
-  ctx.fillRect(carX + 8, carY + 26, 14, 8);
-  ctx.fillRect(carX + 54, carY + 26, 14, 8);
-
-  // Keep the driver hidden until cutscene reveal.
-  ctx.fillStyle = "#1a2334";
-  ctx.fillRect(carX + 16, carY + 2, 34, 8);
+  // Rear view of the strangler's car fixed on the far-right road lane.
+  ctx.fillStyle = "#252a33";
+  ctx.fillRect(carX + 2, carY + 12, 76, 22);
+  ctx.fillStyle = "#1c212a";
+  ctx.fillRect(carX + 10, carY + 4, 60, 12);
+  ctx.fillStyle = "#6f90b8";
+  ctx.fillRect(carX + 16, carY + 6, 48, 8);
+  ctx.fillStyle = "#0f1319";
+  ctx.fillRect(carX + 8, carY + 28, 14, 8);
+  ctx.fillRect(carX + 58, carY + 28, 14, 8);
+  ctx.fillStyle = "#d94343";
+  ctx.fillRect(carX + 6, carY + 20, 6, 4);
+  ctx.fillRect(carX + 68, carY + 20, 6, 4);
+  ctx.fillStyle = "#f6e7b8";
+  ctx.fillRect(carX + 34, carY + 22, 12, 3);
 }
 
 function drawFloatingText() {
@@ -4257,6 +4673,7 @@ function update(dt) {
   syncPostKeyMissionRewards();
   updateCornerTv(dt);
   if (state.scene === "run") updateRun(dt);
+  updateLevelMusic(dt);
   updateSkarnMusic(dt);
   if (state.scene === "cutscene") {
     state.cutsceneTimeSec += dt;
