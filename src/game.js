@@ -3468,13 +3468,28 @@ function drawObstacleSprite(obs) {
     ctx.fillRect(obs.x + 6, obs.y + 5, obs.width - 12, 4);
   }
 
-  // 16-bit detail pass for all obstacles: edge contrast + texture strip.
-  if (obs.type !== "ice_patch" && obs.type !== "angela_cat" && obs.type !== "jim_snowball" && obs.type !== "ladder") {
+  // 16-bit edge pass only for boxy sprites; skip organic/projectile shapes to avoid line artifacts.
+  const boxyEdgeTypes = new Set([
+    "desk",
+    "paper_pile",
+    "shelf",
+    "lightpole",
+    "hydrant",
+    "jan_folder",
+    "folder",
+    "bystander",
+    "paper_ream",
+    "hockey_puck",
+    "goldenface_minion",
+  ]);
+  if (boxyEdgeTypes.has(obs.type)) {
     ctx.fillStyle = "rgba(10, 14, 24, 0.28)";
     ctx.fillRect(obs.x, obs.y + obs.height - 1, obs.width, 1);
   }
-  ctx.fillStyle = "rgba(255,255,255,0.16)";
-  ctx.fillRect(obs.x + 1, obs.y + 1, Math.max(0, obs.width - 2), 1);
+  if (boxyEdgeTypes.has(obs.type)) {
+    ctx.fillStyle = "rgba(255,255,255,0.16)";
+    ctx.fillRect(obs.x + 1, obs.y + 1, Math.max(0, obs.width - 2), 1);
+  }
 
   // Type-specific extra detail accents.
   if (obs.type === "desk") {
@@ -5873,23 +5888,44 @@ function drawRunScene() {
   if (state.runWorldId === "pursuit" && state.pursuitEndPending && state.pursuitRevealLeft > 0) {
     const revealProgress = 1 - state.pursuitRevealLeft / PURSUIT_REVEAL_DURATION;
     const panelW = 430;
-    const panelH = 190;
+    const panelH = 214;
     const panelX = (canvas.width - panelW) * 0.5;
-    const panelY = 92;
+    const panelY = 80;
     const pulse = 0.25 + Math.abs(Math.sin(state.worldTimeSec * 18)) * 0.25;
     ctx.fillStyle = `rgba(10, 14, 24, ${0.82 + pulse * 0.3})`;
     ctx.fillRect(panelX, panelY, panelW, panelH);
     ctx.strokeStyle = revealProgress > 0.56 ? "#ffb39c" : "#8bb7ff";
     ctx.strokeRect(panelX, panelY, panelW, panelH);
+    // Scanline and spotlight detail.
+    ctx.fillStyle = "rgba(255,255,255,0.05)";
+    for (let y = panelY + 8; y < panelY + panelH - 8; y += 4) ctx.fillRect(panelX + 6, y, panelW - 12, 1);
+    const spot = ctx.createRadialGradient(panelX + 116, panelY + 96, 10, panelX + 116, panelY + 98, 120);
+    spot.addColorStop(0, "rgba(255,255,255,0.14)");
+    spot.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = spot;
+    ctx.fillRect(panelX + 8, panelY + 8, panelW - 16, panelH - 16);
 
     const cX = panelX + 84;
     const cY = panelY + 52;
     const s = 2.2;
 
+    // Suit and shoulders so the reveal reads as a full character, not only a face.
+    ctx.fillStyle = "#131a24";
+    ctx.fillRect(cX + 7 * s, cY + 18 * s, 18 * s, 15 * s);
+    ctx.fillStyle = "#1b2432";
+    ctx.fillRect(cX + 5 * s, cY + 20 * s, 4 * s, 12 * s);
+    ctx.fillRect(cX + 23 * s, cY + 20 * s, 4 * s, 12 * s);
+    ctx.fillStyle = "#dfe4ee";
+    ctx.fillRect(cX + 14 * s, cY + 20 * s, 4 * s, 11 * s);
+    ctx.fillStyle = "#2c3446";
+    ctx.fillRect(cX + 15 * s, cY + 24 * s, 2 * s, 6 * s);
+
     ctx.fillStyle = "#efcfab";
     ctx.fillRect(cX + 8 * s, cY + 8 * s, 14 * s, 10 * s);
     ctx.fillStyle = "#2b1f17";
     ctx.fillRect(cX + 7 * s, cY + 4 * s, 16 * s, 5 * s);
+    ctx.fillStyle = "#8b6c59";
+    ctx.fillRect(cX + 14 * s, cY + 7 * s, 2 * s, 11 * s);
     ctx.fillStyle = "#1b2230";
     ctx.fillRect(cX + 12 * s, cY + 12 * s, 2 * s, 2 * s);
     ctx.fillRect(cX + 18 * s, cY + 12 * s, 2 * s, 2 * s);
@@ -5903,6 +5939,17 @@ function drawRunScene() {
       ctx.fillStyle = "#8ea2bf";
       ctx.fillRect(cX + 11 * s + maskOffset, cY + 12 * s - maskLift, 3 * s, 2 * s);
       ctx.fillRect(cX + 17 * s + maskOffset, cY + 12 * s - maskLift, 3 * s, 2 * s);
+      ctx.fillStyle = "#4c586f";
+      ctx.fillRect(cX + 9 * s + maskOffset, cY + 18 * s - maskLift, 12 * s, 1 * s);
+    } else {
+      // Hand pulling mask off to the right for clearer "unmasking" action.
+      ctx.fillStyle = "#efcfab";
+      ctx.fillRect(cX + 29 * s, cY + 7 * s, 3 * s, 4 * s);
+      ctx.fillStyle = "#151820";
+      ctx.fillRect(cX + 32 * s, cY + 6 * s, 9 * s, 8 * s);
+      ctx.fillStyle = "#8ea2bf";
+      ctx.fillRect(cX + 35 * s, cY + 9 * s, 2 * s, 1 * s);
+      ctx.fillRect(cX + 38 * s, cY + 9 * s, 2 * s, 1 * s);
     }
 
     ctx.fillStyle = "#f0d890";
@@ -5918,10 +5965,10 @@ function drawRunScene() {
       }
       ctx.fillStyle = "#ffb9b0";
       ctx.font = "bold 24px Trebuchet MS";
-      drawWrappedText("THE SCRANTON STRANGLER IS TOBY.", panelX + 30, panelY + 156, panelW - 60, 28, 2);
+      drawWrappedText("THE SCRANTON STRANGLER IS TOBY.", panelX + 26, panelY + 176, panelW - 52, 28, 2);
       ctx.fillStyle = "#ffe7bc";
       ctx.font = "bold 18px Trebuchet MS";
-      drawWrappedText("MICHAEL: NO. NO. GOD. NOOOO!", panelX + 64, panelY + 66, panelW - 120, 20, 2);
+      drawWrappedText("MICHAEL: NO. NO. GOD. NOOOO!", panelX + 64, panelY + 72, panelW - 120, 20, 2);
     }
   }
 
@@ -6001,15 +6048,19 @@ function render() {
     const alpha = Math.min(1, state.missionToastLeft / 0.3);
     ctx.globalAlpha = alpha;
     const toastText = state.missionToastText || "";
-    const toastW = Math.min(860, Math.max(420, ctx.measureText(toastText).width + 36));
+    const revealToast = state.scene === "run" && state.runWorldId === "pursuit" && state.pursuitEndPending;
+    const toastW = revealToast
+      ? Math.min(960, Math.max(560, ctx.measureText(toastText).width + 64))
+      : Math.min(860, Math.max(420, ctx.measureText(toastText).width + 36));
+    const toastH = revealToast ? 64 : 48;
     const toastX = Math.max(20, (canvas.width - toastW) * 0.5);
     ctx.fillStyle = "rgba(8, 14, 24, 0.86)";
-    ctx.fillRect(toastX, 20, toastW, 48);
+    ctx.fillRect(toastX, 20, toastW, toastH);
     ctx.strokeStyle = "#8fd6ff";
-    ctx.strokeRect(toastX, 20, toastW, 48);
+    ctx.strokeRect(toastX, 20, toastW, toastH);
     ctx.fillStyle = "#d8f3ff";
-    ctx.font = "bold 17px Trebuchet MS";
-    drawWrappedTextWithCurrencyIcons(toastText, toastX + 14, 40, toastW - 28, 20, 2);
+    ctx.font = revealToast ? "bold 20px Trebuchet MS" : "bold 17px Trebuchet MS";
+    drawWrappedTextWithCurrencyIcons(toastText, toastX + 14, revealToast ? 44 : 40, toastW - 28, revealToast ? 24 : 20, 2);
     ctx.globalAlpha = 1;
   }
 }
