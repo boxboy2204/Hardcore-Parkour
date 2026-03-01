@@ -17,6 +17,9 @@ const INVINCIBILITY_CHEAT_CODE = ["KeyB", "KeyE", "KeyE", "KeyT", "KeyS"];
 const PURSUIT_REVEAL_DURATION = 7.4;
 const PURSUIT_END_CARD_DURATION = 3.4;
 const PURSUIT_END_TADA_PATH = "assets/freesound_community-tada-fanfare-a-6313.mp3";
+const SHOP_CHACHING_PATH = "assets/chaching.mp3";
+const SAVE_PROFILE_VERSION = 2;
+const RUNNER_IDS = ["michael", "dwight", "andy"];
 
 const CHARACTER_PRESETS = {
   michael: {
@@ -376,8 +379,26 @@ const state = {
   reviewData: null,
   reviewAnimSec: 0,
   reviewAnimDuration: 2.6,
+  uiFocus: {
+    menuCard: 0,
+    characterCard: 0,
+    shopCard: 0,
+    shopTalk: 0,
+    annexCard: 0,
+    reviewButton: 0,
+  },
   saveData: null,
+  saveProfiles: null,
+  activeRunnerId: "michael",
 };
+
+function drawTitleText(text, x, y, font = "bold 36px Trebuchet MS", color = "#ffe08f") {
+  ctx.font = font;
+  ctx.fillStyle = "rgba(8, 16, 30, 0.72)";
+  ctx.fillText(text, x + 2, y + 2);
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
+}
 
 function createDefaultSave() {
   return {
@@ -431,11 +452,9 @@ function createDefaultSave() {
   };
 }
 
-function loadSave() {
+function normalizeSave(parsedInput) {
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return createDefaultSave();
-    const parsed = JSON.parse(raw);
+    const parsed = parsedInput || {};
     const defaults = createDefaultSave();
     const parsedMissions = parsed.missions || {};
     const parsedSavePam = parsedMissions.savePam || {};
@@ -485,8 +504,84 @@ function loadSave() {
   }
 }
 
+function loadSave(runnerId = "michael") {
+  const pickRunner = RUNNER_IDS.includes(runnerId) ? runnerId : "michael";
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) {
+      state.saveProfiles = {
+        michael: createDefaultSave(),
+        dwight: createDefaultSave(),
+        andy: createDefaultSave(),
+      };
+      state.activeRunnerId = pickRunner;
+      return state.saveProfiles[pickRunner];
+    }
+
+    const parsed = JSON.parse(raw);
+    // New profiled format.
+    if (parsed && parsed.version === SAVE_PROFILE_VERSION && parsed.profiles) {
+      state.saveProfiles = {
+        michael: normalizeSave(parsed.profiles.michael),
+        dwight: normalizeSave(parsed.profiles.dwight),
+        andy: normalizeSave(parsed.profiles.andy),
+      };
+      state.activeRunnerId = RUNNER_IDS.includes(parsed.currentRunner) ? parsed.currentRunner : pickRunner;
+      return state.saveProfiles[pickRunner];
+    }
+
+    // Legacy single-save migration: move all existing progress to Michael.
+    state.saveProfiles = {
+      michael: normalizeSave(parsed),
+      dwight: createDefaultSave(),
+      andy: createDefaultSave(),
+    };
+    state.activeRunnerId = "michael";
+    return state.saveProfiles[pickRunner];
+  } catch {
+    state.saveProfiles = {
+      michael: createDefaultSave(),
+      dwight: createDefaultSave(),
+      andy: createDefaultSave(),
+    };
+    state.activeRunnerId = pickRunner;
+    return state.saveProfiles[pickRunner];
+  }
+}
+
 function persistSave() {
-  localStorage.setItem(SAVE_KEY, JSON.stringify(state.saveData));
+  if (!state.saveProfiles) {
+    localStorage.setItem(SAVE_KEY, JSON.stringify(state.saveData));
+    return;
+  }
+  if (state.activeRunnerId && state.saveData) {
+    state.saveProfiles[state.activeRunnerId] = state.saveData;
+  }
+  localStorage.setItem(
+    SAVE_KEY,
+    JSON.stringify({
+      version: SAVE_PROFILE_VERSION,
+      currentRunner: state.activeRunnerId,
+      profiles: state.saveProfiles,
+    })
+  );
+}
+
+function switchRunnerProfile(runnerId) {
+  const nextRunner = RUNNER_IDS.includes(runnerId) ? runnerId : "michael";
+  if (!state.saveProfiles) {
+    state.saveData = loadSave(nextRunner);
+    state.activeRunnerId = nextRunner;
+    persistSave();
+    return;
+  }
+  if (state.activeRunnerId && state.saveData) state.saveProfiles[state.activeRunnerId] = state.saveData;
+  if (!state.saveProfiles[nextRunner]) state.saveProfiles[nextRunner] = createDefaultSave();
+  state.activeRunnerId = nextRunner;
+  state.saveData = state.saveProfiles[nextRunner];
+  syncDundieOutfitRewards();
+  syncPostKeyMissionRewards();
+  persistSave();
 }
 
 function ensureAudioContext() {
@@ -517,6 +612,43 @@ function playThemeSwitchCue() {
     osc.start(now + idx * 0.09);
     osc.stop(now + idx * 0.09 + 0.12);
   });
+}
+
+function playChaChingCue() {
+  const fallbackSynth = () => {
+    const audioCtx = ensureAudioContext();
+    if (!audioCtx) return;
+    if (audioCtx.state === "suspended") audioCtx.resume();
+
+    const now = audioCtx.currentTime;
+    const notes = [
+      { f: 740, t: 0.0, d: 0.09, type: "triangle", level: 0.08 },
+      { f: 988, t: 0.08, d: 0.11, type: "triangle", level: 0.09 },
+      { f: 1244, t: 0.18, d: 0.18, type: "square", level: 0.1 },
+    ];
+    notes.forEach((n) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = n.type;
+      osc.frequency.setValueAtTime(n.f, now + n.t);
+      gain.gain.setValueAtTime(0.0001, now + n.t);
+      gain.gain.exponentialRampToValueAtTime(n.level, now + n.t + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + n.t + n.d);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now + n.t);
+      osc.stop(now + n.t + n.d + 0.01);
+    });
+  };
+
+  try {
+    const audio = new Audio(SHOP_CHACHING_PATH);
+    audio.volume = 0.95;
+    audio.currentTime = 0;
+    audio.play().catch(() => fallbackSynth());
+  } catch {
+    fallbackSynth();
+  }
 }
 
 function playStranglerRevealCue() {
@@ -1429,6 +1561,7 @@ function tryBuyShopItem(itemId) {
   }
 
   persistSave();
+  playChaChingCue();
   showShopMessage(`Purchased ${item.name}. Jim finally de-gels it.`, "#d3ffbf");
 }
 
@@ -1454,6 +1587,17 @@ function switchScene(sceneId) {
     state.cutsceneBbCount = 0;
     state.cutsceneLyricLine = 0;
   }
+  if (sceneId === "menu") state.uiFocus.menuCard = Math.max(0, WORLDS.findIndex((w) => w.id === state.selectedWorldId));
+  if (sceneId === "characters") {
+    const idx = RUNNER_IDS.indexOf(getRunnerId());
+    state.uiFocus.characterCard = idx === -1 ? 0 : idx;
+  }
+  if (sceneId === "shop") {
+    state.uiFocus.shopCard = 0;
+    state.uiFocus.shopTalk = 0;
+  }
+  if (sceneId === "annex") state.uiFocus.annexCard = 0;
+  if (sceneId === "run") state.uiFocus.reviewButton = 0;
   if (leavingCutscene) {
     state.cutsceneFadeLeft = 0;
     state.cutsceneSongStep = 0;
@@ -1848,9 +1992,11 @@ function endRun(reason = "time") {
     questEndingLine,
   };
   state.reviewAnimSec = 0;
+  state.uiFocus.reviewButton = 0;
   renderReviewSummaryText();
   summaryPanel.hidden = false;
   summaryPanel.classList.add("review-controls-only");
+  retryBtn.focus();
 }
 
 function spawnPamAppearance() {
@@ -2599,6 +2745,64 @@ function drawRunBackground() {
       ctx.fillRect(x + 10, baseY + h - 30, 22, 3);
       ctx.fillRect(x + 12, baseY + h - 26, 14, 2);
     }
+
+    // Street-side winter life: people, tossed snowballs, trees, and snowmen.
+    for (let i = 0; i < 7; i += 1) {
+      const bx = i * 156 - ((xShift * 0.62) % 156);
+      // Place this layer in the open space below the buildings (not on the road lane).
+      const baseY = 336 + (i % 2) * 10;
+
+      // Snowy pine tree.
+      ctx.fillStyle = "#40697a";
+      ctx.fillRect(bx + 20, baseY + 10, 8, 18);
+      ctx.fillStyle = "#5e8da2";
+      ctx.fillRect(bx + 12, baseY + 4, 24, 8);
+      ctx.fillRect(bx + 14, baseY - 2, 20, 7);
+      ctx.fillRect(bx + 16, baseY - 8, 16, 6);
+      ctx.fillStyle = "#eaf6ff";
+      ctx.fillRect(bx + 14, baseY - 2, 8, 2);
+      ctx.fillRect(bx + 18, baseY + 4, 10, 2);
+
+      // Snowman.
+      const smx = bx + 64;
+      ctx.fillStyle = "#f3f9ff";
+      ctx.beginPath();
+      ctx.arc(smx + 11, baseY + 21, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(smx + 11, baseY + 11, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#1e2a3d";
+      ctx.fillRect(smx + 8, baseY + 9, 2, 2);
+      ctx.fillRect(smx + 12, baseY + 9, 2, 2);
+      ctx.fillRect(smx + 9, baseY + 14, 4, 1);
+      ctx.fillRect(smx + 7, baseY + 3, 8, 2);
+      ctx.fillStyle = "#3f5b7d";
+      ctx.fillRect(smx + 9, baseY + 0, 4, 3);
+
+      // Bundled-up background person.
+      const px = bx + 108;
+      const armSwing = Math.sin(state.elapsedSec * 5 + i) * 1.5;
+      ctx.fillStyle = "#2f4569";
+      ctx.fillRect(px + 4, baseY + 11, 10, 12);
+      ctx.fillStyle = "#1f2f4e";
+      ctx.fillRect(px + 6, baseY + 23, 3, 8);
+      ctx.fillRect(px + 10, baseY + 23, 3, 8);
+      ctx.fillStyle = "#d6be9f";
+      ctx.fillRect(px + 6, baseY + 5, 6, 6);
+      ctx.fillStyle = "#2a1f1a";
+      ctx.fillRect(px + 5, baseY + 3, 8, 2);
+      ctx.fillStyle = "#dfefff";
+      ctx.fillRect(px + 2, baseY + 13 + armSwing, 2, 5);
+      ctx.fillRect(px + 14, baseY + 13 - armSwing, 2, 5);
+
+      // Tossed snowball behind gameplay (pure visual).
+      const sbx = px + 24 - (state.worldTimeSec * 54 + i * 18) % 44;
+      const sby = baseY + 9 + Math.sin(state.worldTimeSec * 6 + i * 0.8) * 4;
+      ctx.fillStyle = "rgba(245, 252, 255, 0.9)";
+      ctx.fillRect(sbx, sby, 3, 3);
+    }
+
     // Snowbanks and icy curb (keep them on the ground line).
     ctx.fillStyle = "#eaf4ff";
     for (let i = 0; i < 7; i += 1) {
@@ -2628,6 +2832,48 @@ function drawRunBackground() {
       const sx = (i * 37 + Math.floor(i / 3) * 19) % canvas.width;
       const sy = (i * 29) % 180;
       ctx.fillRect(sx, sy, 2, 2);
+    }
+
+    if (state.theme === "pursuit") {
+      // Storm clouds.
+      ctx.fillStyle = "rgba(178,196,228,0.36)";
+      for (let i = 0; i < 6; i += 1) {
+        const cx = i * 190 - ((xShift * 0.25) % 1140) - 80;
+        const cy = 46 + (i % 2) * 18;
+        ctx.beginPath();
+        ctx.ellipse(cx + 24, cy, 48, 18, 0, 0, Math.PI * 2);
+        ctx.ellipse(cx - 20, cy + 4, 36, 13, 0, 0, Math.PI * 2);
+        ctx.ellipse(cx + 60, cy + 6, 30, 12, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // Heavy, wind-blown rain layers (fast and non-floaty).
+      ctx.strokeStyle = "rgba(170, 205, 255, 0.52)";
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 220; i += 1) {
+        const rx = (i * 17 + state.elapsedSec * 340) % (canvas.width + 120) - 60;
+        const ry = (i * 14 + state.elapsedSec * 560) % (GAME.floorTop + 120) - 60;
+        ctx.beginPath();
+        ctx.moveTo(rx, ry - 1);
+        ctx.lineTo(rx - 7, ry + 17);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = "rgba(132, 176, 235, 0.46)";
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 176; i += 1) {
+        const rx = (i * 29 + state.elapsedSec * 280) % (canvas.width + 140) - 70;
+        const ry = (i * 23 + state.elapsedSec * 480) % (GAME.floorTop + 140) - 70;
+        ctx.beginPath();
+        ctx.moveTo(rx, ry);
+        ctx.lineTo(rx - 8, ry + 20);
+        ctx.stroke();
+      }
+      // Near-road rain haze/splashes so the storm feels dense.
+      ctx.fillStyle = "rgba(190, 220, 255, 0.3)";
+      for (let i = 0; i < 120; i += 1) {
+        const sx = (i * 23 + state.elapsedSec * 410) % (canvas.width + 90) - 45;
+        const sy = GAME.floorTop - 22 + ((i * 7 + state.elapsedSec * 36) % 36);
+        ctx.fillRect(sx, sy, 2, 1);
+      }
     }
 
     for (let i = 0; i < 11; i += 1) {
@@ -3831,7 +4077,8 @@ function drawHud() {
   if (state.runWorldId === "pursuit") ctx.fillText("Time: -- (Chase Mode)", 210, 78);
   else ctx.fillText(`Time: ${timeLeft.toFixed(1)}s`, 210, 78);
   ctx.fillText(`World: ${THEME_LABELS[state.theme] || state.theme}`, 210, 100);
-  ctx.fillText(`Difficulty: ${difficulty.label}`, 210, 122);
+  // Keep difficulty on its own row so it never collides with wallet text.
+  ctx.fillText(`Difficulty: ${difficulty.label}`, 210, 168);
   if (state.pamQuestRun) {
     ctx.fillStyle = "#ffeeb2";
     ctx.fillText(`Find Pam: ${state.pamSpottedCount}/${state.pamRequiredCount} (Press P when she appears)`, 500, 100);
@@ -3846,7 +4093,9 @@ function drawHud() {
   }
   if (state.speedBoostLeft > 0) {
     ctx.fillStyle = "#b8ffe0";
-    ctx.fillText("Invincible", 338, 78);
+    // Keep boost status away from pursuit "Chase Mode" row.
+    if (state.runWorldId === "pursuit") ctx.fillText("Invincible", 338, 188);
+    else ctx.fillText("Invincible", 338, 78);
   }
 
   if (state.runWorldId === "pursuit") {
@@ -3886,7 +4135,6 @@ function drawPerformanceReviewOverlay() {
   const shownEarnedSn = Math.round(state.reviewData.earnedSn * ease);
   const targetStars = Math.max(1, Math.min(5, state.reviewData.stars || 1));
   const starCount = Math.max(1, Math.ceil(targetStars * progress));
-  const pulse = 1 + Math.sin(state.elapsedSec * 8) * 0.05;
 
   const panel = { x: 88, y: 84, w: 784, h: 370 };
   drawPixelPanel(panel.x, panel.y, panel.w, panel.h, "rgba(11,24,48,0.9)", "rgba(8,18,36,0.9)", "#94dcff", "rgba(220,240,255,0.72)");
@@ -3954,10 +4202,30 @@ function drawPerformanceReviewOverlay() {
   drawWrappedText(state.reviewData.endingLine, px + 12, py + 219, pw - 24, 11, 4);
   ctx.restore();
 
-  ctx.globalAlpha = 0.36 + ease * 0.54;
+  // Review progress strip, clipped so it can never spill outside the panel.
+  const stripX = panel.x + 18;
+  const stripY = panel.y + panel.h - 14;
+  const stripW = panel.w - 36;
+  const stripH = 6;
+  const fillW = Math.max(0, Math.min(stripW, stripW * ease));
+  ctx.fillStyle = "rgba(255, 229, 160, 0.22)";
+  ctx.fillRect(stripX, stripY, stripW, stripH);
+  ctx.globalAlpha = 0.5 + ease * 0.4;
   ctx.fillStyle = "#ffe7aa";
-  ctx.fillRect(panel.x + 18, panel.y + panel.h - 14, (panel.w - 36) * ease * pulse, 6);
+  ctx.fillRect(stripX, stripY, fillW, stripH);
   ctx.globalAlpha = 1;
+
+  // Subtle moving sheen kept inside the filled area.
+  if (fillW > 4) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(stripX, stripY, fillW, stripH);
+    ctx.clip();
+    ctx.fillStyle = "rgba(255,255,255,0.36)";
+    const shineX = stripX + ((state.elapsedSec * 64) % (stripW + 24)) - 12;
+    ctx.fillRect(shineX, stripY, 12, stripH);
+    ctx.restore();
+  }
 }
 
 function drawPursuitTarget() {
@@ -4388,80 +4656,56 @@ function drawParticles() {
 }
 
 function drawMenuScene() {
-  const boardOuter = { x: 70, y: 70, w: 820, h: 380 };
-  const boardInner = { x: 92, y: 92, w: 776, h: 336 };
+  const boardOuter = { x: 104, y: 94, w: 792, h: 366 };
+  const boardInner = { x: 120, y: 110, w: 760, h: 334 };
 
-  const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-  grad.addColorStop(0, "#1c3048");
-  grad.addColorStop(1, "#243958");
-  ctx.fillStyle = grad;
+  const wallGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  wallGrad.addColorStop(0, "#304f75");
+  wallGrad.addColorStop(1, "#1d2f4b");
+  ctx.fillStyle = wallGrad;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  drawPixelTexture(0, 0, canvas.width, canvas.height, "rgba(8,14,24,0.1)", "rgba(255,255,255,0.05)");
+  drawPixelTexture(0, 0, canvas.width, 332, "rgba(8,14,24,0.08)", "rgba(255,255,255,0.04)");
 
-  drawPixelPanel(boardOuter.x, boardOuter.y, boardOuter.w, boardOuter.h, "#40526a", "#32445c", "#8cd6ff", "rgba(223,239,255,0.7)");
-  drawPixelPanel(boardInner.x, boardInner.y, boardInner.w, boardInner.h, "#f7f4e8", "#ede7d7", "#9f988a", "rgba(255,255,255,0.84)");
-  // Bulletin clutter: tape, pushpins, and scribble polaroid corners.
-  ctx.fillStyle = "#d8c58d";
-  ctx.fillRect(110, 104, 22, 7);
-  ctx.fillRect(818, 106, 22, 7);
-  ctx.fillStyle = "#bb4b4b";
-  for (let i = 0; i < 8; i += 1) ctx.fillRect(116 + i * 96, 100 + ((i % 2) ? 2 : 0), 2, 2);
-  ctx.fillStyle = "#d3d7df";
-  ctx.fillRect(154, 354, 34, 24);
-  ctx.fillRect(716, 338, 34, 24);
-  ctx.fillStyle = "#5f6b7d";
-  ctx.fillRect(160, 360, 22, 12);
-  ctx.fillRect(722, 344, 22, 12);
+  // Conference room wall trim, carpet and table/chairs so the room reads clearly.
+  ctx.fillStyle = "#d7dde8";
+  ctx.fillRect(0, 68, canvas.width, 10);
+  ctx.fillStyle = "#425a7b";
+  ctx.fillRect(0, 78, canvas.width, 3);
+  ctx.fillStyle = "#2b3f61";
+  ctx.fillRect(0, 332, canvas.width, 208);
+  ctx.fillStyle = "rgba(255,255,255,0.08)";
+  for (let y = 340; y < 540; y += 8) ctx.fillRect(0, y, canvas.width, 1);
 
-  ctx.strokeStyle = "#8b2e2e";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(116, 116);
-  ctx.lineTo(832, 390);
-  ctx.moveTo(130, 365);
-  ctx.lineTo(780, 148);
-  ctx.stroke();
+  ctx.fillStyle = "#6a513f";
+  ctx.fillRect(226, 472, 548, 44);
+  ctx.fillStyle = "#846750";
+  ctx.fillRect(246, 458, 508, 18);
+  ctx.fillStyle = "#3f2c20";
+  ctx.fillRect(268, 504, 12, 26);
+  ctx.fillRect(720, 504, 12, 26);
+  for (let i = 0; i < 5; i += 1) {
+    const cx = 258 + i * 108;
+    ctx.fillStyle = "#2e466d";
+    ctx.fillRect(cx, 486, 52, 40);
+    ctx.fillStyle = "#1a2b46";
+    ctx.fillRect(cx + 8, 476, 36, 12);
+  }
 
-  // Hand-drawn style doodles (no text).
-  ctx.strokeStyle = "rgba(36, 74, 138, 0.78)";
-  ctx.lineWidth = 2;
-  // Top-left trophy doodle.
-  ctx.strokeRect(110, 98, 22, 16);
-  ctx.strokeRect(116, 114, 10, 8);
-  ctx.beginPath();
-  ctx.moveTo(110, 106);
-  ctx.lineTo(102, 110);
-  ctx.moveTo(132, 106);
-  ctx.lineTo(140, 110);
-  ctx.stroke();
-  // Top-right beet doodle.
-  ctx.beginPath();
-  ctx.ellipse(760, 108, 12, 8, 0, 0, Math.PI * 2);
-  ctx.moveTo(760, 100);
-  ctx.lineTo(754, 92);
-  ctx.moveTo(760, 100);
-  ctx.lineTo(766, 92);
-  ctx.stroke();
-  // Center-top pretzel-ish loop.
-  ctx.beginPath();
-  ctx.moveTo(454, 102);
-  ctx.bezierCurveTo(468, 88, 486, 112, 500, 102);
-  ctx.bezierCurveTo(486, 116, 468, 92, 454, 102);
-  ctx.stroke();
-
-  // Lower-left doodles: chili splash + magnifier.
-  ctx.strokeStyle = "rgba(194, 62, 62, 0.84)";
-  ctx.beginPath();
-  ctx.moveTo(166, 372);
-  ctx.lineTo(176, 354);
-  ctx.lineTo(188, 370);
-  ctx.lineTo(198, 352);
-  ctx.lineTo(208, 372);
-  ctx.stroke();
+  // Bulletin board.
+  ctx.fillStyle = "#6e533f";
+  ctx.fillRect(boardOuter.x, boardOuter.y, boardOuter.w, boardOuter.h);
+  ctx.fillStyle = "#eadfca";
+  ctx.fillRect(boardInner.x, boardInner.y, boardInner.w, boardInner.h);
+  drawPixelTexture(boardInner.x, boardInner.y, boardInner.w, boardInner.h, "rgba(70,50,36,0.08)", "rgba(255,255,255,0.14)");
+  ctx.strokeStyle = "#927761";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(boardOuter.x, boardOuter.y, boardOuter.w, boardOuter.h);
+  ctx.fillStyle = "#c85e57";
+  for (let i = 0; i < 10; i += 1) ctx.fillRect(boardInner.x + 24 + i * 72, boardInner.y + 6 + (i % 2), 2, 2);
 
   // "World's Best Boss" mug mission prop in the board-side gap.
-  const mugX = 890;
-  const mugY = 366;
+  const mugX = 34;
+  const mugY = 364;
   ctx.fillStyle = "rgba(0,0,0,0.25)";
   ctx.fillRect(mugX + 8, mugY + 48, 60, 4);
   // Mug body + rim + bottom.
@@ -4486,46 +4730,9 @@ function drawMenuScene() {
   ctx.fillText("BEST", mugX + 27, mugY + 29);
   ctx.fillText("BOSS", mugX + 27, mugY + 41);
   state.menuMugBounds = { x: mugX + 6, y: mugY - 2, w: 62, h: 56 };
-  ctx.strokeStyle = "rgba(61, 83, 118, 0.84)";
-  ctx.beginPath();
-  ctx.arc(238, 364, 11, 0, Math.PI * 2);
-  ctx.moveTo(246, 372);
-  ctx.lineTo(254, 380);
-  ctx.stroke();
 
-  // Right-side "Michael Scarn" style hero doodles: mask + star + bolt.
-  ctx.strokeStyle = "rgba(29, 60, 128, 0.9)";
-  // Mask
-  ctx.beginPath();
-  ctx.moveTo(734, 320);
-  ctx.lineTo(752, 314);
-  ctx.lineTo(770, 320);
-  ctx.lineTo(752, 326);
-  ctx.closePath();
-  ctx.moveTo(744, 320);
-  ctx.lineTo(748, 320);
-  ctx.moveTo(756, 320);
-  ctx.lineTo(760, 320);
-  ctx.stroke();
-  // Star
-  ctx.beginPath();
-  ctx.moveTo(822, 372);
-  ctx.lineTo(828, 386);
-  ctx.lineTo(814, 378);
-  ctx.lineTo(832, 378);
-  ctx.lineTo(818, 386);
-  ctx.stroke();
-  // Lightning
-  ctx.beginPath();
-  ctx.moveTo(842, 328);
-  ctx.lineTo(834, 344);
-  ctx.lineTo(844, 344);
-  ctx.lineTo(836, 360);
-  ctx.stroke();
-
-  ctx.fillStyle = "#1f2938";
-  ctx.font = "bold 20px Trebuchet MS";
-  ctx.fillText("Conference Room - Choose a Sticky Note", 276, 60);
+  drawPixelPanel(242, 22, 514, 36, "rgba(9,18,34,0.9)", "rgba(6,12,24,0.9)", "#8bc8ff", "rgba(220,238,255,0.62)");
+  drawTitleText("Conference Room - Choose a Sticky Note", 268, 46, "bold 20px Trebuchet MS", "#dff0ff");
 
   state.menuCards = [];
   for (let i = 0; i < WORLDS.length; i += 1) {
@@ -4599,11 +4806,31 @@ function drawMenuScene() {
       ctx.fillStyle = "rgba(40,40,45,0.45)";
       ctx.fillRect(x, y, w, h);
       ctx.fillStyle = "#f4e8cc";
-      ctx.font = "bold 22px Trebuchet MS";
-      ctx.fillText("LOCKED", x + 55, y + 76);
+      ctx.font = "bold 21px Trebuchet MS";
+      ctx.fillText("LOCKED", x + 38, y + 76);
+      // Lock icon next to label.
+      const lockX = x + 130;
+      const lockY = y + 59;
+      ctx.strokeStyle = "#f4e8cc";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(lockX, lockY + 8, 14, 10);
+      ctx.beginPath();
+      ctx.arc(lockX + 7, lockY + 8, 4, Math.PI, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = "#f4e8cc";
+      ctx.fillRect(lockX + 6, lockY + 13, 2, 3);
     }
 
     state.menuCards.push({ x, y, w, h, worldId: world.id, unlocked });
+  }
+
+  if (state.menuCards.length > 0) {
+    const focusIdx = Math.max(0, Math.min(state.menuCards.length - 1, state.uiFocus.menuCard || 0));
+    state.uiFocus.menuCard = focusIdx;
+    const focused = state.menuCards[focusIdx];
+    ctx.strokeStyle = "rgba(255, 234, 148, 0.95)";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(focused.x - 4, focused.y - 4, focused.w + 8, focused.h + 8);
   }
 
   if (state.menuClickLeft > 0 && state.menuClickWorldId) {
@@ -4662,18 +4889,12 @@ function drawShopScene() {
     ctx.fillRect(0, y, canvas.width, 1);
   }
 
-  drawPixelPanel(44, 72, 872, 402, "rgba(26,32,44,0.84)", "rgba(18,24,35,0.84)", "#f1b864", "rgba(255,232,186,0.65)");
+  // Full-screen room presentation (no inset "window inside window").
 
-  ctx.fillStyle = "#ffd480";
-  ctx.font = "bold 34px Trebuchet MS";
-  ctx.fillText("Break Room Shop", 320, 128);
+  drawTitleText("Break Room Shop", 320, 128, "bold 34px Trebuchet MS", "#ffd480");
 
   ctx.fillStyle = "#f4ead7";
   ctx.font = "18px Trebuchet MS";
-  const questLine = state.saveData.unlocks.jimDeskKey
-    ? "You found Pam. Top row is officially de-gelled."
-    : "Quest lock active: Save Pam, then complete 'Capture The Strangler' to get the key.";
-  drawWrappedText(questLine, 58, 162, 240, 20, 3);
   ctx.fillText("Wallet:", 58, 226);
   const shopSbW = drawCurrencyIcon("schrute_buck", 132, 214, 1.12);
   ctx.fillText(`${state.saveData.currencies.schruteBucks}`, 132 + shopSbW + 8, 226);
@@ -4821,6 +5042,15 @@ function drawShopScene() {
     state.shopCards.push({ x, y, w: cardW, h: cardH, itemId: item.id, lockedByKey, owned });
   }
 
+  if (state.shopCards.length > 0 && !state.shopConversation) {
+    const focusIdx = Math.max(0, Math.min(state.shopCards.length - 1, state.uiFocus.shopCard || 0));
+    state.uiFocus.shopCard = focusIdx;
+    const focused = state.shopCards[focusIdx];
+    ctx.strokeStyle = "rgba(255, 228, 136, 0.95)";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(focused.x - 3, focused.y - 3, focused.w + 6, focused.h + 6);
+  }
+
   ctx.fillStyle = state.shopForeheadStare ? "#ff9ea5" : state.shopMessageColor || "#c5d9f2";
   ctx.font = "17px Trebuchet MS";
   drawPixelPanel(82, 436, 836, 36, "rgba(10,15,24,0.82)", "rgba(7,10,18,0.82)", "#8bc8ff", "rgba(216,236,255,0.62)");
@@ -4950,6 +5180,15 @@ function drawShopScene() {
       ctx.fillText("Got it", doneBtn.x + 50, doneBtn.y + 20);
       state.shopTalkBounds.push(doneBtn);
     }
+  }
+
+  if (state.shopConversation && state.shopTalkBounds.length > 0) {
+    const talkIdx = Math.max(0, Math.min(state.shopTalkBounds.length - 1, state.uiFocus.shopTalk || 0));
+    state.uiFocus.shopTalk = talkIdx;
+    const focused = state.shopTalkBounds[talkIdx];
+    ctx.strokeStyle = "rgba(255, 228, 136, 0.95)";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(focused.x - 2, focused.y - 2, focused.w + 4, focused.h + 4);
   }
 }
 
@@ -5307,6 +5546,7 @@ function selectShopByCanvasPoint(x, y) {
   if (state.shopTalkBounds.length > 0) {
     for (const target of state.shopTalkBounds) {
       if (x < target.x || x > target.x + target.w || y < target.y || y > target.y + target.h) continue;
+      state.uiFocus.shopTalk = Math.max(0, state.shopTalkBounds.indexOf(target));
       if (target.id === "talk") startJimConversation();
       else if (target.id === "pam_talk") startPamConversation();
       else if (state.shopConversation?.actor === "pam") handlePamConversationClick(target.id);
@@ -5334,6 +5574,7 @@ function selectShopByCanvasPoint(x, y) {
 
   for (const card of state.shopCards) {
     if (x < card.x || x > card.x + card.w || y < card.y || y > card.y + card.h) continue;
+    state.uiFocus.shopCard = Math.max(0, state.shopCards.indexOf(card));
     tryBuyShopItem(card.itemId);
     return;
   }
@@ -5349,9 +5590,7 @@ function drawMissionsScene() {
 
   drawPixelPanel(64, 54, 832, 476, "rgba(14,23,40,0.9)", "rgba(9,16,30,0.9)", "#8bc8ff", "rgba(217,236,255,0.68)");
 
-  ctx.fillStyle = "#ffe08f";
-  ctx.font = "bold 36px Trebuchet MS";
-  ctx.fillText("Missions Board", 386, 110);
+  drawTitleText("Missions Board", 386, 110, "bold 36px Trebuchet MS", "#ffe08f");
 
   const savePam = state.saveData.missions.savePam;
   const capture = state.saveData.missions.captureStrangler;
@@ -5442,11 +5681,9 @@ function drawCharacterSelectScene() {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   drawPixelTexture(0, 0, canvas.width, canvas.height, "rgba(12,20,42,0.2)", "rgba(255,255,255,0.05)");
 
-  drawPixelPanel(52, 52, 856, 436, "rgba(13,24,44,0.88)", "rgba(9,18,34,0.88)", "#93d9ff", "rgba(217,236,255,0.68)");
+  // Full-screen room presentation (no inset "window inside window").
 
-  ctx.fillStyle = "#ffe08f";
-  ctx.font = "bold 38px Trebuchet MS";
-  ctx.fillText("Character Select", 332, 108);
+  drawTitleText("Character Select", 332, 108, "bold 38px Trebuchet MS", "#ffe08f");
 
   state.characterCards = [];
   const entries = [
@@ -5485,6 +5722,15 @@ function drawCharacterSelectScene() {
     state.characterCards.push({ x: entry.x, y: entry.y, w: 216, h: 220, id: entry.id });
   }
 
+  if (state.characterCards.length > 0) {
+    const focusIdx = Math.max(0, Math.min(state.characterCards.length - 1, state.uiFocus.characterCard || 0));
+    state.uiFocus.characterCard = focusIdx;
+    const focused = state.characterCards[focusIdx];
+    ctx.strokeStyle = "rgba(255, 228, 136, 0.95)";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(focused.x - 4, focused.y - 4, focused.w + 8, focused.h + 8);
+  }
+
   drawPixelPanel(84, 396, 792, 74, "rgba(12,22,42,0.9)", "rgba(8,16,32,0.9)", "#8acfff", "rgba(217,236,255,0.66)");
   ctx.fillStyle = "#d5edff";
   ctx.font = "bold 18px Trebuchet MS";
@@ -5497,7 +5743,9 @@ function drawCharacterSelectScene() {
 function selectCharacterByCanvasPoint(x, y) {
   for (const card of state.characterCards) {
     if (x < card.x || x > card.x + card.w || y < card.y || y > card.y + card.h) continue;
+    state.uiFocus.characterCard = Math.max(0, state.characterCards.indexOf(card));
     characterSelect.value = card.id;
+    switchRunnerProfile(card.id);
     setMenuDialogue();
     playThemeSwitchCue();
     return;
@@ -5538,11 +5786,9 @@ function drawAnnexScene() {
   ctx.fillRect(198, 170, 10, 16);
   ctx.fillRect(236, 170, 10, 16);
 
-  drawPixelPanel(42, 68, 916, 412, "rgba(38,22,46,0.82)", "rgba(27,17,35,0.82)", "#ffd787", "rgba(255,232,186,0.6)");
+  // Full-screen room presentation (no inset "window inside window").
 
-  ctx.fillStyle = "#ffe6ab";
-  ctx.font = "bold 36px Trebuchet MS";
-  ctx.fillText("Annex Boutique", 372, 118);
+  drawTitleText("Annex Boutique", 372, 118, "bold 36px Trebuchet MS", "#ffe6ab");
 
   ctx.fillStyle = "#f7edf7";
   ctx.font = "18px Trebuchet MS";
@@ -5551,7 +5797,7 @@ function drawAnnexScene() {
   const annexSbW = drawCurrencyIcon("schrute_buck", 136, 166, 1.08);
   ctx.fillText(`${state.saveData.currencies.schruteBucks}`, 136 + annexSbW + 8, 178);
   ctx.fillText(`Dundies: ${Object.values(state.saveData.achievements).filter(Boolean).length}/3`, 64, 202);
-  drawWrappedTextWithCurrencyIcons("Kelly only accepts [SB].", 64, 226, 320, 18, 1);
+  drawWrappedTextWithCurrencyIcons("Kelly only accepts [SB] only.", 64, 226, 320, 18, 1);
 
   // Dundie trophy case.
   state.annexAchievementBounds = [];
@@ -5692,20 +5938,26 @@ function drawAnnexScene() {
   const cardH = 126;
   const colGap = 14;
   const rowGap = 10;
-  for (let i = 0; i < ANNEX_OUTFITS.length; i += 1) {
-    const outfit = ANNEX_OUTFITS[i];
+  const visibleOutfits = ANNEX_OUTFITS.filter((outfit) => {
+    if (!isOutfitUsableByRunner(outfit, runnerId)) return false;
+    if (outfit.id === "goldenface") {
+      return Boolean(state.saveData.unlocks.goldenfaceTakenFromDesk || ownsOutfit("goldenface"));
+    }
+    return true;
+  });
+  for (let i = 0; i < visibleOutfits.length; i += 1) {
+    const outfit = visibleOutfits[i];
     const col = i % 3;
     const row = Math.floor(i / 3);
     const x = startX + col * (cardW + colGap);
     const y = startY + row * (cardH + rowGap);
     const owned = ownsOutfit(outfit.id);
-    const usable = isOutfitUsableByRunner(outfit, runnerId);
     const reqMet = hasOutfitAchievementRequirement(outfit);
     const isEquipped = equipped === outfit.id;
 
     ctx.fillStyle = isEquipped ? "#3d6f4f" : owned ? "#31507a" : reqMet ? "#4c3d62" : "#3f3948";
     ctx.fillRect(x, y, cardW, cardH);
-    ctx.strokeStyle = isEquipped ? "#b7f5c8" : usable ? "#91d2ff" : "#8e889a";
+    ctx.strokeStyle = isEquipped ? "#b7f5c8" : "#91d2ff";
     ctx.strokeRect(x, y, cardW, cardH);
     drawPixelTexture(x + 1, y + 1, cardW - 2, cardH - 2, "rgba(0,0,0,0.12)", "rgba(255,255,255,0.08)");
     drawOutfitCardThumbnail(x + 116, y + 64, outfit.id);
@@ -5715,16 +5967,28 @@ function drawAnnexScene() {
     ctx.font = "12px Trebuchet MS";
     drawWrappedText(outfit.tagline, x + 8, y + 50, 104, 13, 4);
 
-    let badge = isDundieRewardOutfit(outfit) ? "EARN FROM DUNDIE" : `BUY ${formatSchruteBucks(outfit.cost)}`;
-    if (!usable) badge = `ONLY ${outfit.character.toUpperCase()}`;
-    else if (isDundieRewardOutfit(outfit) && !reqMet) badge = "LOCKED (DUNDIE)";
+    let badge = isDundieRewardOutfit(outfit) ? "EARN FROM DUNDIE" : `BUY ${outfit.cost} [SB]`;
+    if (isDundieRewardOutfit(outfit) && !reqMet) badge = "LOCKED (DUNDIE)";
     else if (isEquipped) badge = "EQUIPPED";
     else if (owned) badge = "EQUIP";
     ctx.fillStyle = isEquipped ? "#d6ffd8" : "#ffe0a8";
     ctx.font = "bold 14px Trebuchet MS";
-    ctx.fillText(badge, x + 8, y + 116);
+    if (badge.includes("[SB]")) {
+      drawWrappedTextWithCurrencyIcons(badge, x + 8, y + 116, 102, 14, 1);
+    } else {
+      drawWrappedText(badge, x + 8, y + 116, 102, 14, 1);
+    }
 
     state.annexCards.push({ x, y, w: cardW, h: cardH, outfitId: outfit.id });
+  }
+
+  if (state.annexCards.length > 0) {
+    const focusIdx = Math.max(0, Math.min(state.annexCards.length - 1, state.uiFocus.annexCard || 0));
+    state.uiFocus.annexCard = focusIdx;
+    const focused = state.annexCards[focusIdx];
+    ctx.strokeStyle = "rgba(255, 228, 136, 0.95)";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(focused.x - 3, focused.y - 3, focused.w + 6, focused.h + 6);
   }
 
   drawPixelPanel(64, 22, 868, 34, "rgba(18,12,30,0.9)", "rgba(11,7,20,0.9)", "#ffbbec", "rgba(255,224,246,0.58)");
@@ -6069,6 +6333,7 @@ function selectAnnexByCanvasPoint(x, y) {
 
   for (const card of state.annexCards) {
     if (x < card.x || x > card.x + card.w || y < card.y || y > card.y + card.h) continue;
+    state.uiFocus.annexCard = Math.max(0, state.annexCards.indexOf(card));
     toggleOutfit(card.outfitId);
     return;
   }
@@ -6390,12 +6655,85 @@ function selectWorldByCanvasPoint(x, y) {
       return;
     }
     state.selectedWorldId = card.worldId;
+    state.uiFocus.menuCard = Math.max(0, state.menuCards.findIndex((c) => c.worldId === card.worldId));
     state.menuClickWorldId = card.worldId;
     state.menuClickLeft = 0.55;
     state.menuClickMessage = "SELECTED";
     setMenuDialogue();
     return;
   }
+}
+
+function moveWorldFocus(direction) {
+  if (!state.menuCards.length) return;
+  const curCard = state.menuCards[Math.max(0, Math.min(state.menuCards.length - 1, state.uiFocus.menuCard || 0))];
+  if (!curCard) return;
+  const cx = curCard.x + curCard.w * 0.5;
+  const cy = curCard.y + curCard.h * 0.5;
+  let bestIdx = state.uiFocus.menuCard || 0;
+  let bestScore = Infinity;
+  for (let i = 0; i < state.menuCards.length; i += 1) {
+    if (i === state.uiFocus.menuCard) continue;
+    const c = state.menuCards[i];
+    const tx = c.x + c.w * 0.5;
+    const ty = c.y + c.h * 0.5;
+    const dx = tx - cx;
+    const dy = ty - cy;
+    if (direction === "left" && dx >= -2) continue;
+    if (direction === "right" && dx <= 2) continue;
+    if (direction === "up" && dy >= -2) continue;
+    if (direction === "down" && dy <= 2) continue;
+    const primary = direction === "left" || direction === "right" ? Math.abs(dx) : Math.abs(dy);
+    const secondary = direction === "left" || direction === "right" ? Math.abs(dy) : Math.abs(dx);
+    const score = primary * 2 + secondary;
+    if (score < bestScore) {
+      bestScore = score;
+      bestIdx = i;
+    }
+  }
+  state.uiFocus.menuCard = bestIdx;
+  const selectedCard = state.menuCards[bestIdx];
+  if (selectedCard) {
+    state.selectedWorldId = selectedCard.worldId;
+    setMenuDialogue();
+  }
+}
+
+function activateFocusedMenuCard() {
+  if (!state.menuCards.length) return;
+  const card = state.menuCards[Math.max(0, Math.min(state.menuCards.length - 1, state.uiFocus.menuCard || 0))];
+  if (!card) return;
+  if (!card.unlocked) {
+    state.menuClickWorldId = card.worldId;
+    state.menuClickLeft = 0.55;
+    state.menuClickMessage = "LOCKED";
+    return;
+  }
+  state.selectedWorldId = card.worldId;
+  state.menuClickWorldId = card.worldId;
+  state.menuClickLeft = 0.55;
+  state.menuClickMessage = "SELECTED";
+  setMenuDialogue();
+}
+
+function moveGridFocus(direction, current, total, cols) {
+  if (total <= 0) return 0;
+  const idx = Math.max(0, Math.min(total - 1, current || 0));
+  const row = Math.floor(idx / cols);
+  const col = idx % cols;
+  const maxRow = Math.floor((total - 1) / cols);
+  let nextRow = row;
+  let nextCol = col;
+  if (direction === "left") nextCol = Math.max(0, col - 1);
+  if (direction === "right") nextCol = Math.min(cols - 1, col + 1);
+  if (direction === "up") nextRow = Math.max(0, row - 1);
+  if (direction === "down") nextRow = Math.min(maxRow, row + 1);
+  let nextIdx = nextRow * cols + nextCol;
+  while (nextIdx >= total && nextCol > 0) {
+    nextCol -= 1;
+    nextIdx = nextRow * cols + nextCol;
+  }
+  return Math.max(0, Math.min(total - 1, nextIdx));
 }
 
 function handleMenuSpecialClick(x, y) {
@@ -6440,6 +6778,26 @@ function loop(ts) {
 function handlePress(ev) {
   ensureAudioContext();
   if (ev.code.startsWith("Key")) advanceCheatCode(ev.code);
+  const isArrow = ev.code === "ArrowLeft" || ev.code === "ArrowRight" || ev.code === "ArrowUp" || ev.code === "ArrowDown";
+  const arrowDir =
+    ev.code === "ArrowLeft"
+      ? "left"
+      : ev.code === "ArrowRight"
+      ? "right"
+      : ev.code === "ArrowUp"
+      ? "up"
+      : ev.code === "ArrowDown"
+      ? "down"
+      : null;
+
+  if (ev.code === "Escape") {
+    ev.preventDefault();
+    if (state.scene !== "menu") {
+      summaryPanel.hidden = true;
+      switchScene("menu");
+    }
+    return;
+  }
 
   if (ev.code === "KeyM") {
     ev.preventDefault();
@@ -6453,7 +6811,13 @@ function handlePress(ev) {
 
   if (ev.code === "Enter") {
     ev.preventDefault();
+    if (state.scene === "run" && state.gameOver && !summaryPanel.hidden) {
+      if (!nextLevelBtn.hidden && state.uiFocus.reviewButton === 1) nextLevelBtn.click();
+      else retryBtn.click();
+      return;
+    }
     if (state.scene === "menu") {
+      activateFocusedMenuCard();
       if (isWorldUnlocked(state.selectedWorldId)) {
         resetRunState(state.selectedWorldId);
         summaryPanel.hidden = true;
@@ -6464,8 +6828,75 @@ function handlePress(ev) {
       state.paused = !state.paused;
       return;
     }
-    if (state.scene === "shop" || state.scene === "annex" || state.scene === "desk" || state.scene === "characters") {
+    if (state.scene === "shop") {
+      if (state.shopConversation && state.shopTalkBounds.length > 0) {
+        const idx = Math.max(0, Math.min(state.shopTalkBounds.length - 1, state.uiFocus.shopTalk || 0));
+        const target = state.shopTalkBounds[idx];
+        if (target) {
+          if (target.id === "talk") startJimConversation();
+          else if (target.id === "pam_talk") startPamConversation();
+          else if (state.shopConversation?.actor === "pam") handlePamConversationClick(target.id);
+          else handleJimConversationClick(target.id);
+        }
+        return;
+      }
+      if (state.shopCards.length > 0) {
+        const idx = Math.max(0, Math.min(state.shopCards.length - 1, state.uiFocus.shopCard || 0));
+        tryBuyShopItem(state.shopCards[idx].itemId);
+        return;
+      }
       switchScene("menu");
+      return;
+    }
+    if (state.scene === "annex") {
+      if (state.annexCards.length > 0) {
+        const idx = Math.max(0, Math.min(state.annexCards.length - 1, state.uiFocus.annexCard || 0));
+        toggleOutfit(state.annexCards[idx].outfitId);
+        return;
+      }
+      switchScene("menu");
+      return;
+    }
+    if (state.scene === "desk") {
+      if (state.deskPhotoViewerOpen) {
+        state.deskPhotoViewerOpen = false;
+        return;
+      }
+      if (state.deskGoldenfaceBounds) {
+        const b = state.deskGoldenfaceBounds;
+        selectDeskByCanvasPoint(b.x + b.w * 0.5, b.y + b.h * 0.5);
+        return;
+      }
+      if (state.deskPhotoBounds) {
+        const b = state.deskPhotoBounds;
+        selectDeskByCanvasPoint(b.x + b.w * 0.5, b.y + b.h * 0.5);
+        return;
+      }
+      if (state.deskDrawerBounds) {
+        const b = state.deskDrawerBounds;
+        selectDeskByCanvasPoint(b.x + b.w * 0.5, b.y + b.h * 0.5);
+        return;
+      }
+      switchScene("menu");
+      return;
+    }
+    if (state.scene === "characters") {
+      if (state.characterCards.length > 0) {
+        const idx = Math.max(0, Math.min(state.characterCards.length - 1, state.uiFocus.characterCard || 0));
+        const card = state.characterCards[idx];
+        if (card) {
+          characterSelect.value = card.id;
+          switchRunnerProfile(card.id);
+          setMenuDialogue();
+          playThemeSwitchCue();
+        }
+      }
+      if (isWorldUnlocked(state.selectedWorldId)) {
+        resetRunState(state.selectedWorldId);
+        summaryPanel.hidden = true;
+      } else {
+        switchScene("menu");
+      }
       return;
     }
     if (state.scene === "cutscene") {
@@ -6476,6 +6907,37 @@ function handlePress(ev) {
       switchScene(state.previousScene || "menu");
       return;
     }
+  }
+
+  if (isArrow && state.scene !== "run") {
+    ev.preventDefault();
+    if (state.scene === "menu") {
+      if (arrowDir) moveWorldFocus(arrowDir);
+      return;
+    }
+    if (state.scene === "characters") {
+      state.uiFocus.characterCard = moveGridFocus(arrowDir, state.uiFocus.characterCard, state.characterCards.length, 3);
+      const card = state.characterCards[state.uiFocus.characterCard];
+      if (card) {
+        characterSelect.value = card.id;
+        switchRunnerProfile(card.id);
+        setMenuDialogue();
+      }
+      return;
+    }
+    if (state.scene === "shop") {
+      if (state.shopConversation && state.shopTalkBounds.length > 0) {
+        state.uiFocus.shopTalk = moveGridFocus(arrowDir, state.uiFocus.shopTalk, state.shopTalkBounds.length, 2);
+      } else {
+        state.uiFocus.shopCard = moveGridFocus(arrowDir, state.uiFocus.shopCard, state.shopCards.length, 3);
+      }
+      return;
+    }
+    if (state.scene === "annex") {
+      state.uiFocus.annexCard = moveGridFocus(arrowDir, state.uiFocus.annexCard, state.annexCards.length, 3);
+      return;
+    }
+    return;
   }
 
   if (state.scene !== "run") {
@@ -6489,6 +6951,14 @@ function handlePress(ev) {
   if (ev.code === "ArrowUp") {
     ev.preventDefault();
     jump();
+  }
+  if ((ev.code === "ArrowLeft" || ev.code === "ArrowRight") && state.gameOver && !summaryPanel.hidden) {
+    ev.preventDefault();
+    if (!nextLevelBtn.hidden) state.uiFocus.reviewButton = state.uiFocus.reviewButton === 0 ? 1 : 0;
+    else state.uiFocus.reviewButton = 0;
+    if (state.uiFocus.reviewButton === 1 && !nextLevelBtn.hidden) nextLevelBtn.focus();
+    else retryBtn.focus();
+    return;
   }
   if (ev.code === "Space") {
     ev.preventDefault();
@@ -6615,6 +7085,7 @@ nextLevelBtn.addEventListener("click", () => {
 });
 
 characterSelect.addEventListener("change", () => {
+  switchRunnerProfile(characterSelect.value);
   setMenuDialogue();
 });
 
@@ -6622,30 +7093,14 @@ if (!localStorage.getItem(RESET_ONCE_KEY)) {
   localStorage.removeItem(SAVE_KEY);
   localStorage.setItem(RESET_ONCE_KEY, "1");
 }
-state.saveData = loadSave();
-// Temporary testing override: grant all Annex outfits.
-state.saveData.unlocks.outfitsUnlocked = ANNEX_OUTFITS.map((outfit) => outfit.id);
-state.saveData.achievements.hottestInOffice = true;
-state.saveData.achievements.whitestSneakers = true;
-state.saveData.achievements.dontGoInThere = true;
-// Temporary testing override: mark Save Pam quest complete.
-state.saveData.missions.savePam.added = true;
-state.saveData.missions.savePam.warehouseCleared = true;
-state.saveData.missions.savePam.completed = true;
-state.saveData.missions.savePam.sightingsBest = Math.max(state.saveData.missions.savePam.sightingsBest || 0, 5);
-state.saveData.unlocks.pamFound = true;
-if (!state.saveData.missions.captureStrangler.completed) {
-  state.saveData.unlocks.jimDeskKey = false;
-}
-// Reset purchased powerups for clean testing.
-state.saveData.upgrades = {};
-// One-time wallet reset requested by user for the rebalanced economy.
-if (!state.saveData.stats.economyV2ResetApplied) {
-  state.saveData.currencies.schruteBucks = 0;
-  state.saveData.currencies.stanleyNickels = 0;
-  state.saveData.stats.economyV2ResetApplied = true;
+state.saveData = loadSave(characterSelect.value || "michael");
+state.activeRunnerId = characterSelect.value || "michael";
+if (state.saveProfiles) {
+  if (!state.saveProfiles[state.activeRunnerId]) state.saveProfiles[state.activeRunnerId] = createDefaultSave();
+  state.saveData = state.saveProfiles[state.activeRunnerId];
 }
 syncDundieOutfitRewards();
+syncPostKeyMissionRewards();
 persistSave();
 setMenuDialogue();
 updateUiForScene();
