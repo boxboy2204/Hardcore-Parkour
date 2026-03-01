@@ -2850,273 +2850,132 @@ function drawPlayer() {
   const player = state.player;
   const runnerId = getOutfitRunnerId();
   const outfitId = getEquippedOutfitId(runnerId);
-  const slidePose = state.slideActive ? Math.max(0, Math.min(1, state.slideSpeed / Math.max(1, GAME.slideInitialSpeed))) : 0;
+  const label = player.preset.label;
   const x = player.x;
   const slideHeight = state.slideActive ? 22 : 0;
   const visualHeight = player.height - slideHeight;
-  const y = player.y - visualHeight;
-  const runCycle = Math.sin(state.worldTimeSec * 18);
-  const runCycleOpp = Math.sin(state.worldTimeSec * 18 + Math.PI);
-  const bob = player.grounded ? Math.abs(Math.sin(state.worldTimeSec * 18)) * 2 : -2;
-  const bodyY = y + (state.slideActive ? 10 : 14) + bob;
-  const skinBase = player.preset.label === "Darryl" ? "#8b664b" : player.preset.label === "Kelly" ? "#a47657" : "#efcfab";
-  const skinShade = player.preset.label === "Darryl" ? "#6e4f3c" : player.preset.label === "Kelly" ? "#8b6348" : "#c9a682";
-  const skinHighlight = player.preset.label === "Darryl" ? "#a17858" : player.preset.label === "Kelly" ? "#b48462" : "#f4dcc1";
-  const hairBase =
-    player.preset.label === "Dwight"
-      ? "#34251a"
-      : player.preset.label === "Pam"
-      ? "#6a4a34"
-      : player.preset.label === "Jim"
-      ? "#2f231c"
-      : "#3a281d";
-  const hairShade =
-    player.preset.label === "Dwight"
-      ? "#251a13"
-      : player.preset.label === "Pam"
-      ? "#4e3728"
-      : player.preset.label === "Jim"
-      ? "#221913"
-      : "#2b1f17";
+  const yTop = player.y - visualHeight;
+  const runCycle = Math.sin(state.worldTimeSec * 15);
+  const runCycleOpp = Math.sin(state.worldTimeSec * 15 + Math.PI);
+  const sway = player.grounded && !state.slideActive ? Math.round(runCycle * 1.1) : 0;
+  const bob = player.grounded ? Math.abs(Math.sin(state.worldTimeSec * 14)) * 1.25 : -1.5;
+  const footY = yTop + 65 + bob;
+  const slidePose = state.slideActive ? Math.max(0, Math.min(1, state.slideSpeed / Math.max(1, GAME.slideInitialSpeed))) : 0;
 
-  ctx.fillStyle = "rgba(0,0,0,0.2)";
-  ctx.beginPath();
-  ctx.ellipse(x + 21, GAME.groundY + 4, 22, 7, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Subtle grounding edge (avoid full-box artifact lines around sprite).
-  ctx.fillStyle = "rgba(6, 10, 18, 0.32)";
-  ctx.fillRect(x + 8, y + 14 + bob, 1, state.slideActive ? 18 : 34);
-  ctx.fillRect(x + 34, y + 14 + bob, 1, state.slideActive ? 18 : 34);
-
-  // Head + hair.
-  ctx.fillStyle = skinBase;
-  ctx.fillRect(x + 7, y + 2 + bob, 28, state.slideActive ? 9 : 12);
-  ctx.fillStyle = hairBase;
-  ctx.fillRect(x + 6, y - 2 + bob, 30, 5);
-  ctx.fillRect(x + 5, y + 1 + bob, 6, 3);
-  ctx.fillStyle = hairShade;
-  ctx.fillRect(x + 6, y - 2 + bob, 30, 1);
-  ctx.fillRect(x + 34, y + 1 + bob, 2, 3);
-  if (!state.slideActive) {
-    ctx.fillStyle = skinShade;
-    ctx.fillRect(x + 6, y + 6 + bob, 1, 4);
-    ctx.fillRect(x + 35, y + 6 + bob, 1, 4);
-  }
-  if (player.preset.label === "Dwight") {
-    // Dwight hairline: receded forehead + center split.
-    ctx.fillStyle = skinBase;
-    ctx.fillRect(x + 14, y - 1 + bob, 14, 4);
-    ctx.fillRect(x + 19, y - 2 + bob, 2, 6);
-    ctx.fillStyle = hairBase;
-    ctx.fillRect(x + 12, y - 1 + bob, 3, 2);
-    ctx.fillRect(x + 27, y - 1 + bob, 3, 2);
-    ctx.fillStyle = hairShade;
-    ctx.fillRect(x + 20, y - 1 + bob, 1, 4);
-  }
-  if (!state.slideActive) {
-    ctx.fillStyle = skinShade;
-    ctx.fillRect(x + 16, y + 13 + bob, 10, 2);
-  }
-
-  // Face details.
-  ctx.fillStyle = "#1b2230";
-  if (player.preset.label === "Dwight") {
-    ctx.strokeStyle = "#96a3b3";
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(x + 11.5, y + 4.5 + bob, 6, 5);
-    ctx.strokeRect(x + 23.5, y + 4.5 + bob, 6, 5);
-    ctx.beginPath();
-    ctx.moveTo(x + 17.5, y + 7 + bob);
-    ctx.lineTo(x + 23.5, y + 7 + bob);
-    ctx.stroke();
-    // Single eye set inside glasses.
-    ctx.fillRect(x + 14, y + 7 + bob, 1, 1);
-    ctx.fillRect(x + 26, y + 7 + bob, 1, 1);
-  } else {
-    ctx.fillStyle = "#e8f2ff";
-    ctx.fillRect(x + 12, y + 6 + bob, 4, 3);
-    ctx.fillRect(x + 24, y + 6 + bob, 4, 3);
-    ctx.fillStyle = "#1b2230";
-    ctx.fillRect(x + 13, y + 6 + bob, 2, 2);
-    ctx.fillRect(x + 25, y + 6 + bob, 2, 2);
-  }
-  ctx.fillStyle = "rgba(25,30,42,0.5)";
-  ctx.fillRect(x + 12, y + 5 + bob, 4, 1);
-  ctx.fillRect(x + 24, y + 5 + bob, 4, 1);
-  ctx.fillStyle = skinShade;
-  ctx.fillRect(x + 20, y + 8 + bob, 1, 2);
-  ctx.fillRect(x + 17, y + 10 + bob, 8, 1);
-  // Face shading.
-  ctx.fillStyle = "rgba(90, 60, 45, 0.28)";
-  ctx.fillRect(x + 8, y + 11 + bob, 26, 2);
-  ctx.fillStyle = skinHighlight;
-  ctx.fillRect(x + 10, y + 3 + bob, 14, 1);
-  if (outfitId === "goldenface") {
-    ctx.fillStyle = "#e4ba53";
-    ctx.fillRect(x + 7, y + 2 + bob, 28, state.slideActive ? 9 : 12);
-    ctx.fillStyle = "#1b1a1c";
-    ctx.fillRect(x + 13, y + 6 + bob, 2, 2);
-    ctx.fillRect(x + 25, y + 6 + bob, 2, 2);
-    ctx.fillRect(x + 16, y + 10 + bob, 10, 1);
-  }
-  if (outfitId === "ryan_beard") {
-    ctx.fillStyle = "#151518";
-    ctx.fillRect(x + 11, y + 9 + bob, 3, 5);
-    ctx.fillRect(x + 26, y + 9 + bob, 3, 5);
-    ctx.fillRect(x + 14, y + 10 + bob, 12, 2);
-    ctx.fillRect(x + 14, y + 12 + bob, 12, 1);
-    ctx.fillRect(x + 15, y + 13 + bob, 10, 1);
-  }
-
-  // Torso base + shading.
   let shirtColor = player.preset.color;
-  let tieColor = player.preset.tieColor;
-  if (outfitId === "cornell_fit") {
-    shirtColor = "#8a2432";
-    tieColor = "#f4d76b";
-  } else if (outfitId === "goldenface") {
-    shirtColor = "#121316";
-    tieColor = "#d6b255";
-  } else if (outfitId === "date_mike") {
-    shirtColor = "#1e2f4e";
-    tieColor = "#9a1f2f";
-  } else if (outfitId === "wrong_fit") {
-    shirtColor = "#cb5fa4";
-    tieColor = "#f5d35b";
-  } else if (outfitId === "recyclops") {
-    shirtColor = "#5c8f3c";
-    tieColor = "#2d5a2e";
-  } else if (outfitId === "three_hole_gym") {
-    shirtColor = "#d9dde4";
-    tieColor = "#d9dde4";
-  }
-  const hideTie = outfitId === "three_hole_gym";
-
-  ctx.fillStyle = shirtColor;
-  ctx.fillRect(x + 4, bodyY, 34, state.slideActive ? 22 : 34);
-  ctx.fillStyle = "rgba(255,255,255,0.12)";
-  ctx.fillRect(x + 24, bodyY + 1, 11, state.slideActive ? 20 : 32);
-  ctx.fillStyle = "rgba(0,0,0,0.12)";
-  ctx.fillRect(x + 4, bodyY + 1, 5, state.slideActive ? 20 : 32);
-  // Fine fabric striping for 16-bit density.
-  ctx.fillStyle = "rgba(255,255,255,0.08)";
-  for (let sy = 0; sy < (state.slideActive ? 20 : 32); sy += 4) {
-    ctx.fillRect(x + 9, bodyY + 2 + sy, 15, 1);
-  }
-  ctx.fillStyle = "rgba(0,0,0,0.22)";
-  ctx.fillRect(x + 4, bodyY + (state.slideActive ? 21 : 33), 34, 1);
-
-  // Collar + tie.
-  ctx.fillStyle = "#f4ead9";
-  ctx.fillRect(x + 16, bodyY + 2, 10, 3);
-  if (!hideTie) {
-    ctx.fillStyle = tieColor;
-    ctx.fillRect(x + 19, bodyY + 4, 4, state.slideActive ? 11 : 20);
-    if (!state.slideActive) ctx.fillRect(x + 18, bodyY + 22, 6, 4);
-  }
-  if (outfitId === "three_hole_gym") {
-    ctx.fillStyle = "#0f1118";
-    ctx.fillRect(x + 19, bodyY + 8, 4, 4);
-    ctx.fillRect(x + 19, bodyY + 13, 4, 4);
-    ctx.fillRect(x + 19, bodyY + 18, 4, 4);
-  }
+  if (outfitId === "cornell_fit") shirtColor = "#8a2432";
+  else if (outfitId === "goldenface") shirtColor = "#121316";
+  else if (outfitId === "date_mike") shirtColor = "#1e2f4e";
+  else if (outfitId === "wrong_fit") shirtColor = "#cb5fa4";
+  else if (outfitId === "recyclops") shirtColor = "#5c8f3c";
+  else if (outfitId === "three_hole_gym") shirtColor = "#d9dde4";
+  let skinBase = label === "Darryl" ? "#8b664b" : label === "Kelly" ? "#a47657" : label === "Pam" ? "#f1cfb3" : "#efcfab";
+  let hairBase =
+    label === "Dwight"
+      ? "#34251a"
+      : label === "Pam"
+      ? "#7e5139"
+      : label === "Andy"
+      ? "#886345"
+      : label === "Jim"
+      ? "#2a1e16"
+      : "#3a281d";
   if (outfitId === "goldenface") {
-    // Suit jacket + white shirt panel.
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(x + 16, bodyY + 3, 10, state.slideActive ? 12 : 23);
-    ctx.fillStyle = "#121316";
-    ctx.fillRect(x + 4, bodyY, 8, state.slideActive ? 22 : 34);
-    ctx.fillRect(x + 30, bodyY, 8, state.slideActive ? 22 : 34);
-    ctx.fillRect(x + 12, bodyY + 4, 4, state.slideActive ? 14 : 22);
-    ctx.fillRect(x + 26, bodyY + 4, 4, state.slideActive ? 14 : 22);
-  }
-  if (outfitId === "date_mike") {
-    ctx.fillStyle = "#0d1118";
-    ctx.fillRect(x + 6, y - 6 + bob, 30, 4);
-    ctx.fillRect(x + 12, y - 11 + bob, 18, 6);
-  } else if (outfitId === "recyclops") {
-    ctx.fillStyle = "#9be467";
-    ctx.fillRect(x + 10, y + 3 + bob, 22, 2);
-    ctx.fillStyle = "#2f4f2f";
-    ctx.fillRect(x + 19, y + 3 + bob, 4, 2);
+    skinBase = "#e4ba53";
+    hairBase = "#1f1d1b";
   }
 
-  const armFrontY = y + 21 + runCycle * 3 + bob;
-  const armBackY = y + 21 + runCycleOpp * 3 + bob;
-  const slideArmBackY = y + 22 + bob;
-  const slideArmFrontY = y + 23 + bob;
-  const hasSleeves = player.preset.label !== "Dwight" && player.preset.label !== "Kelly";
-  const sleeveH = state.slideActive ? 4 : 7;
-  // Back arm first for depth.
-  ctx.fillStyle = skinShade;
-  ctx.fillRect(x - 1, state.slideActive ? slideArmBackY : armBackY, 8, state.slideActive ? 7 : 16);
-  if (hasSleeves) {
-    ctx.fillStyle = shirtColor;
-    ctx.fillRect(x - 1, state.slideActive ? slideArmBackY : armBackY, 8, sleeveH);
-  }
-  if (state.attackLeft > 0) {
-    if (hasSleeves) {
-      ctx.fillStyle = shirtColor;
-      ctx.fillRect(x + 35, y + (state.slideActive ? 15 : 18) + bob, 8, sleeveH);
-    }
-    ctx.fillStyle = skinShade;
-    ctx.fillRect(x + 34, y + (state.slideActive ? 15 : 18) + bob, 14, 8);
-    ctx.fillStyle = "#ffe189";
-    ctx.fillRect(x + 48, y + (state.slideActive ? 17 : 20) + bob, 18, 4);
-  } else {
-    ctx.fillStyle = skinBase;
-    ctx.fillRect(x + 35, state.slideActive ? slideArmFrontY : armFrontY, 8, state.slideActive ? 7 : 16);
-    if (hasSleeves) {
-      ctx.fillStyle = shirtColor;
-      ctx.fillRect(x + 35, state.slideActive ? slideArmFrontY : armFrontY, 8, sleeveH);
-    }
-  }
-
-  const legFront = player.grounded ? runCycle * 5 : 0;
-  const legBack = player.grounded ? runCycleOpp * 5 : 0;
-  ctx.fillStyle = "#202a39";
   if (state.slideActive) {
-    const slideLegY = y + 31 + bob;
-    const legReach = 30 + Math.round(slidePose * 9);
-    ctx.fillRect(x + 9, slideLegY, legReach, 5);
-    ctx.fillRect(x + 9, slideLegY + 5, legReach - 2, 5);
-    ctx.fillStyle = "#141a25";
-    ctx.fillRect(x + 8 + legReach, slideLegY + 2, 8, 3);
-    ctx.fillRect(x + 8 + (legReach - 2), slideLegY + 7, 8, 3);
-    ctx.fillStyle = "rgba(255,255,255,0.26)";
+    // Clear baseball-style slide-out pose.
+    const slideY = GAME.floorTop - 7;
+    const speedStretch = Math.round(slidePose * 6);
+    ctx.fillStyle = "rgba(0,0,0,0.24)";
+    ctx.beginPath();
+    ctx.ellipse(x + 23, GAME.floorTop + 5, 31, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Rear torso, leaned back.
+    ctx.fillStyle = shirtColor;
+    ctx.fillRect(x + 13, slideY - 14, 12, 8);
+    ctx.fillRect(x + 20, slideY - 11, 14, 7);
+    ctx.fillStyle = "rgba(255,255,255,0.14)";
+    ctx.fillRect(x + 24, slideY - 10, 8, 5);
+
+    // Head (up and slightly back, as if leaning during slide).
+    ctx.fillStyle = skinBase;
+    ctx.fillRect(x + 7, slideY - 16, 10, 7);
+    ctx.fillStyle = hairBase;
+    ctx.fillRect(x + 6, slideY - 18, 11, 3);
+    ctx.fillStyle = "#1b2230";
+    ctx.fillRect(x + 10, slideY - 14, 2, 1);
+    ctx.fillRect(x + 13, slideY - 14, 2, 1);
+    ctx.fillRect(x + 11, slideY - 12, 3, 1);
+    if (outfitId !== "three_hole_gym") {
+      ctx.fillStyle = player.preset.tieColor || "#2f4f7a";
+      if (outfitId === "cornell_fit") ctx.fillStyle = "#f4d76b";
+      else if (outfitId === "goldenface") ctx.fillStyle = "#d6b255";
+      else if (outfitId === "date_mike") ctx.fillStyle = "#9a1f2f";
+      else if (outfitId === "wrong_fit") ctx.fillStyle = "#f5d35b";
+      else if (outfitId === "recyclops") ctx.fillStyle = "#2d5a2e";
+      ctx.fillRect(x + 22, slideY - 10, 2, 5);
+    }
+
+    // Arms: one bracing behind, one reaching forward.
+    ctx.fillStyle = shirtColor;
+    ctx.fillRect(x + 10, slideY - 8, 4, 3);
+    ctx.fillRect(x + 33, slideY - 8, 8, 3 + speedStretch * 0.2);
+    ctx.fillStyle = skinBase;
+    ctx.fillRect(x + 9, slideY - 6, 3, 3);
+    ctx.fillRect(x + 40, slideY - 7, 4, 3);
+
+    // Legs: one bent under body, one fully extended.
+    const legY = slideY - 1;
+    // Bent trailing leg.
+    ctx.fillStyle = "#1b2838";
+    ctx.fillRect(x + 17, legY - 2, 10, 4);
+    ctx.fillRect(x + 15, legY + 2, 8, 4);
+    // Extended leading leg.
+    ctx.fillStyle = "#1b2838";
+    ctx.fillRect(x + 26, legY, 20 + speedStretch, 4);
+    ctx.fillRect(x + 26, legY + 4, 18 + speedStretch, 4);
+    ctx.fillStyle = "#111722";
+    ctx.fillRect(x + 45 + speedStretch, legY + 1, 7, 3);
+    ctx.fillRect(x + 43 + speedStretch, legY + 5, 7, 3);
+
+    // Ground scrape streaks.
+    ctx.fillStyle = "rgba(255,255,255,0.2)";
     ctx.fillRect(x - 2, GAME.floorTop + 1, 8, 2);
     ctx.fillRect(x - 10, GAME.floorTop + 3, 6, 2);
-    ctx.fillRect(x - 16, GAME.floorTop + 5, 5, 1);
-    ctx.fillStyle = "rgba(255,255,255,0.14)";
-    ctx.fillRect(x + 12, slideLegY + 1, 10, 1);
-    ctx.fillRect(x + 28, slideLegY + 6, 8, 1);
+    ctx.fillRect(x - 16, GAME.floorTop + 5, 4, 1);
+    ctx.fillRect(x + 2, GAME.floorTop + 2, 10, 1);
+    ctx.fillRect(x + 10, GAME.floorTop + 4, 8, 1);
   } else {
-    ctx.fillRect(x + 10, y + 48 + Math.max(0, -legBack), 9, 14 + Math.abs(legBack));
-    ctx.fillRect(x + 24, y + 48 + Math.max(0, -legFront), 9, 14 + Math.abs(legFront));
-    ctx.fillStyle = "#141a25";
-    ctx.fillRect(x + 9, y + 62 + Math.max(0, -legBack), 10, 3);
-    ctx.fillRect(x + 24, y + 62 + Math.max(0, -legFront), 10, 3);
+    drawHeroPortraitSprite(x + sway, footY, 1, { label: player.preset.label, outfitId, noArms: true, noLegs: true });
+    // Real run animation pass: connected swinging limbs.
+    const armYLeft = yTop + 24 + runCycle * 3;
+    const armYRight = yTop + 24 + runCycleOpp * 3;
+    ctx.fillStyle = shirtColor;
+    ctx.fillRect(x + sway + 2, armYLeft, 4, 9);
+    ctx.fillRect(x + sway + 30, armYRight, 4, 9);
+    ctx.fillStyle = "#d4b28f";
+    ctx.fillRect(x + sway + 2, armYLeft + 8, 4, 7);
+    ctx.fillRect(x + sway + 30, armYRight + 8, 4, 7);
+    ctx.fillStyle = "#1b2838";
+    const legLiftL = Math.max(0, runCycle) * 3;
+    const legLiftR = Math.max(0, runCycleOpp) * 3;
+    ctx.fillRect(x + sway + 10, footY - 14 - legLiftL, 7, 18 + legLiftL);
+    ctx.fillRect(x + sway + 20, footY - 14 - legLiftR, 7, 18 + legLiftR);
+    ctx.fillStyle = "#111722";
+    ctx.fillRect(x + sway + 9, footY + 2 - legLiftL, 8, 3);
+    ctx.fillRect(x + sway + 20, footY + 2 - legLiftR, 8, 3);
   }
 
-  // 16-bit detail pass: collar points + belt + shoe highlights.
-  if (!state.slideActive) {
-    ctx.fillStyle = "#f9f3e8";
-    ctx.fillRect(x + 14, bodyY + 3, 2, 2);
-    ctx.fillRect(x + 24, bodyY + 3, 2, 2);
-    ctx.fillStyle = "#0e1520";
-    ctx.fillRect(x + 11, bodyY + 30, 20, 2);
-    ctx.fillStyle = "rgba(255,255,255,0.15)";
-    ctx.fillRect(x + 12, bodyY + 31, 4, 1);
-    ctx.fillRect(x + 26, bodyY + 31, 4, 1);
-    ctx.fillStyle = "rgba(255,255,255,0.18)";
-    ctx.fillRect(x + 10, y + 63 + Math.max(0, -legBack), 4, 1);
-    ctx.fillRect(x + 25, y + 63 + Math.max(0, -legFront), 4, 1);
-    // Subtle shirt crease animation for more life.
-    const creaseShift = Math.round(runCycle * 1.2);
-    ctx.fillStyle = "rgba(10,14,22,0.18)";
-    ctx.fillRect(x + 15 + creaseShift, bodyY + 12, 1, 7);
-    ctx.fillRect(x + 23 + creaseShift, bodyY + 14, 1, 6);
+  if (state.attackLeft > 0 && !state.slideActive) {
+    const punchY = yTop + 20 + bob;
+    ctx.fillStyle = "#ffe189";
+    ctx.fillRect(x + 46, punchY, 18, 4);
+    ctx.fillStyle = "rgba(255,255,255,0.34)";
+    ctx.fillRect(x + 58, punchY - 1, 8, 2);
   }
 }
 
@@ -3993,12 +3852,14 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
       ? "#34251a"
       : label === "Pam"
       ? "#7e5139"
+      : label === "Andy"
+      ? "#886345"
       : label === "Jim"
       ? "#2a1e16"
       : label === "David Wallace"
       ? "#2d1f18"
       : "#3a281d");
-  const hairShade = opts.hairShade || (label === "David Wallace" ? "#4b352a" : "#2b1f17");
+  const hairShade = opts.hairShade || (label === "David Wallace" ? "#4b352a" : label === "Andy" ? "#6d4e35" : "#2b1f17");
 
   let shirtColor = opts.shirtColor || preset?.color || (label === "Pam" ? "#d9eef9" : "#5f8fca");
   let tieColor = opts.tieColor || preset?.tieColor || "#2f4f7a";
@@ -4175,35 +4036,39 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
   }
 
   // Arms (Pam now same body system, no floating look).
-  const armTopY = isPam ? y - 40 * scale : y - 40 * scale;
-  const armH = isPam ? 11 * scale : 12 * scale;
-  const leftArmX = isPam ? x + 5 * scale : x + 2 * scale;
-  const rightArmX = isPam ? x + 28 * scale : x + 30 * scale;
-  ctx.fillStyle = skinBase;
-  ctx.fillRect(leftArmX, armTopY, 3 * scale, armH);
-  ctx.fillRect(rightArmX, armTopY, 3 * scale, armH);
-  if (hasSleeves || isPam) {
-    ctx.fillStyle = shirtColor;
-    ctx.fillRect(leftArmX, armTopY, 3 * scale, 5 * scale);
-    ctx.fillRect(rightArmX, armTopY, 3 * scale, 5 * scale);
+  if (!opts.noArms) {
+    const armTopY = isPam ? y - 40 * scale : y - 40 * scale;
+    const armH = isPam ? 11 * scale : 12 * scale;
+    const leftArmX = isPam ? x + 5 * scale : x + 2 * scale;
+    const rightArmX = isPam ? x + 28 * scale : x + 30 * scale;
+    ctx.fillStyle = skinBase;
+    ctx.fillRect(leftArmX, armTopY, 3 * scale, armH);
+    ctx.fillRect(rightArmX, armTopY, 3 * scale, armH);
+    if (hasSleeves || isPam) {
+      ctx.fillStyle = shirtColor;
+      ctx.fillRect(leftArmX, armTopY, 3 * scale, 5 * scale);
+      ctx.fillRect(rightArmX, armTopY, 3 * scale, 5 * scale);
+    }
   }
 
   // Legs and shoes.
-  if (isPam) {
-    // Slightly larger legs relative to slimmer body.
-    ctx.fillStyle = "#514a73";
-    ctx.fillRect(x + 11 * scale, y - 17 * scale, 14 * scale, 12 * scale);
-    ctx.fillStyle = "#1a2231";
-    ctx.fillRect(x + 12 * scale, y - 5 * scale, 5 * scale, 8 * scale);
-    ctx.fillRect(x + 19 * scale, y - 5 * scale, 5 * scale, 8 * scale);
-  } else {
-    ctx.fillStyle = "#1b2838";
-    ctx.fillRect(x + 10 * scale, y - 16 * scale, 7 * scale, 18 * scale);
-    ctx.fillRect(x + 20 * scale, y - 16 * scale, 7 * scale, 18 * scale);
+  if (!opts.noLegs) {
+    if (isPam) {
+      // Slightly larger legs relative to slimmer body.
+      ctx.fillStyle = "#514a73";
+      ctx.fillRect(x + 11 * scale, y - 17 * scale, 14 * scale, 12 * scale);
+      ctx.fillStyle = "#1a2231";
+      ctx.fillRect(x + 12 * scale, y - 5 * scale, 5 * scale, 8 * scale);
+      ctx.fillRect(x + 19 * scale, y - 5 * scale, 5 * scale, 8 * scale);
+    } else {
+      ctx.fillStyle = "#1b2838";
+      ctx.fillRect(x + 10 * scale, y - 16 * scale, 7 * scale, 18 * scale);
+      ctx.fillRect(x + 20 * scale, y - 16 * scale, 7 * scale, 18 * scale);
+    }
+    ctx.fillStyle = "#111722";
+    ctx.fillRect(x + 9 * scale, y + 2 * scale, 8 * scale, 3 * scale);
+    ctx.fillRect(x + 20 * scale, y + 2 * scale, 8 * scale, 3 * scale);
   }
-  ctx.fillStyle = "#111722";
-  ctx.fillRect(x + 9 * scale, y + 2 * scale, 8 * scale, 3 * scale);
-  ctx.fillRect(x + 20 * scale, y + 2 * scale, 8 * scale, 3 * scale);
 }
 
 function drawParticles() {
