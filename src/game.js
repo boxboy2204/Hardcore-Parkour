@@ -49,8 +49,8 @@ const CHARACTER_PRESETS = {
   },
   andy: {
     label: "Andy",
-    color: "#5a3820",
-    tieColor: "#9a1f2f",
+    color: "#cbb79a",
+    tieColor: "#a34353",
     baseSpeed: 305,
     jumpPower: 700,
     styleGain: 1.6,
@@ -351,6 +351,7 @@ const state = {
   annexAchievementBounds: [],
   annexMessage: "Kelly: Welcome to the Annex Boutique, where confidence is mandatory and glitter is a lifestyle.",
   annexMessageLeft: 0,
+  characterCards: [],
   pamQuestRun: false,
   pamSpottedCount: 0,
   pamRequiredCount: 5,
@@ -1100,6 +1101,13 @@ function getOutfitRunnerId() {
   return getRunnerId();
 }
 
+function getCharacterAbilityText(runnerId = getRunnerId()) {
+  if (runnerId === "michael") return "Michael Special: Longer HARDCORE speed boost + invincible during boost.";
+  if (runnerId === "andy") return "Andy Special: Double jump.";
+  if (runnerId === "dwight") return "Dwight Special: Start each level with +1 HP.";
+  return "No special ability.";
+}
+
 function ownsOutfit(id) {
   return state.saveData.unlocks.outfitsUnlocked.includes(id);
 }
@@ -1462,6 +1470,9 @@ function updateUiForScene() {
     startBtn.textContent = "Launch Level";
     retryBtn.textContent = "Shop";
     retryBtn.hidden = false;
+  } else if (state.scene === "characters") {
+    startBtn.textContent = "Back To Menu";
+    retryBtn.hidden = true;
   } else if (state.scene === "missions") {
     startBtn.textContent = "Back";
     retryBtn.hidden = true;
@@ -2986,6 +2997,18 @@ function drawPlayer() {
     // Torso (single block; no separate connector piece).
     ctx.fillStyle = shirtColor;
     ctx.fillRect(x + 18, hipY - 13, 18, 9);
+    if (label === "Andy" && !outfitId) {
+      // Tan blazer + light-blue shirt panel + red bow tie.
+      ctx.fillStyle = "#d7e4ff";
+      ctx.fillRect(x + 24, hipY - 12, 6, 8);
+      ctx.fillStyle = "#b89f7f";
+      ctx.fillRect(x + 19, hipY - 11, 3, 7);
+      ctx.fillRect(x + 32, hipY - 11, 3, 7);
+      ctx.fillStyle = "#a34353";
+      ctx.fillRect(x + 24, hipY - 12, 2, 1);
+      ctx.fillRect(x + 28, hipY - 12, 2, 1);
+      ctx.fillRect(x + 26, hipY - 11, 2, 1);
+    }
     ctx.fillStyle = "rgba(255,255,255,0.14)";
     ctx.fillRect(x + 30, hipY - 12, 5, 8);
     if (outfitId !== "three_hole_gym") {
@@ -2995,8 +3018,10 @@ function drawPlayer() {
       else if (outfitId === "date_mike") tie = "#9a1f2f";
       else if (outfitId === "wrong_fit") tie = "#f5d35b";
       else if (outfitId === "recyclops") tie = "#2d5a2e";
-      ctx.fillStyle = tie;
-      ctx.fillRect(x + 24, hipY - 11, 2, 6);
+      if (!(label === "Andy" && !outfitId)) {
+        ctx.fillStyle = tie;
+        ctx.fillRect(x + 24, hipY - 11, 2, 6);
+      }
     }
 
     // Front arm reaches forward.
@@ -4128,6 +4153,7 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
   const isPam = label === "Pam" || style === "pam";
   const isDwight = label === "Dwight";
   const isKelly = label === "Kelly";
+  const isAndy = label === "Andy";
   const isDavid = label === "David Wallace" || style === "david";
   const hasSleeves = !isDwight && !isKelly;
 
@@ -4157,17 +4183,23 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     ctx.fillRect(x + 4 * scale, y - 58 * scale, 5 * scale, 24 * scale);
     ctx.fillRect(x + 23 * scale, y - 58 * scale, 5 * scale, 24 * scale);
     ctx.fillRect(x + 9 * scale, y - 36 * scale, 14 * scale, 3 * scale);
+  } else if (isDwight) {
+    // Dwight: center-part hair with fuller side volume.
+    ctx.fillStyle = hairBase;
+    ctx.fillRect(x + 6 * scale, y - 63 * scale, 20 * scale, 5 * scale);
+    ctx.fillRect(x + 5 * scale, y - 59 * scale, 5 * scale, 4 * scale);
+    ctx.fillRect(x + 22 * scale, y - 59 * scale, 5 * scale, 4 * scale);
+    // Receding center hairline (visible notch).
+    ctx.fillStyle = skinBase;
+    ctx.fillRect(x + 12 * scale, y - 60 * scale, 8 * scale, 4 * scale);
+    ctx.fillStyle = hairShade;
+    ctx.fillRect(x + 15 * scale, y - 63 * scale, 2 * scale, 3 * scale); // center part (stays above hairline notch)
+    ctx.fillRect(x + 11 * scale, y - 60 * scale, 2 * scale, 2 * scale);
+    ctx.fillRect(x + 19 * scale, y - 60 * scale, 2 * scale, 2 * scale);
   } else {
     ctx.fillStyle = hairBase;
     ctx.fillRect(x + 6 * scale, y - 63 * scale, 20 * scale, 6 * scale);
     ctx.fillRect(x + 5 * scale, y - 59 * scale, 5 * scale, 3 * scale);
-    if (isDwight) {
-      ctx.fillStyle = skinBase;
-      ctx.fillRect(x + 12 * scale, y - 61 * scale, 8 * scale, 3 * scale);
-      ctx.fillStyle = hairBase;
-      ctx.fillRect(x + 11 * scale, y - 61 * scale, 2 * scale, 2 * scale);
-      ctx.fillRect(x + 19 * scale, y - 61 * scale, 2 * scale, 2 * scale);
-    }
     if (isDavid) {
       ctx.fillStyle = hairShade;
       ctx.fillRect(x + 15 * scale, y - 63 * scale, 2 * scale, 6 * scale);
@@ -4177,17 +4209,34 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
   // Face details.
   ctx.fillStyle = "#1e2431";
   if (isDwight || isDavid) {
-    const g = isDavid ? "#8fa3bd" : "#96a3b3";
-    ctx.strokeStyle = g;
-    ctx.lineWidth = Math.max(1, scale * 0.45);
-    ctx.strokeRect(x + 11.5 * scale, y - 54.5 * scale, 3.2 * scale, 2.6 * scale);
-    ctx.strokeRect(x + 17.3 * scale, y - 54.5 * scale, 3.2 * scale, 2.6 * scale);
-    ctx.beginPath();
-    ctx.moveTo(x + 14.7 * scale, y - 53.2 * scale);
-    ctx.lineTo(x + 17.3 * scale, y - 53.2 * scale);
-    ctx.stroke();
-    ctx.fillRect(x + 13 * scale, y - 53.2 * scale, 1 * scale, 1 * scale);
-    ctx.fillRect(x + 19 * scale, y - 53.2 * scale, 1 * scale, 1 * scale);
+    if (isDwight) {
+      // Pixel-aligned silver glasses and centered eyes.
+      ctx.fillStyle = "#9ba9ba";
+      ctx.fillRect(x + 11 * scale, y - 55 * scale, 4 * scale, 1 * scale);
+      ctx.fillRect(x + 11 * scale, y - 52 * scale, 4 * scale, 1 * scale);
+      ctx.fillRect(x + 11 * scale, y - 54 * scale, 1 * scale, 2 * scale);
+      ctx.fillRect(x + 14 * scale, y - 54 * scale, 1 * scale, 2 * scale);
+      ctx.fillRect(x + 17 * scale, y - 55 * scale, 4 * scale, 1 * scale);
+      ctx.fillRect(x + 17 * scale, y - 52 * scale, 4 * scale, 1 * scale);
+      ctx.fillRect(x + 17 * scale, y - 54 * scale, 1 * scale, 2 * scale);
+      ctx.fillRect(x + 20 * scale, y - 54 * scale, 1 * scale, 2 * scale);
+      ctx.fillRect(x + 15 * scale, y - 54 * scale, 2 * scale, 1 * scale);
+      ctx.fillStyle = "#1e2431";
+      ctx.fillRect(x + 13 * scale, y - 54 * scale, 1 * scale, 1 * scale);
+      ctx.fillRect(x + 19 * scale, y - 54 * scale, 1 * scale, 1 * scale);
+    } else {
+      const g = "#8fa3bd";
+      ctx.strokeStyle = g;
+      ctx.lineWidth = Math.max(1, scale * 0.45);
+      ctx.strokeRect(x + 11.5 * scale, y - 54.5 * scale, 3.2 * scale, 2.6 * scale);
+      ctx.strokeRect(x + 17.3 * scale, y - 54.5 * scale, 3.2 * scale, 2.6 * scale);
+      ctx.beginPath();
+      ctx.moveTo(x + 14.7 * scale, y - 53.2 * scale);
+      ctx.lineTo(x + 17.3 * scale, y - 53.2 * scale);
+      ctx.stroke();
+      ctx.fillRect(x + 13 * scale, y - 53.2 * scale, 1 * scale, 1 * scale);
+      ctx.fillRect(x + 19 * scale, y - 53.2 * scale, 1 * scale, 1 * scale);
+    }
   } else {
     const eyeY = isPam ? -53 : -54;
     ctx.fillRect(x + 12 * scale, y + eyeY * scale, 2 * scale, 2 * scale);
@@ -4248,6 +4297,19 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
   }
   ctx.fillStyle = shirtColor;
   ctx.fillRect(torsoX, torsoY, torsoW, torsoH);
+  if (isAndy && !outfitId) {
+    // Andy default: tan blazer, blue shirt core, red bow tie.
+    ctx.fillStyle = "#d7e4ff";
+    ctx.fillRect(torsoX + 8 * scale, torsoY + 1 * scale, 8 * scale, torsoH - 2 * scale);
+    ctx.fillStyle = "#b89f7f";
+    ctx.fillRect(torsoX + 1 * scale, torsoY + 4 * scale, 5 * scale, torsoH - 5 * scale);
+    ctx.fillRect(torsoX + torsoW - 6 * scale, torsoY + 4 * scale, 5 * scale, torsoH - 5 * scale);
+    ctx.fillStyle = "#a34353";
+    ctx.fillRect(x + 13 * scale, y - 45 * scale, 3 * scale, 2 * scale);
+    ctx.fillRect(x + 18 * scale, y - 45 * scale, 3 * scale, 2 * scale);
+    ctx.fillRect(x + 16 * scale, y - 44 * scale, 2 * scale, 2 * scale);
+    hideTie = true;
+  }
   ctx.fillStyle = "rgba(255,255,255,0.14)";
   ctx.fillRect(torsoX + torsoW - 8 * scale, torsoY + 2 * scale, 7 * scale, torsoH - 4 * scale);
   ctx.fillStyle = "rgba(0,0,0,0.14)";
@@ -4579,7 +4641,7 @@ function drawMenuScene() {
 
   ctx.fillStyle = "#fff3b4";
   ctx.font = "15px Trebuchet MS";
-  ctx.fillText("Enter: Launch Level   Click Sticky Notes   S: Shop   A: Annex   D: Jim's Desk", 34, 523);
+  ctx.fillText("Enter: Launch Level   Click Sticky Notes   C: Characters   S: Shop   A: Annex   D: Jim's Desk", 34, 523);
 }
 
 function drawShopScene() {
@@ -5372,6 +5434,76 @@ function drawMissionsScene() {
   ctx.fillText("Press M to close missions and get back to the chaos.", 106, 524);
 }
 
+function drawCharacterSelectScene() {
+  const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  grad.addColorStop(0, "#1d3461");
+  grad.addColorStop(1, "#0f1e3d");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawPixelTexture(0, 0, canvas.width, canvas.height, "rgba(12,20,42,0.2)", "rgba(255,255,255,0.05)");
+
+  drawPixelPanel(52, 52, 856, 436, "rgba(13,24,44,0.88)", "rgba(9,18,34,0.88)", "#93d9ff", "rgba(217,236,255,0.68)");
+
+  ctx.fillStyle = "#ffe08f";
+  ctx.font = "bold 38px Trebuchet MS";
+  ctx.fillText("Character Select", 332, 108);
+
+  state.characterCards = [];
+  const entries = [
+    { id: "michael", x: 112, y: 152, colorA: "#2a3f69", colorB: "#1b2d4f" },
+    { id: "dwight", x: 372, y: 152, colorA: "#4d3b2b", colorB: "#322419" },
+    { id: "andy", x: 632, y: 152, colorA: "#5a2f2f", colorB: "#381f1f" },
+  ];
+
+  for (const entry of entries) {
+    const p = CHARACTER_PRESETS[entry.id];
+    const selected = getRunnerId() === entry.id;
+    drawPixelPanel(
+      entry.x,
+      entry.y,
+      216,
+      220,
+      entry.colorA,
+      entry.colorB,
+      selected ? "#ffd56a" : "#88c6f7",
+      selected ? "rgba(255,239,184,0.7)" : "rgba(198,226,255,0.55)"
+    );
+    ctx.fillStyle = selected ? "rgba(255,224,122,0.14)" : "rgba(255,255,255,0.06)";
+    ctx.fillRect(entry.x + 8, entry.y + 10, 200, 168);
+
+    drawHeroPortraitSprite(entry.x + 82, entry.y + 178, 2.1, { label: p.label });
+
+    ctx.fillStyle = "#f8e9c0";
+    ctx.font = "bold 24px Trebuchet MS";
+    ctx.fillText(p.label, entry.x + 58, entry.y + 198);
+
+    if (selected) {
+      ctx.fillStyle = "#ffe8a8";
+      ctx.font = "bold 14px Trebuchet MS";
+      ctx.fillText("SELECTED", entry.x + 64, entry.y + 216);
+    }
+    state.characterCards.push({ x: entry.x, y: entry.y, w: 216, h: 220, id: entry.id });
+  }
+
+  drawPixelPanel(84, 396, 792, 74, "rgba(12,22,42,0.9)", "rgba(8,16,32,0.9)", "#8acfff", "rgba(217,236,255,0.66)");
+  ctx.fillStyle = "#d5edff";
+  ctx.font = "bold 18px Trebuchet MS";
+  drawWrappedText(getCharacterAbilityText(getRunnerId()), 102, 424, 756, 24, 2);
+  ctx.fillStyle = "#a9d8ff";
+  ctx.font = "15px Trebuchet MS";
+  ctx.fillText("Click a character card to select. Press Enter to start.", 102, 456);
+}
+
+function selectCharacterByCanvasPoint(x, y) {
+  for (const card of state.characterCards) {
+    if (x < card.x || x > card.x + card.w || y < card.y || y > card.y + card.h) continue;
+    characterSelect.value = card.id;
+    setMenuDialogue();
+    playThemeSwitchCue();
+    return;
+  }
+}
+
 function drawAnnexScene() {
   const runnerId = getRunnerId();
   const runnerPreset = CHARACTER_PRESETS[runnerId];
@@ -6144,6 +6276,7 @@ function drawRunScene() {
 
 function render() {
   if (state.scene === "menu") drawMenuScene();
+  else if (state.scene === "characters") drawCharacterSelectScene();
   else if (state.scene === "run") drawRunScene();
   else if (state.scene === "shop") drawShopScene();
   else if (state.scene === "desk") drawDeskScene();
@@ -6331,7 +6464,7 @@ function handlePress(ev) {
       state.paused = !state.paused;
       return;
     }
-    if (state.scene === "shop" || state.scene === "annex" || state.scene === "desk") {
+    if (state.scene === "shop" || state.scene === "annex" || state.scene === "desk" || state.scene === "characters") {
       switchScene("menu");
       return;
     }
@@ -6349,6 +6482,7 @@ function handlePress(ev) {
     if (ev.code === "KeyS") switchScene("shop");
     if (ev.code === "KeyA") switchScene("annex");
     if (ev.code === "KeyD") switchScene("desk");
+    if (ev.code === "KeyC") switchScene("characters");
     return;
   }
 
@@ -6407,6 +6541,10 @@ canvas.addEventListener("pointerdown", (ev) => {
   }
   if (state.scene === "annex") {
     selectAnnexByCanvasPoint(x, y);
+    return;
+  }
+  if (state.scene === "characters") {
+    selectCharacterByCanvasPoint(x, y);
     return;
   }
   if (state.scene === "desk") {
