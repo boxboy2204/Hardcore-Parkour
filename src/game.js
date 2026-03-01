@@ -27,6 +27,9 @@ const CHARACTER_PRESETS = {
     jumpPower: 720,
     styleGain: 1.8,
     maxJumps: 1,
+    boostMul: 1.45,
+    hardcoreInvincible: true,
+    hpBonus: 0,
     hitboxScale: 1.0,
     canBreakWeakFloorboard: false,
   },
@@ -38,6 +41,9 @@ const CHARACTER_PRESETS = {
     jumpPower: 675,
     styleGain: 1.45,
     maxJumps: 1,
+    boostMul: 1.0,
+    hardcoreInvincible: false,
+    hpBonus: 1,
     hitboxScale: 0.92,
     canBreakWeakFloorboard: true,
   },
@@ -49,6 +55,9 @@ const CHARACTER_PRESETS = {
     jumpPower: 700,
     styleGain: 1.6,
     maxJumps: 2,
+    boostMul: 1.0,
+    hardcoreInvincible: false,
+    hpBonus: 0,
     hitboxScale: 1.18,
     canBreakWeakFloorboard: false,
   },
@@ -1540,10 +1549,11 @@ function resetRunState(worldId = state.selectedWorldId) {
   if (pamQuestRun) state.worldBannerText = "Warehouse: Save Pam";
 
   const hpBonus = ownsUpgrade("gel_shield") ? 1 : 0;
+  const characterHpBonus = preset.hpBonus || 0;
   const speedBonus = ownsUpgrade("parkour_shoes") ? 18 : 0;
   const stumbleTuning = ownsUpgrade("chili_guard") ? 0.72 : 1;
   const styleTuning = ownsUpgrade("mifflin_tape") ? 1.1 : 1;
-  const boostTuning = ownsUpgrade("energy_mug") ? 1.2 : 1;
+  const boostTuning = (ownsUpgrade("energy_mug") ? 1.2 : 1) * (preset.boostMul || 1);
 
   state.player = {
     preset,
@@ -1554,12 +1564,14 @@ function resetRunState(worldId = state.selectedWorldId) {
     vy: 0,
     grounded: true,
     jumpsUsed: 0,
-    hp: 4 + hpBonus,
+    hp: 4 + hpBonus + characterHpBonus,
   };
   state.player.runtimeSpeedBonus = speedBonus;
   state.player.runtimeStumbleMul = stumbleTuning;
   state.player.runtimeStyleMul = styleTuning;
   state.player.runtimeBoostMul = boostTuning;
+  state.player.runtimeHardcoreInvincible = Boolean(preset.hardcoreInvincible);
+  state.player.runtimeMaxJumps = preset.maxJumps || 1;
 
   state.saveData.stats.lifetimeRuns += 1;
   persistSave();
@@ -1899,7 +1911,8 @@ function stumbleFail() {
 function jump() {
   if (!state.running || state.paused) return;
   if (state.slideActive) return;
-  if (state.player.jumpsUsed >= state.player.preset.maxJumps) return;
+  const maxJumps = state.player.runtimeMaxJumps || state.player.preset.maxJumps || 1;
+  if (state.player.jumpsUsed >= maxJumps) return;
   state.player.vy = -state.player.preset.jumpPower;
   state.player.grounded = false;
   state.player.jumpsUsed += 1;
@@ -2214,6 +2227,12 @@ function updateRun(dt) {
       obstacle.hit = true;
       if (state.slideActive) {
         addFloatingText("CHILI BURN!", obstacle.x + 8, obstacle.y - 12, "#ff9a72");
+        if (state.speedBoostLeft > 0 && state.player.runtimeHardcoreInvincible) {
+          state.style += 12;
+          addFloatingText("INVINCIBLE!", state.player.x - 4, state.player.y - 30, "#b8ffe0");
+          addHitParticles(obstacle.x + obstacle.width * 0.5, obstacle.y + obstacle.height * 0.5, "#9ef7cf");
+          continue;
+        }
         const lostPursuitChain = state.runWorldId === "pursuit" && state.multiplier > 1;
         state.player.hp -= 1;
         state.multiplier = 1;
@@ -2240,6 +2259,12 @@ function updateRun(dt) {
       obstacle.hit = true;
       if (state.slideActive) {
         addFloatingText("Frostbite.", obstacle.x + 10, obstacle.y - 12, "#bfe9ff");
+        if (state.speedBoostLeft > 0 && state.player.runtimeHardcoreInvincible) {
+          state.style += 12;
+          addFloatingText("INVINCIBLE!", state.player.x - 4, state.player.y - 30, "#b8ffe0");
+          addHitParticles(obstacle.x + obstacle.width * 0.5, obstacle.y + obstacle.height * 0.5, "#9ef7cf");
+          continue;
+        }
         const lostPursuitChain = state.runWorldId === "pursuit" && state.multiplier > 1;
         state.player.hp -= 1;
         state.multiplier = 1;
@@ -4172,6 +4197,11 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
   ctx.fillRect(x + 15 * scale, y + (isPam ? -50 : -50) * scale, 1 * scale, 2 * scale);
   ctx.fillStyle = "#2f3b4e";
   ctx.fillRect(x + 13 * scale, y + (isPam ? -48 : -50) * scale, 6 * scale, 1 * scale);
+  if (isKelly) {
+    // Kelly smile (filled so it reads clearly at pixel scale).
+    ctx.fillRect(x + 13 * scale, y - 49 * scale, 6 * scale, 1 * scale);
+    ctx.fillRect(x + 14 * scale, y - 48 * scale, 4 * scale, 1 * scale);
+  }
 
   // Outfit-specific face overlays (restore detail).
   if (outfitId === "goldenface") {
@@ -5391,29 +5421,119 @@ function drawAnnexScene() {
   ctx.fillText(`Dundies: ${Object.values(state.saveData.achievements).filter(Boolean).length}/3`, 64, 202);
   drawWrappedTextWithCurrencyIcons("Kelly only accepts [SB].", 64, 226, 320, 18, 1);
 
-  // Dundie shelf.
+  // Dundie trophy case.
   state.annexAchievementBounds = [];
-  ctx.fillStyle = "#6f4c3c";
-  ctx.fillRect(62, 252, 236, 10);
-  ctx.fillRect(62, 334, 236, 10);
+  const caseX = 56;
+  const caseY = 238;
+  const caseW = 252;
+  const caseH = 148;
+  drawPixelPanel(caseX, caseY, caseW, caseH, "#3f2c28", "#2c1e1b", "#b98a65", "rgba(238,208,177,0.6)");
+  // Header plate.
+  ctx.fillStyle = "#7f5b48";
+  ctx.fillRect(caseX + 52, caseY + 10, caseW - 104, 16);
+  ctx.fillStyle = "#b69179";
+  ctx.fillRect(caseX + 56, caseY + 12, caseW - 112, 3);
+  ctx.fillStyle = "#f5e3c8";
+  ctx.font = "bold 11px Trebuchet MS";
+  ctx.fillText("DUNDER MIFFLIN DUNDIES", caseX + 66, caseY + 22);
+  // Inner wood shelf and trim.
+  ctx.fillStyle = "#6d4b3c";
+  ctx.fillRect(caseX + 10, caseY + 86, caseW - 20, 8);
+  ctx.fillStyle = "#8d6653";
+  ctx.fillRect(caseX + 10, caseY + 80, caseW - 20, 4);
+  ctx.fillRect(caseX + 10, caseY + 102, caseW - 20, 2);
+  // Sliding door rails.
+  ctx.fillStyle = "#5a3d31";
+  ctx.fillRect(caseX + 10, caseY + 30, caseW - 20, 4);
+  ctx.fillRect(caseX + 10, caseY + caseH - 20, caseW - 20, 4);
+  ctx.fillStyle = "#9f7b66";
+  ctx.fillRect(caseX + 12, caseY + 31, caseW - 24, 1);
+  ctx.fillRect(caseX + 12, caseY + caseH - 19, caseW - 24, 1);
+  // Spotlights.
+  for (let i = 0; i < 3; i += 1) {
+    const sx = caseX + 50 + i * 76;
+    const beam = ctx.createLinearGradient(sx, caseY + 16, sx, caseY + 104);
+    beam.addColorStop(0, "rgba(255,242,205,0.30)");
+    beam.addColorStop(1, "rgba(255,242,205,0.03)");
+    ctx.fillStyle = beam;
+    ctx.beginPath();
+    ctx.moveTo(sx - 10, caseY + 16);
+    ctx.lineTo(sx + 10, caseY + 16);
+    ctx.lineTo(sx + 20, caseY + 104);
+    ctx.lineTo(sx - 20, caseY + 104);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // Glass pane and reflections.
+  ctx.fillStyle = "rgba(200, 230, 255, 0.14)";
+  ctx.fillRect(caseX + 8, caseY + 8, caseW - 16, caseH - 16);
+  ctx.fillStyle = "rgba(255,255,255,0.16)";
+  ctx.fillRect(caseX + 18, caseY + 14, 12, caseH - 28);
+  ctx.fillRect(caseX + 42, caseY + 14, 6, caseH - 28);
+  ctx.fillRect(caseX + 170, caseY + 14, 8, caseH - 28);
+
   const dundieKeys = ["hottestInOffice", "whitestSneakers", "dontGoInThere"];
-  const dundieLabels = ["Hottest", "Sneakers", "Chili"];
   for (let i = 0; i < 3; i += 1) {
     const unlocked = Boolean(state.saveData.achievements[dundieKeys[i]]);
-    const x = 86 + i * 72;
-    const y = 266;
-    ctx.fillStyle = unlocked ? "#ffd06b" : "#5d5660";
-    ctx.fillRect(x + 14, y + 8, 16, 16);
-    ctx.fillRect(x + 19, y + 24, 6, 10);
-    ctx.fillRect(x + 10, y + 34, 24, 4);
-    ctx.fillStyle = unlocked ? "#ffefbe" : "#b6a9bc";
-    ctx.font = "bold 11px Trebuchet MS";
-    ctx.fillText(dundieLabels[i], x + 4, y + 52);
-    state.annexAchievementBounds.push({ x, y, w: 44, h: 56, id: dundieKeys[i] });
+    const slotX = caseX + 20 + i * 76;
+    const slotY = caseY + 20;
+
+    // Dundie style: gold figure + red marble column + black base + gold plaque.
+    const gold = unlocked ? "#f2c95f" : "#7f7886";
+    const goldShade = unlocked ? "#c29b3e" : "#5e5865";
+    const goldHi = unlocked ? "#fff0b7" : "#a49eae";
+
+    // Gold figure (head, torso, arms, legs).
+    ctx.fillStyle = gold;
+    ctx.fillRect(slotX + 23, slotY + 6, 6, 4); // head
+    ctx.fillRect(slotX + 21, slotY + 10, 10, 7); // shoulders/chest
+    ctx.fillRect(slotX + 24, slotY + 17, 4, 6); // waist
+    ctx.fillRect(slotX + 19, slotY + 12, 2, 7); // left arm
+    ctx.fillRect(slotX + 31, slotY + 12, 2, 7); // right arm
+    ctx.fillRect(slotX + 23, slotY + 23, 2, 5); // left leg
+    ctx.fillRect(slotX + 27, slotY + 23, 2, 5); // right leg
+    ctx.fillStyle = goldShade;
+    ctx.fillRect(slotX + 28, slotY + 10, 2, 18);
+    ctx.fillStyle = goldHi;
+    ctx.fillRect(slotX + 24, slotY + 7, 2, 1);
+    ctx.fillRect(slotX + 22, slotY + 12, 2, 1);
+
+    // Gold neck + plate.
+    ctx.fillStyle = gold;
+    ctx.fillRect(slotX + 24, slotY + 28, 4, 4);
+    ctx.fillRect(slotX + 20, slotY + 32, 12, 3);
+
+    // Red marble column.
+    ctx.fillStyle = unlocked ? "#6a121a" : "#4c3f52";
+    ctx.fillRect(slotX + 18, slotY + 35, 16, 16);
+    ctx.fillStyle = unlocked ? "#9c242f" : "#70667b";
+    ctx.fillRect(slotX + 20, slotY + 37, 2, 12);
+    ctx.fillRect(slotX + 26, slotY + 36, 2, 14);
+    ctx.fillRect(slotX + 30, slotY + 38, 1, 10);
+    ctx.fillStyle = unlocked ? "rgba(255,120,120,0.25)" : "rgba(225,210,240,0.18)";
+    ctx.fillRect(slotX + 22, slotY + 41, 6, 1);
+    ctx.fillRect(slotX + 21, slotY + 45, 7, 1);
+
+    // Black base.
+    ctx.fillStyle = unlocked ? "#161a24" : "#2d2b33";
+    ctx.fillRect(slotX + 14, slotY + 51, 24, 10);
+    ctx.fillStyle = unlocked ? "#2a3040" : "#464150";
+    ctx.fillRect(slotX + 16, slotY + 52, 20, 2);
+
+    // Gold plaque with fake writing lines.
+    ctx.fillStyle = unlocked ? "#d8ba71" : "#9a93a2";
+    ctx.fillRect(slotX + 16, slotY + 57, 20, 4);
+    ctx.fillStyle = unlocked ? "#f4e1b0" : "#cdc7d8";
+    ctx.fillRect(slotX + 18, slotY + 58, 13, 1);
+    ctx.fillRect(slotX + 18, slotY + 59, 10, 1);
+    ctx.fillStyle = unlocked ? "rgba(50,35,15,0.45)" : "rgba(30,26,36,0.35)";
+    ctx.fillRect(slotX + 19, slotY + 58, 11, 1);
+
+    state.annexAchievementBounds.push({ x: slotX + 3, y: slotY + 4, w: 50, h: 80, id: dundieKeys[i] });
   }
-  ctx.fillStyle = "#dfc8f0";
+  ctx.fillStyle = "#e7d8f2";
   ctx.font = "12px Trebuchet MS";
-  ctx.fillText("Click a Dundie to view how to earn it.", 64, 350);
+  ctx.fillText("Click a Dundie to view how to earn it.", caseX + 10, caseY + caseH - 10);
 
   // Kelly sprite.
   const kx = 832;
