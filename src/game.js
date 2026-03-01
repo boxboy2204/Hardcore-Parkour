@@ -78,18 +78,18 @@ const COLLECTIBLE_SPAWN = {
 };
 
 const WORLDS = [
-  { id: "bullpen", label: "The Bullpen", subtitle: "Desks, flying cats, chili spills" },
+  { id: "bullpen", label: "The Bullpen", subtitle: "Desks, flying cats, Kevin's spilled chili" },
   { id: "warehouse", label: "The Warehouse", subtitle: "Paper piles, shelves, ladders" },
-  { id: "streets", label: "Scranton Streets", subtitle: "Lightpoles, snowballs, hydrants" },
-  { id: "corporate", label: "NYC Corporate", subtitle: "Desks, folders, bystanders" },
+  { id: "streets", label: "Scranton Streets", subtitle: "Lightpoles, snowballs, hydrants, ice patches" },
+  { id: "corporate", label: "NYC Corporate", subtitle: "Desks, folders, bystanders, chili spills" },
   { id: "pursuit", label: "Final Pursuit", subtitle: "Jump on the Strangler's car to catch him" },
 ];
 
 const THEME_OBSTACLE_POOLS = {
   bullpen: ["desk", "angela_cat", "chili_spill"],
   warehouse: ["paper_pile", "shelf", "ladder"],
-  streets: ["lightpole", "jim_snowball", "hydrant"],
-  corporate: ["desk", "jan_folder", "bystander"],
+  streets: ["lightpole", "jim_snowball", "hydrant", "ice_patch"],
+  corporate: ["desk", "jan_folder", "bystander", "chili_spill"],
   pursuit: ["folder", "paper_ream", "mung_beans"],
   skarn: ["hockey_puck", "hydrant", "goldenface_minion"],
 };
@@ -1643,13 +1643,14 @@ function spawnObstacle() {
   const size = {
     desk: { w: 52, h: 46, topOffset: 0, hp: 1 },
     angela_cat: { w: 34, h: 24, topOffset: -40, hp: 1 },
-    chili_spill: { w: 74, h: 28, topOffset: -2, hp: 1 },
+    chili_spill: { w: 88, h: 30, topOffset: 0, hp: 1 },
     paper_pile: { w: 46, h: 30, topOffset: 8, hp: 1 },
     shelf: { w: 58, h: 54, topOffset: 0, hp: 1 },
-    ladder: { w: 64, h: 48, topOffset: -22, hp: 1 },
+    ladder: { w: 74, h: 122, topOffset: 8, hp: 1 },
     lightpole: { w: 24, h: 76, topOffset: 4, hp: 1 },
     jim_snowball: { w: 24, h: 24, topOffset: -24, hp: 1 },
     hydrant: { w: 36, h: 40, topOffset: 4, hp: 1 },
+    ice_patch: { w: 98, h: 20, topOffset: 8, hp: 1 },
     jan_folder: { w: 34, h: 18, topOffset: -36, hp: 1 },
     bystander: { w: 34, h: 56, topOffset: 2, hp: 1 },
     folder: { w: 34, h: 18, topOffset: -36, hp: 1 },
@@ -2173,7 +2174,6 @@ function updateRun(dt) {
   handleAttackHits(playerBox);
 
   for (const obstacle of state.obstacles) {
-    const prevX = obstacle.x;
     obstacle.x -= runSpeed * dt * obstacle.speedFactor;
     if (state.runWorldId === "pursuit" && obstacle.type === "mung_beans") {
       const groundY = typeof obstacle.bounceY === "number" ? obstacle.bounceY : GAME.groundY - obstacle.height + 2;
@@ -2185,28 +2185,19 @@ function updateRun(dt) {
       }
     }
     if (obstacle.hit) continue;
-    const slidingIntoChili = obstacle.type === "chili_spill" && (state.slideActive || state.spaceHeld || state.spaceHoldSec > 0);
-    const touching = intersects(playerBox, obstacle);
-    if (!touching) {
-      if (slidingIntoChili) {
-        // Extra low swept contact check so fast slides cannot skip over chili between frames.
-        const slideContactBox = {
-          x: playerBox.x + 6,
-          y: GAME.groundY - 7,
-          width: Math.max(8, playerBox.width - 12),
-          height: 12,
-        };
-        const sweptObstacleBox = {
-          x: Math.min(prevX, obstacle.x),
-          y: obstacle.y,
-          width: Math.abs(prevX - obstacle.x) + obstacle.width,
-          height: obstacle.height,
-        };
-        if (!intersects(slideContactBox, sweptObstacleBox)) continue;
-      } else {
-        continue;
-      }
+    let touching = intersects(playerBox, obstacle);
+    if (obstacle.type === "ladder") {
+      const clearance = 24;
+      const blockBottom = obstacle.y + obstacle.height - clearance;
+      const ladderBlock = {
+        x: obstacle.x,
+        y: obstacle.y,
+        width: obstacle.width,
+        height: Math.max(1, blockBottom - obstacle.y),
+      };
+      touching = intersects(playerBox, ladderBlock);
     }
+    if (!touching) continue;
 
     if (obstacle.type === "ladder") {
       if (state.slideActive) {
@@ -2221,7 +2212,53 @@ function updateRun(dt) {
 
     if (obstacle.type === "chili_spill") {
       obstacle.hit = true;
-      handleObstacleCollision(obstacle);
+      if (state.slideActive) {
+        addFloatingText("CHILI BURN!", obstacle.x + 8, obstacle.y - 12, "#ff9a72");
+        const lostPursuitChain = state.runWorldId === "pursuit" && state.multiplier > 1;
+        state.player.hp -= 1;
+        state.multiplier = 1;
+        state.score = Math.max(0, state.score - 80);
+        state.speedBoostLeft = 0;
+        state.stumbleLeft = 0.6;
+        if (lostPursuitChain) {
+          state.player.x = 66;
+          state.stumbleLeft = Math.max(state.stumbleLeft, 1.25);
+          addFloatingText("LOST GROUND!", state.player.x - 14, state.player.y - 44, "#ffbe7a");
+        }
+        state.screenShake = Math.max(state.screenShake, 0.22);
+        addFloatingText("Injury", state.player.x + 4, state.player.y - 28, "#ff7062");
+        addHitParticles(obstacle.x + obstacle.width * 0.45, obstacle.y + obstacle.height * 0.6, "#ff8f7d");
+        if (state.player.hp <= 0) endRun("defeat");
+      } else {
+        state.style += 8;
+        addFloatingText("NICE FOOTWORK", obstacle.x + 2, obstacle.y - 10, "#9fe6ff");
+      }
+      continue;
+    }
+
+    if (obstacle.type === "ice_patch") {
+      obstacle.hit = true;
+      if (state.slideActive) {
+        addFloatingText("Frostbite.", obstacle.x + 10, obstacle.y - 12, "#bfe9ff");
+        const lostPursuitChain = state.runWorldId === "pursuit" && state.multiplier > 1;
+        state.player.hp -= 1;
+        state.multiplier = 1;
+        state.score = Math.max(0, state.score - 80);
+        state.speedBoostLeft = 0;
+        state.stumbleLeft = 0.6;
+        if (lostPursuitChain) {
+          state.player.x = 66;
+          state.stumbleLeft = Math.max(state.stumbleLeft, 1.25);
+          addFloatingText("LOST GROUND!", state.player.x - 14, state.player.y - 44, "#ffbe7a");
+        }
+        state.screenShake = Math.max(state.screenShake, 0.22);
+        addFloatingText("Injury", state.player.x + 4, state.player.y - 28, "#ff7062");
+        addHitParticles(obstacle.x + obstacle.width * 0.5, obstacle.y + obstacle.height * 0.55, "#9fe2ff");
+        if (state.player.hp <= 0) endRun("defeat");
+      } else {
+        state.style += 8;
+        addFloatingText("NICE FOOTWORK", obstacle.x + 2, obstacle.y - 10, "#9fe6ff");
+      }
       continue;
     }
 
@@ -2886,71 +2923,93 @@ function drawPlayer() {
   }
 
   if (state.slideActive) {
-    // Clear baseball-style slide-out pose.
-    const slideY = GAME.floorTop - 7;
-    const speedStretch = Math.round(slidePose * 6);
+    // New slide animation from scratch: grounded baseball slide.
+    const groundY = GAME.floorTop;
+    const speedStretch = Math.round(slidePose * 8);
+    const hipY = groundY - 8;
+    const slideScale = 1.2;
+    const slidePivotX = x + 24;
+    const slidePivotY = hipY - 4;
+
+    ctx.save();
+    ctx.translate(slidePivotX, slidePivotY);
+    ctx.scale(slideScale, slideScale);
+    ctx.translate(-slidePivotX, -slidePivotY);
+
+    // Ground shadow/contact.
     ctx.fillStyle = "rgba(0,0,0,0.24)";
     ctx.beginPath();
-    ctx.ellipse(x + 23, GAME.floorTop + 5, 31, 8, 0, 0, Math.PI * 2);
+    ctx.ellipse(x + 24, groundY + 5, 34, 8, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Rear torso, leaned back.
-    ctx.fillStyle = shirtColor;
-    ctx.fillRect(x + 13, slideY - 14, 12, 8);
-    ctx.fillRect(x + 20, slideY - 11, 14, 7);
-    ctx.fillStyle = "rgba(255,255,255,0.14)";
-    ctx.fillRect(x + 24, slideY - 10, 8, 5);
-
-    // Head (up and slightly back, as if leaning during slide).
+    // Head and hair (larger for readability).
     ctx.fillStyle = skinBase;
-    ctx.fillRect(x + 7, slideY - 16, 10, 7);
+    ctx.fillRect(x + 7, hipY - 16, 14, 10);
     ctx.fillStyle = hairBase;
-    ctx.fillRect(x + 6, slideY - 18, 11, 3);
+    ctx.fillRect(x + 6, hipY - 18, 15, 3);
     ctx.fillStyle = "#1b2230";
-    ctx.fillRect(x + 10, slideY - 14, 2, 1);
-    ctx.fillRect(x + 13, slideY - 14, 2, 1);
-    ctx.fillRect(x + 11, slideY - 12, 3, 1);
+    ctx.fillRect(x + 11, hipY - 13, 2, 1);
+    ctx.fillRect(x + 15, hipY - 13, 2, 1);
+    ctx.fillRect(x + 12, hipY - 11, 4, 1);
+
+    // Rear arm first so it sits behind the torso and below the head.
+    ctx.fillStyle = shirtColor;
+    ctx.fillRect(x + 15, hipY - 8, 4, 5);
+    ctx.fillStyle = skinBase;
+    ctx.fillRect(x + 13, hipY - 5, 3, 3);
+
+    // Torso (single block; no separate connector piece).
+    ctx.fillStyle = shirtColor;
+    ctx.fillRect(x + 18, hipY - 13, 18, 9);
+    ctx.fillStyle = "rgba(255,255,255,0.14)";
+    ctx.fillRect(x + 30, hipY - 12, 5, 8);
     if (outfitId !== "three_hole_gym") {
-      ctx.fillStyle = player.preset.tieColor || "#2f4f7a";
-      if (outfitId === "cornell_fit") ctx.fillStyle = "#f4d76b";
-      else if (outfitId === "goldenface") ctx.fillStyle = "#d6b255";
-      else if (outfitId === "date_mike") ctx.fillStyle = "#9a1f2f";
-      else if (outfitId === "wrong_fit") ctx.fillStyle = "#f5d35b";
-      else if (outfitId === "recyclops") ctx.fillStyle = "#2d5a2e";
-      ctx.fillRect(x + 22, slideY - 10, 2, 5);
+      let tie = player.preset.tieColor || "#2f4f7a";
+      if (outfitId === "cornell_fit") tie = "#f4d76b";
+      else if (outfitId === "goldenface") tie = "#d6b255";
+      else if (outfitId === "date_mike") tie = "#9a1f2f";
+      else if (outfitId === "wrong_fit") tie = "#f5d35b";
+      else if (outfitId === "recyclops") tie = "#2d5a2e";
+      ctx.fillStyle = tie;
+      ctx.fillRect(x + 24, hipY - 11, 2, 6);
     }
 
-    // Arms: one bracing behind, one reaching forward.
+    // Front arm reaches forward.
     ctx.fillStyle = shirtColor;
-    ctx.fillRect(x + 10, slideY - 8, 4, 3);
-    ctx.fillRect(x + 33, slideY - 8, 8, 3 + speedStretch * 0.2);
+    ctx.fillRect(x + 35, hipY - 10, 8, 3); // front arm reach
     ctx.fillStyle = skinBase;
-    ctx.fillRect(x + 9, slideY - 6, 3, 3);
-    ctx.fillRect(x + 40, slideY - 7, 4, 3);
+    ctx.fillRect(x + 42, hipY - 9, 4, 3);
 
-    // Legs: one bent under body, one fully extended.
-    const legY = slideY - 1;
-    // Bent trailing leg.
+    // Legs: directly connected to torso edge (no middle piece at all).
+    const legBaseX = x + 24;
+    const topLegY = hipY - 4; // exactly touches torso bottom
+    const lowerLegY = hipY;
+    const topLen = 16 + speedStretch;
+    const lowerLen = 20 + speedStretch;
     ctx.fillStyle = "#1b2838";
-    ctx.fillRect(x + 17, legY - 2, 10, 4);
-    ctx.fillRect(x + 15, legY + 2, 8, 4);
-    // Extended leading leg.
-    ctx.fillStyle = "#1b2838";
-    ctx.fillRect(x + 26, legY, 20 + speedStretch, 4);
-    ctx.fillRect(x + 26, legY + 4, 18 + speedStretch, 4);
+    ctx.fillRect(legBaseX, topLegY, topLen, 4);
+    ctx.fillRect(legBaseX + 3, lowerLegY, lowerLen, 4);
     ctx.fillStyle = "#111722";
-    ctx.fillRect(x + 45 + speedStretch, legY + 1, 7, 3);
-    ctx.fillRect(x + 43 + speedStretch, legY + 5, 7, 3);
+    ctx.fillRect(legBaseX + topLen - 1, topLegY + 1, 7, 3);
+    ctx.fillRect(legBaseX + 3 + lowerLen - 2, lowerLegY + 1, 8, 3);
 
-    // Ground scrape streaks.
-    ctx.fillStyle = "rgba(255,255,255,0.2)";
-    ctx.fillRect(x - 2, GAME.floorTop + 1, 8, 2);
-    ctx.fillRect(x - 10, GAME.floorTop + 3, 6, 2);
-    ctx.fillRect(x - 16, GAME.floorTop + 5, 4, 1);
-    ctx.fillRect(x + 2, GAME.floorTop + 2, 10, 1);
-    ctx.fillRect(x + 10, GAME.floorTop + 4, 8, 1);
+    // Scrape streaks.
+    ctx.fillStyle = "rgba(255,255,255,0.22)";
+    ctx.fillRect(x - 2, groundY + 1, 8, 2);
+    ctx.fillRect(x - 10, groundY + 3, 6, 2);
+    ctx.fillRect(x + 4, groundY + 2, 10, 1);
+    ctx.fillRect(x + 14, groundY + 4, 9, 1);
+    ctx.restore();
   } else {
-    drawHeroPortraitSprite(x + sway, footY, 1, { label: player.preset.label, outfitId, noArms: true, noLegs: true });
+    // Keep shadow on the ground while jumping so airtime is visually clear.
+    const groundedTop = GAME.groundY - visualHeight;
+    const groundedFootY = groundedTop + 65 + (player.grounded ? bob : 0);
+    ctx.fillStyle = "rgba(0,0,0,0.24)";
+    ctx.beginPath();
+    ctx.ellipse(x + sway + 20, groundedFootY + 8, 20, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    drawHeroPortraitSprite(x + sway, footY, 1, { label: player.preset.label, outfitId, noArms: true, noLegs: true, shadow: false });
     // Real run animation pass: connected swinging limbs.
     const armYLeft = yTop + 24 + runCycle * 3;
     const armYRight = yTop + 24 + runCycleOpp * 3;
@@ -2980,10 +3039,23 @@ function drawPlayer() {
 }
 
 function drawObstacleSprite(obs) {
-  ctx.fillStyle = "rgba(0,0,0,0.2)";
-  ctx.beginPath();
-  ctx.ellipse(obs.x + obs.width * 0.5, GAME.groundY + 4, obs.width * 0.48, 6, 0, 0, Math.PI * 2);
-  ctx.fill();
+  if (obs.type === "chili_spill" || obs.type === "ice_patch") {
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    ctx.fillRect(obs.x + 6, GAME.groundY - 3, obs.width - 18, 4);
+    if (obs.type === "chili_spill") ctx.fillRect(obs.x + obs.width - 28, GAME.groundY - 5, 24, 5);
+  } else if (obs.type === "ladder") {
+    const footY = GAME.groundY + 3;
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    ctx.fillRect(obs.x + 8, footY, 12, 3);
+    ctx.fillRect(obs.x + 24, footY, 10, 3);
+    ctx.fillRect(obs.x + obs.width - 34, footY, 10, 3);
+    ctx.fillRect(obs.x + obs.width - 20, footY, 12, 3);
+  } else {
+    ctx.fillStyle = "rgba(0,0,0,0.2)";
+    ctx.beginPath();
+    ctx.ellipse(obs.x + obs.width * 0.5, GAME.groundY + 4, obs.width * 0.48, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   if (obs.type === "desk") {
     ctx.fillStyle = "#6b4b31";
@@ -3024,32 +3096,71 @@ function drawObstacleSprite(obs) {
     ctx.fillRect(obs.x + 29, obs.y + 13 + wobble, 2, 1);
     ctx.fillRect(obs.x + 29, obs.y + 14 + wobble, 2, 1);
   } else if (obs.type === "chili_spill") {
-    // Kevin-level chili disaster: floor-anchored tipped pot + thick spill.
-    const baseY = obs.y + obs.height;
-    ctx.fillStyle = "#a33b2f";
-    ctx.fillRect(obs.x + 12, baseY - 10, obs.width - 16, 8);
-    ctx.fillStyle = "#c8563f";
-    ctx.fillRect(obs.x + 8, baseY - 8, obs.width - 24, 5);
-    ctx.fillRect(obs.x + 20, baseY - 12, obs.width - 34, 3);
-    ctx.fillStyle = "#e08a5c";
-    ctx.fillRect(obs.x + 24, baseY - 9, 3, 2);
-    ctx.fillRect(obs.x + 34, baseY - 7, 3, 2);
-    ctx.fillRect(obs.x + 45, baseY - 9, 3, 2);
-    ctx.fillStyle = "rgba(255, 210, 170, 0.45)";
-    ctx.fillRect(obs.x + 18, baseY - 11, 8, 1);
-    ctx.fillRect(obs.x + 40, baseY - 10, 8, 1);
+    // Kevin's spilled chili: low pool + tipped metal pot touching the floor.
+    const floorY = GAME.groundY - 1;
+    const spillY = floorY - 9;
+    const potX = obs.x + obs.width - 30;
+    const potY = floorY - 18;
 
-    ctx.fillStyle = "#2c313d";
-    ctx.fillRect(obs.x + 2, baseY - 16, 18, 8);
-    ctx.fillRect(obs.x + 1, baseY - 14, 2, 4);
-    ctx.fillRect(obs.x + 19, baseY - 14, 2, 4);
-    ctx.fillStyle = "#474f5f";
-    ctx.fillRect(obs.x + 5, baseY - 14, 12, 5);
-    ctx.fillStyle = "#1e232d";
-    ctx.fillRect(obs.x + 8, baseY - 17, 6, 1);
-    ctx.fillRect(obs.x + 18, baseY - 15, 3, 1);
-    ctx.fillStyle = "rgba(255,255,255,0.22)";
-    ctx.fillRect(obs.x + 7, baseY - 13, 6, 1);
+    // Thick chili spill.
+    ctx.fillStyle = "#8f321f";
+    ctx.fillRect(obs.x + 6, spillY, obs.width - 36, 8);
+    ctx.fillRect(obs.x + 14, spillY - 2, obs.width - 54, 2);
+    ctx.fillStyle = "#ad4128";
+    ctx.fillRect(obs.x + 10, spillY + 1, obs.width - 44, 5);
+    ctx.fillStyle = "#6f2216";
+    ctx.fillRect(obs.x + 8, spillY + 7, obs.width - 40, 2);
+    ctx.fillStyle = "#d17f58";
+    ctx.fillRect(obs.x + 24, spillY + 1, 2, 2);
+    ctx.fillRect(obs.x + 33, spillY + 3, 2, 2);
+    ctx.fillRect(obs.x + 41, spillY + 2, 2, 2);
+
+    // Pot body (tipped sideways).
+    ctx.fillStyle = "#707884";
+    ctx.fillRect(potX, potY + 2, 22, 12);
+    ctx.fillStyle = "#8a93a1";
+    ctx.fillRect(potX + 2, potY + 3, 15, 3);
+    ctx.fillStyle = "#4e5663";
+    ctx.fillRect(potX + 20, potY + 3, 3, 10);
+    ctx.fillStyle = "#2d3441";
+    ctx.fillRect(potX - 2, potY + 4, 3, 6); // rear rim
+    ctx.fillRect(potX + 6, potY + 12, 10, 2); // bottom edge touch
+    ctx.fillStyle = "#3a4250";
+    ctx.fillRect(potX + 22, potY + 6, 3, 4); // handle nub
+
+    // Chili dripping out from pot mouth into spill.
+    ctx.fillStyle = "#9b3723";
+    ctx.fillRect(potX - 4, potY + 9, 6, 2);
+    ctx.fillRect(potX - 8, potY + 9, 5, 2);
+    ctx.fillRect(potX - 11, potY + 8, 4, 2);
+  } else if (obs.type === "ice_patch") {
+    // Natural icy patch: rounded blob with broad white frost streaks.
+    const floorY = GAME.groundY - 1;
+    const iceY = floorY - 10;
+    ctx.fillStyle = "#6fc7de";
+    ctx.fillRect(obs.x + 10, iceY + 1, obs.width - 24, 9);
+    ctx.fillRect(obs.x + 16, iceY - 1, obs.width - 36, 3);
+    ctx.fillRect(obs.x + 6, iceY + 3, 8, 5);
+    ctx.fillRect(obs.x + obs.width - 15, iceY + 4, 8, 5);
+    ctx.fillRect(obs.x + 12, iceY + 9, 10, 2);
+    ctx.fillRect(obs.x + obs.width - 24, iceY + 9, 10, 2);
+
+    // Broad white frost streaks.
+    ctx.fillStyle = "#eef6ff";
+    ctx.fillRect(obs.x + 20, iceY + 4, 28, 2);
+    ctx.fillRect(obs.x + 18, iceY + 6, 22, 2);
+    ctx.fillRect(obs.x + 44, iceY + 3, 12, 2);
+    ctx.fillRect(obs.x + 28, iceY + 8, 28, 2);
+    ctx.fillRect(obs.x + 26, iceY + 10, 22, 1);
+    ctx.fillRect(obs.x + 52, iceY + 7, 10, 2);
+
+    // Small dark crack marks near the top-left.
+    ctx.fillStyle = "#253245";
+    ctx.fillRect(obs.x + 14, iceY + 2, 2, 1);
+    ctx.fillRect(obs.x + 16, iceY + 3, 2, 1);
+    ctx.fillRect(obs.x + 17, iceY + 1, 1, 1);
+    ctx.fillRect(obs.x + 12, iceY + 4, 2, 1);
+    ctx.fillRect(obs.x + 13, iceY + 5, 1, 1);
   } else if (obs.type === "paper_pile") {
     ctx.fillStyle = "#f0f3f8";
     ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
@@ -3089,15 +3200,91 @@ function drawObstacleSprite(obs) {
     ctx.fillRect(obs.x + 24, obs.y + 15, 2, 2);
     ctx.fillRect(obs.x + 38, obs.y + 29, 2, 2);
   } else if (obs.type === "ladder") {
-    ctx.fillStyle = "#c89e58";
-    ctx.fillRect(obs.x + 6, obs.y, 6, obs.height);
-    ctx.fillRect(obs.x + obs.width - 12, obs.y, 6, obs.height);
-    for (let i = 0; i < 4; i += 1) ctx.fillRect(obs.x + 12, obs.y + 8 + i * 10, obs.width - 24, 4);
-    ctx.fillStyle = "#9c7743";
-    for (let i = 0; i < 4; i += 1) ctx.fillRect(obs.x + 13, obs.y + 9 + i * 10, obs.width - 26, 1);
-    ctx.fillStyle = "#ecd79e";
-    ctx.fillRect(obs.x + 6, obs.y + 3, 2, obs.height - 6);
-    ctx.fillRect(obs.x + obs.width - 10, obs.y + 3, 2, obs.height - 6);
+    // Fold-out aluminum A-frame ladder with slight perspective twist.
+    const clearance = 24;
+    const bottom = obs.y + obs.height;
+    const topY = obs.y + 1;
+    const frameBottom = bottom - 2; // visibly grounded
+    const openBottom = bottom - clearance; // slide clearance threshold
+
+    const frontLeftTop = obs.x + 16;
+    const frontRightTop = obs.x + obs.width - 28;
+    const frontLeftBottom = obs.x + 8;
+    const frontRightBottom = obs.x + obs.width - 14;
+
+    const rearLeftTop = frontLeftTop + 8;
+    const rearRightTop = frontRightTop + 6;
+    const rearLeftBottom = frontLeftBottom + 14;
+    const rearRightBottom = frontRightBottom + 10;
+
+    // Red top cap.
+    ctx.fillStyle = "#c7423a";
+    ctx.fillRect(frontLeftTop - 2, topY, frontRightTop - frontLeftTop + 8, 6);
+    ctx.fillStyle = "#e86b61";
+    ctx.fillRect(frontLeftTop, topY + 1, frontRightTop - frontLeftTop + 4, 2);
+
+    // Rear frame (draw first so it sits behind front frame).
+    const rearTopY = topY + 7;
+    const rearHeight = frameBottom - rearTopY;
+    for (let i = 0; i < rearHeight; i += 1) {
+      const t = i / Math.max(1, rearHeight - 1);
+      const xl = Math.round(rearLeftTop + (rearLeftBottom - rearLeftTop) * t);
+      const xr = Math.round(rearRightTop + (rearRightBottom - rearRightTop) * t);
+      ctx.fillStyle = "#aebac8";
+      ctx.fillRect(xl, rearTopY + i, 3, 1);
+      ctx.fillRect(xr, rearTopY + i, 3, 1);
+      ctx.fillStyle = "#8d9aa9";
+      ctx.fillRect(xl + 2, rearTopY + i, 1, 1);
+      ctx.fillRect(xr + 2, rearTopY + i, 1, 1);
+    }
+
+    // Front rails.
+    const frontTopY = topY + 5;
+    const frontHeight = frameBottom - frontTopY;
+    for (let i = 0; i < frontHeight; i += 1) {
+      const t = i / Math.max(1, frontHeight - 1);
+      const xl = Math.round(frontLeftTop + (frontLeftBottom - frontLeftTop) * t);
+      const xr = Math.round(frontRightTop + (frontRightBottom - frontRightTop) * t);
+      ctx.fillStyle = "#c5ced8";
+      ctx.fillRect(xl, frontTopY + i, 4, 1);
+      ctx.fillRect(xr, frontTopY + i, 4, 1);
+      ctx.fillStyle = "#95a2b1";
+      ctx.fillRect(xl + 3, frontTopY + i, 1, 1);
+      ctx.fillRect(xr + 3, frontTopY + i, 1, 1);
+    }
+
+    // Front ladder steps.
+    ctx.fillStyle = "#d8e0ea";
+    for (let y = topY + 16; y <= openBottom - 8; y += 11) {
+      const t = (y - frontTopY) / Math.max(1, frontHeight);
+      const xl = Math.round(frontLeftTop + (frontLeftBottom - frontLeftTop) * t) + 4;
+      const xr = Math.round(frontRightTop + (frontRightBottom - frontRightTop) * t);
+      ctx.fillRect(xl, y, Math.max(6, xr - xl + 1), 3);
+    }
+
+    // Rear frame steps.
+    ctx.fillStyle = "#c3cedb";
+    for (let y = topY + 25; y <= openBottom - 12; y += 15) {
+      const t = (y - rearTopY) / Math.max(1, rearHeight);
+      const xl = Math.round(rearLeftTop + (rearLeftBottom - rearLeftTop) * t) + 3;
+      const xr = Math.round(rearRightTop + (rearRightBottom - rearRightTop) * t);
+      ctx.fillRect(xl, y, Math.max(5, xr - xl), 2);
+    }
+
+    // Side spreader bars.
+    ctx.fillStyle = "#8a96a8";
+    ctx.fillRect(frontLeftBottom + 5, topY + 49, 12, 2);
+    ctx.fillRect(rearRightBottom - 11, topY + 49, 12, 2);
+    ctx.fillRect(frontLeftBottom + 8, topY + 65, 10, 2);
+    ctx.fillRect(rearRightBottom - 9, topY + 65, 10, 2);
+
+    // Red foot pads touching floor.
+    ctx.fillStyle = "#b9312b";
+    ctx.fillRect(frontLeftBottom - 2, frameBottom - 2, 7, 2);
+    ctx.fillRect(frontRightBottom - 2, frameBottom - 2, 7, 2);
+    ctx.fillStyle = "#9c251f";
+    ctx.fillRect(rearLeftBottom - 1, frameBottom - 2, 6, 2);
+    ctx.fillRect(rearRightBottom - 1, frameBottom - 2, 6, 2);
   } else if (obs.type === "lightpole") {
     const poleW = Math.max(8, Math.floor(obs.width * 0.28));
     const poleX = obs.x + Math.floor((obs.width - poleW) * 0.5);
@@ -3282,8 +3469,10 @@ function drawObstacleSprite(obs) {
   }
 
   // 16-bit detail pass for all obstacles: edge contrast + texture strip.
-  ctx.fillStyle = "rgba(10, 14, 24, 0.28)";
-  ctx.fillRect(obs.x, obs.y + obs.height - 1, obs.width, 1);
+  if (obs.type !== "ice_patch" && obs.type !== "angela_cat" && obs.type !== "jim_snowball" && obs.type !== "ladder") {
+    ctx.fillStyle = "rgba(10, 14, 24, 0.28)";
+    ctx.fillRect(obs.x, obs.y + obs.height - 1, obs.width, 1);
+  }
   ctx.fillStyle = "rgba(255,255,255,0.16)";
   ctx.fillRect(obs.x + 1, obs.y + 1, Math.max(0, obs.width - 2), 1);
 
@@ -3301,10 +3490,17 @@ function drawObstacleSprite(obs) {
     ctx.fillRect(obs.x + 20, obs.y + 12, 1, 1);
     ctx.fillRect(obs.x + 27, obs.y + 12, 1, 1);
   } else if (obs.type === "chili_spill") {
-    ctx.fillStyle = "rgba(0,0,0,0.24)";
-    ctx.fillRect(obs.x + 10, obs.y + obs.height - 3, obs.width - 20, 2);
-    ctx.fillStyle = "#d37456";
-    ctx.fillRect(obs.x + 30, obs.y + obs.height - 8, 7, 1);
+    const floorY = GAME.groundY - 1;
+    ctx.fillStyle = "rgba(255,255,255,0.16)";
+    ctx.fillRect(obs.x + 18, floorY - 8, 18, 1);
+    ctx.fillStyle = "#b8c1cf";
+    ctx.fillRect(obs.x + obs.width - 25, floorY - 15, 10, 1);
+    ctx.fillStyle = "rgba(0,0,0,0.26)";
+    ctx.fillRect(obs.x + 8, floorY - 1, obs.width - 38, 1);
+  } else if (obs.type === "ice_patch") {
+    const floorY = GAME.groundY - 1;
+    ctx.fillStyle = "rgba(255,255,255,0.22)";
+    ctx.fillRect(obs.x + 18, floorY - 9, obs.width - 36, 1);
   } else if (obs.type === "paper_pile" || obs.type === "paper_ream") {
     ctx.fillStyle = "#c8cfdb";
     for (let yy = 0; yy < obs.height; yy += 5) ctx.fillRect(obs.x + 2, obs.y + yy, obs.width - 4, 1);
@@ -3314,8 +3510,11 @@ function drawObstacleSprite(obs) {
     ctx.fillRect(obs.x + 8, obs.y + 20, obs.width - 16, 1);
     ctx.fillRect(obs.x + 8, obs.y + 34, obs.width - 16, 1);
   } else if (obs.type === "ladder") {
-    ctx.fillStyle = "#e0bb73";
-    for (let ry = 0; ry < obs.height; ry += 10) ctx.fillRect(obs.x + 12, obs.y + ry + 2, obs.width - 24, 1);
+    const frameBottom = obs.y + obs.height - 2;
+    ctx.fillStyle = "#b8c7d9";
+    for (let ry = obs.y + 14; ry < frameBottom - 2; ry += 10) ctx.fillRect(obs.x + 16, ry, obs.width - 34, 1);
+    ctx.fillStyle = "rgba(255,255,255,0.16)";
+    ctx.fillRect(obs.x + 24, obs.y + 2, obs.width - 44, 1);
   } else if (obs.type === "lightpole") {
     ctx.fillStyle = "rgba(255,224,160,0.25)";
     ctx.fillRect(obs.x + Math.floor(obs.width * 0.2), obs.y + 8, Math.floor(obs.width * 0.6), 20);
@@ -5596,7 +5795,7 @@ function selectAnnexByCanvasPoint(x, y) {
     } else if (badge.id === "whitestSneakers") {
       showAnnexMessage('Dundie: "Whitest Sneakers" - Hit a HARDCORE streak of 20 in a row.');
     } else {
-      showAnnexMessage('Dundie: "Don\'t Go In There" - Jump into Kevin\'s chili 3 times in one run.');
+      showAnnexMessage('Dundie: "Don\'t Go In There" - Beat The Bullpen 3 times.');
     }
     return;
   }
