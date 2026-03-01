@@ -3112,6 +3112,11 @@ function drawPlayer() {
     ctx.fillStyle = "rgba(255,255,255,0.18)";
     ctx.fillRect(x + 10, y + 63 + Math.max(0, -legBack), 4, 1);
     ctx.fillRect(x + 25, y + 63 + Math.max(0, -legFront), 4, 1);
+    // Subtle shirt crease animation for more life.
+    const creaseShift = Math.round(runCycle * 1.2);
+    ctx.fillStyle = "rgba(10,14,22,0.18)";
+    ctx.fillRect(x + 15 + creaseShift, bodyY + 12, 1, 7);
+    ctx.fillRect(x + 23 + creaseShift, bodyY + 14, 1, 6);
   }
 }
 
@@ -3802,57 +3807,16 @@ function drawPerformanceReviewOverlay() {
   const pw = 212;
   const ph = 252;
   drawPixelPanel(px, py, pw, ph, "rgba(18,38,70,0.96)", "rgba(13,29,53,0.96)", "#8dcfff", "rgba(212,233,255,0.72)");
-
-  const cx = px + 40;
-  const cy = py + 18;
-  const s = 4;
   ctx.fillStyle = "#becde2";
-  ctx.fillRect(cx + 4 * s, cy + 3 * s, 28 * s, 36 * s);
-  ctx.fillStyle = "#d7b99e";
-  ctx.fillRect(cx + 10 * s, cy + 7 * s, 16 * s, 15 * s);
-  ctx.fillStyle = "#c7a78b";
-  ctx.fillRect(cx + 11 * s, cy + 19 * s, 14 * s, 3 * s);
-  ctx.fillStyle = "#2d1f18";
-  ctx.fillRect(cx + 9 * s, cy + 3 * s, 18 * s, 5 * s);
-  ctx.fillRect(cx + 10 * s, cy + 6 * s, 4 * s, 2 * s);
-  ctx.fillRect(cx + 22 * s, cy + 6 * s, 4 * s, 2 * s);
-  // center part + subtle side hair wings
-  ctx.fillStyle = "#4b352a";
-  ctx.fillRect(cx + 17 * s, cy + 3 * s, 2 * s, 5 * s);
-  // ears
-  ctx.fillStyle = "#d6b395";
-  ctx.fillRect(cx + 9 * s, cy + 12 * s, 1 * s, 3 * s);
-  ctx.fillRect(cx + 26 * s, cy + 12 * s, 1 * s, 3 * s);
-  // eyes, brows, nose, mouth
-  ctx.fillStyle = "#2c3748";
-  ctx.fillRect(cx + 13 * s, cy + 10 * s, 2 * s, 2 * s);
-  ctx.fillRect(cx + 21 * s, cy + 10 * s, 2 * s, 2 * s);
-  ctx.fillRect(cx + 13 * s, cy + 9 * s, 2 * s, 1 * s);
-  ctx.fillRect(cx + 21 * s, cy + 9 * s, 2 * s, 1 * s);
-  // glasses
-  ctx.strokeStyle = "#8fa3bd";
-  ctx.lineWidth = 1.4;
-  ctx.strokeRect(cx + 12 * s + 0.5, cy + 9 * s + 0.5, 4 * s, 3 * s);
-  ctx.strokeRect(cx + 20 * s + 0.5, cy + 9 * s + 0.5, 4 * s, 3 * s);
-  ctx.beginPath();
-  ctx.moveTo(cx + 16 * s, cy + 11 * s);
-  ctx.lineTo(cx + 20 * s, cy + 11 * s);
-  ctx.stroke();
-  ctx.fillStyle = "#b68e71";
-  ctx.fillRect(cx + 17 * s, cy + 12 * s, 1 * s, 3 * s);
-  ctx.fillStyle = "#2f3b4e";
-  ctx.fillRect(cx + 14 * s, cy + 16 * s, 8 * s, 1 * s);
-  // suit + lapels + shirt + tie
-  ctx.fillStyle = "#0f1722";
-  ctx.fillRect(cx + 8 * s, cy + 22 * s, 20 * s, 17 * s);
-  ctx.fillStyle = "#1a2534";
-  ctx.fillRect(cx + 8 * s, cy + 22 * s, 6 * s, 17 * s);
-  ctx.fillRect(cx + 22 * s, cy + 22 * s, 6 * s, 17 * s);
-  ctx.fillStyle = "#f6f8fc";
-  ctx.fillRect(cx + 15 * s, cy + 25 * s, 6 * s, 14 * s);
-  ctx.fillStyle = "#d9dee8";
-  ctx.fillRect(cx + 17 * s, cy + 24 * s, 2 * s, 10 * s);
-  ctx.fillRect(cx + 16 * s, cy + 35 * s, 4 * s, 4 * s);
+  ctx.fillRect(px + 54, py + 24, 104, 154);
+  drawPixelTexture(px + 54, py + 24, 104, 154, "rgba(25,35,58,0.08)", "rgba(255,255,255,0.12)");
+  drawHeroPortraitSprite(px + 64, py + 170, 2.6, {
+    label: "David Wallace",
+    style: "david",
+    shirtColor: "#0f1722",
+    tieColor: "#f6f8fc",
+    shadow: false,
+  });
 
   // Bottom caption area clipped to card bounds so text can never hang out.
   ctx.save();
@@ -3994,6 +3958,254 @@ function drawPixelPanel(x, y, w, h, fillTop, fillBottom, border = "#8bc8ff", bev
   ctx.fillRect(x + 1, y + h - 1, w - 2, 1);
 }
 
+function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
+  const label = opts.label || "Michael";
+  const style = opts.style || "office";
+  const outfitId = opts.outfitId || null;
+  const presetKey = String(label).toLowerCase();
+  const preset = CHARACTER_PRESETS[presetKey] || null;
+
+  const skinBase =
+    opts.skinBase ||
+    (label === "Darryl"
+      ? "#8b664b"
+      : label === "Kelly"
+      ? "#a47657"
+      : label === "Pam"
+      ? "#f1cfb3"
+      : label === "David Wallace"
+      ? "#d7b99e"
+      : "#efcfab");
+  const skinShade =
+    opts.skinShade ||
+    (label === "Darryl"
+      ? "#6e4f3c"
+      : label === "Kelly"
+      ? "#8b6348"
+      : label === "Pam"
+      ? "#dfbda0"
+      : label === "David Wallace"
+      ? "#c7a78b"
+      : "#c9a682");
+  const hairBase =
+    opts.hairBase ||
+    (label === "Dwight"
+      ? "#34251a"
+      : label === "Pam"
+      ? "#7e5139"
+      : label === "Jim"
+      ? "#2a1e16"
+      : label === "David Wallace"
+      ? "#2d1f18"
+      : "#3a281d");
+  const hairShade = opts.hairShade || (label === "David Wallace" ? "#4b352a" : "#2b1f17");
+
+  let shirtColor = opts.shirtColor || preset?.color || (label === "Pam" ? "#d9eef9" : "#5f8fca");
+  let tieColor = opts.tieColor || preset?.tieColor || "#2f4f7a";
+  let hideTie = Boolean(opts.hideTie);
+
+  if (outfitId === "cornell_fit") {
+    shirtColor = "#8a2432";
+    tieColor = "#f4d76b";
+  } else if (outfitId === "goldenface") {
+    shirtColor = "#121316";
+    tieColor = "#d6b255";
+  } else if (outfitId === "date_mike") {
+    shirtColor = "#1e2f4e";
+    tieColor = "#9a1f2f";
+  } else if (outfitId === "wrong_fit") {
+    shirtColor = "#cb5fa4";
+    tieColor = "#f5d35b";
+  } else if (outfitId === "recyclops") {
+    shirtColor = "#5c8f3c";
+    tieColor = "#2d5a2e";
+  } else if (outfitId === "three_hole_gym") {
+    shirtColor = "#d9dde4";
+    tieColor = "#d9dde4";
+    hideTie = true;
+  }
+
+  const isPam = label === "Pam" || style === "pam";
+  const isDwight = label === "Dwight";
+  const isKelly = label === "Kelly";
+  const isDavid = label === "David Wallace" || style === "david";
+  const hasSleeves = !isDwight && !isKelly;
+
+  if (opts.shadow !== false) {
+    ctx.fillStyle = "rgba(0,0,0,0.24)";
+    ctx.beginPath();
+    ctx.ellipse(x + 20 * scale, y + 8 * scale, 20 * scale, 7 * scale, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Base head first.
+  ctx.fillStyle = skinBase;
+  ctx.fillRect((isPam ? x + 10 * scale : x + 8 * scale), y - 58 * scale, 16 * scale, 12 * scale);
+
+  // Hair shell.
+  if (isPam) {
+    // Similar silhouette to Jim, with longer side hair and no floating blocks.
+    ctx.fillStyle = hairBase;
+    ctx.fillRect(x + 8 * scale, y - 64 * scale, 20 * scale, 7 * scale);
+    ctx.fillRect(x + 6 * scale, y - 58 * scale, 5 * scale, 18 * scale);
+    ctx.fillRect(x + 25 * scale, y - 58 * scale, 5 * scale, 18 * scale);
+    ctx.fillRect(x + 10 * scale, y - 41 * scale, 16 * scale, 2 * scale);
+  } else if (isKelly) {
+    // Kelly: fuller, longer hair framing the face.
+    ctx.fillStyle = hairBase;
+    ctx.fillRect(x + 6 * scale, y - 63 * scale, 20 * scale, 7 * scale);
+    ctx.fillRect(x + 4 * scale, y - 58 * scale, 5 * scale, 24 * scale);
+    ctx.fillRect(x + 23 * scale, y - 58 * scale, 5 * scale, 24 * scale);
+    ctx.fillRect(x + 9 * scale, y - 36 * scale, 14 * scale, 3 * scale);
+  } else {
+    ctx.fillStyle = hairBase;
+    ctx.fillRect(x + 6 * scale, y - 63 * scale, 20 * scale, 6 * scale);
+    ctx.fillRect(x + 5 * scale, y - 59 * scale, 5 * scale, 3 * scale);
+    if (isDwight) {
+      ctx.fillStyle = skinBase;
+      ctx.fillRect(x + 12 * scale, y - 61 * scale, 8 * scale, 3 * scale);
+      ctx.fillStyle = hairBase;
+      ctx.fillRect(x + 11 * scale, y - 61 * scale, 2 * scale, 2 * scale);
+      ctx.fillRect(x + 19 * scale, y - 61 * scale, 2 * scale, 2 * scale);
+    }
+    if (isDavid) {
+      ctx.fillStyle = hairShade;
+      ctx.fillRect(x + 15 * scale, y - 63 * scale, 2 * scale, 6 * scale);
+    }
+  }
+
+  // Face details.
+  ctx.fillStyle = "#1e2431";
+  if (isDwight || isDavid) {
+    const g = isDavid ? "#8fa3bd" : "#96a3b3";
+    ctx.strokeStyle = g;
+    ctx.lineWidth = Math.max(1, scale * 0.45);
+    ctx.strokeRect(x + 11.5 * scale, y - 54.5 * scale, 3.2 * scale, 2.6 * scale);
+    ctx.strokeRect(x + 17.3 * scale, y - 54.5 * scale, 3.2 * scale, 2.6 * scale);
+    ctx.beginPath();
+    ctx.moveTo(x + 14.7 * scale, y - 53.2 * scale);
+    ctx.lineTo(x + 17.3 * scale, y - 53.2 * scale);
+    ctx.stroke();
+    ctx.fillRect(x + 13 * scale, y - 53.2 * scale, 1 * scale, 1 * scale);
+    ctx.fillRect(x + 19 * scale, y - 53.2 * scale, 1 * scale, 1 * scale);
+  } else {
+    const eyeY = isPam ? -53 : -54;
+    ctx.fillRect(x + 12 * scale, y + eyeY * scale, 2 * scale, 2 * scale);
+    ctx.fillRect(x + 18 * scale, y + eyeY * scale, 2 * scale, 2 * scale);
+  }
+  ctx.fillStyle = skinShade;
+  ctx.fillRect(x + 15 * scale, y + (isPam ? -50 : -50) * scale, 1 * scale, 2 * scale);
+  ctx.fillStyle = "#2f3b4e";
+  ctx.fillRect(x + 13 * scale, y + (isPam ? -48 : -50) * scale, 6 * scale, 1 * scale);
+
+  // Outfit-specific face overlays (restore detail).
+  if (outfitId === "goldenface") {
+    ctx.fillStyle = "#e4ba53";
+    ctx.fillRect(x + 8 * scale, y - 58 * scale, 16 * scale, 12 * scale);
+    ctx.fillStyle = "#1b1a1c";
+    ctx.fillRect(x + 12 * scale, y - 54 * scale, 2 * scale, 2 * scale);
+    ctx.fillRect(x + 18 * scale, y - 54 * scale, 2 * scale, 2 * scale);
+    ctx.fillRect(x + 13 * scale, y - 50 * scale, 6 * scale, 1 * scale);
+    ctx.fillStyle = "#1f1d1b";
+    ctx.fillRect(x + 10 * scale, y - 56 * scale, 12 * scale, 2 * scale);
+  }
+  if (outfitId === "ryan_beard") {
+    ctx.fillStyle = "#151518";
+    ctx.fillRect(x + 9 * scale, y - 52 * scale, 3 * scale, 5 * scale);
+    ctx.fillRect(x + 20 * scale, y - 52 * scale, 3 * scale, 5 * scale);
+    ctx.fillRect(x + 12 * scale, y - 50 * scale, 9 * scale, 2 * scale);
+    ctx.fillRect(x + 13 * scale, y - 48 * scale, 7 * scale, 1 * scale);
+  }
+  if (outfitId === "date_mike") {
+    ctx.fillStyle = "#0d1118";
+    ctx.fillRect(x + 6 * scale, y - 68 * scale, 20 * scale, 4 * scale);
+    ctx.fillRect(x + 10 * scale, y - 73 * scale, 12 * scale, 6 * scale);
+  }
+  if (outfitId === "recyclops") {
+    ctx.fillStyle = "#9be467";
+    ctx.fillRect(x + 10 * scale, y - 58 * scale, 12 * scale, 2 * scale);
+    ctx.fillStyle = "#2f4f2f";
+    ctx.fillRect(x + 15 * scale, y - 58 * scale, 2 * scale, 2 * scale);
+  }
+
+  // Torso.
+  let torsoX = x + 6 * scale;
+  let torsoY = y - 46 * scale;
+  let torsoW = 24 * scale;
+  let torsoH = 30 * scale;
+  if (isPam) {
+    shirtColor = "#d9eef9";
+    hideTie = true;
+    // Pam torso slightly slimmer so proportions read correctly.
+    torsoX = x + 8 * scale;
+    torsoW = 20 * scale;
+    torsoH = 29 * scale;
+  }
+  ctx.fillStyle = shirtColor;
+  ctx.fillRect(torsoX, torsoY, torsoW, torsoH);
+  ctx.fillStyle = "rgba(255,255,255,0.14)";
+  ctx.fillRect(torsoX + torsoW - 8 * scale, torsoY + 2 * scale, 7 * scale, torsoH - 4 * scale);
+  ctx.fillStyle = "rgba(0,0,0,0.14)";
+  ctx.fillRect(torsoX, torsoY + 2 * scale, 4 * scale, torsoH - 4 * scale);
+  if (isPam) {
+    ctx.fillStyle = "#7f96bf";
+    ctx.fillRect(torsoX, torsoY, 4 * scale, torsoH);
+    ctx.fillRect(torsoX + torsoW - 4 * scale, torsoY, 4 * scale, torsoH);
+    ctx.fillStyle = "#5f78a7";
+    ctx.fillRect(torsoX + Math.floor(torsoW * 0.5) - 1 * scale, torsoY + 1 * scale, 2 * scale, 18 * scale);
+  }
+  if (outfitId === "goldenface" || isDavid) {
+    ctx.fillStyle = "#121316";
+    ctx.fillRect(x + 6 * scale, y - 46 * scale, 6 * scale, 30 * scale);
+    ctx.fillRect(x + 24 * scale, y - 46 * scale, 6 * scale, 30 * scale);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(x + 14 * scale, y - 43 * scale, 8 * scale, 24 * scale);
+  }
+
+  if (!hideTie && !isPam) {
+    ctx.fillStyle = tieColor;
+    ctx.fillRect(x + 16 * scale, y - 44 * scale, 4 * scale, 20 * scale);
+    ctx.fillRect(x + 15 * scale, y - 22 * scale, 6 * scale, 4 * scale);
+  }
+  if (outfitId === "three_hole_gym") {
+    ctx.fillStyle = "#0f1118";
+    ctx.fillRect(x + 16 * scale, y - 39 * scale, 4 * scale, 4 * scale);
+    ctx.fillRect(x + 16 * scale, y - 33 * scale, 4 * scale, 4 * scale);
+    ctx.fillRect(x + 16 * scale, y - 27 * scale, 4 * scale, 4 * scale);
+  }
+
+  // Arms (Pam now same body system, no floating look).
+  const armTopY = isPam ? y - 40 * scale : y - 40 * scale;
+  const armH = isPam ? 11 * scale : 12 * scale;
+  const leftArmX = isPam ? x + 5 * scale : x + 2 * scale;
+  const rightArmX = isPam ? x + 28 * scale : x + 30 * scale;
+  ctx.fillStyle = skinBase;
+  ctx.fillRect(leftArmX, armTopY, 3 * scale, armH);
+  ctx.fillRect(rightArmX, armTopY, 3 * scale, armH);
+  if (hasSleeves || isPam) {
+    ctx.fillStyle = shirtColor;
+    ctx.fillRect(leftArmX, armTopY, 3 * scale, 5 * scale);
+    ctx.fillRect(rightArmX, armTopY, 3 * scale, 5 * scale);
+  }
+
+  // Legs and shoes.
+  if (isPam) {
+    // Slightly larger legs relative to slimmer body.
+    ctx.fillStyle = "#514a73";
+    ctx.fillRect(x + 11 * scale, y - 17 * scale, 14 * scale, 12 * scale);
+    ctx.fillStyle = "#1a2231";
+    ctx.fillRect(x + 12 * scale, y - 5 * scale, 5 * scale, 8 * scale);
+    ctx.fillRect(x + 19 * scale, y - 5 * scale, 5 * scale, 8 * scale);
+  } else {
+    ctx.fillStyle = "#1b2838";
+    ctx.fillRect(x + 10 * scale, y - 16 * scale, 7 * scale, 18 * scale);
+    ctx.fillRect(x + 20 * scale, y - 16 * scale, 7 * scale, 18 * scale);
+  }
+  ctx.fillStyle = "#111722";
+  ctx.fillRect(x + 9 * scale, y + 2 * scale, 8 * scale, 3 * scale);
+  ctx.fillRect(x + 20 * scale, y + 2 * scale, 8 * scale, 3 * scale);
+}
+
 function drawParticles() {
   for (const p of state.particles) {
     const alpha = 1 - p.age / p.ttl;
@@ -4017,6 +4229,18 @@ function drawMenuScene() {
 
   drawPixelPanel(boardOuter.x, boardOuter.y, boardOuter.w, boardOuter.h, "#40526a", "#32445c", "#8cd6ff", "rgba(223,239,255,0.7)");
   drawPixelPanel(boardInner.x, boardInner.y, boardInner.w, boardInner.h, "#f7f4e8", "#ede7d7", "#9f988a", "rgba(255,255,255,0.84)");
+  // Bulletin clutter: tape, pushpins, and scribble polaroid corners.
+  ctx.fillStyle = "#d8c58d";
+  ctx.fillRect(110, 104, 22, 7);
+  ctx.fillRect(818, 106, 22, 7);
+  ctx.fillStyle = "#bb4b4b";
+  for (let i = 0; i < 8; i += 1) ctx.fillRect(116 + i * 96, 100 + ((i % 2) ? 2 : 0), 2, 2);
+  ctx.fillStyle = "#d3d7df";
+  ctx.fillRect(154, 354, 34, 24);
+  ctx.fillRect(716, 338, 34, 24);
+  ctx.fillStyle = "#5f6b7d";
+  ctx.fillRect(160, 360, 22, 12);
+  ctx.fillRect(722, 344, 22, 12);
 
   ctx.strokeStyle = "#8b2e2e";
   ctx.lineWidth = 2;
@@ -4157,6 +4381,7 @@ function drawMenuScene() {
     ctx.fillRect(x + 3, y + 4, w, h);
     ctx.fillStyle = selected ? "#fff9bb" : noteBody;
     ctx.fillRect(x, y, w, h);
+    drawPixelTexture(x, y, w, h, "rgba(70,62,40,0.08)", "rgba(255,255,255,0.14)");
     ctx.fillStyle = noteBand;
     ctx.fillRect(x, y, w, 14);
     ctx.fillStyle = selected ? "#fff0a0" : "#f7e9b8";
@@ -4177,6 +4402,25 @@ function drawMenuScene() {
     ctx.fillStyle = unlocked ? "#10203d" : "#6e6e6e";
     ctx.font = "bold 18px Trebuchet MS";
     ctx.fillText(world.label, x + 12, y + 28);
+    // Tiny icon doodle on each sticky note.
+    ctx.fillStyle = unlocked ? "rgba(20,36,62,0.5)" : "rgba(50,50,50,0.4)";
+    if (world.id === "bullpen") {
+      ctx.fillRect(x + w - 30, y + 20, 12, 8);
+      ctx.fillRect(x + w - 28, y + 28, 8, 2);
+    } else if (world.id === "warehouse") {
+      ctx.fillRect(x + w - 30, y + 18, 3, 16);
+      ctx.fillRect(x + w - 21, y + 18, 3, 16);
+      ctx.fillRect(x + w - 29, y + 23, 10, 2);
+    } else if (world.id === "streets") {
+      ctx.fillRect(x + w - 24, y + 19, 4, 13);
+      ctx.fillRect(x + w - 30, y + 19, 16, 4);
+    } else if (world.id === "corporate") {
+      ctx.fillRect(x + w - 31, y + 19, 14, 10);
+      ctx.fillRect(x + w - 29, y + 17, 8, 3);
+    } else {
+      ctx.fillRect(x + w - 30, y + 22, 14, 6);
+      ctx.fillRect(x + w - 20, y + 18, 4, 4);
+    }
     ctx.font = "14px Trebuchet MS";
     drawWrappedText(unlocked ? world.subtitle : "Locked", x + 12, y + 50, w - 24, 18, 3);
 
@@ -4206,154 +4450,13 @@ function drawMenuScene() {
     }
   }
 
-  const anim = Math.sin(state.elapsedSec * 5);
   const runnerId = getRunnerId();
   const equippedOutfit = getEquippedOutfitId(runnerId);
   const player = CHARACTER_PRESETS[characterSelect.value];
   const px = 98;
   const py = 422;
   const menuScale = 1.3;
-
-  ctx.fillStyle = "rgba(0,0,0,0.24)";
-  ctx.beginPath();
-  ctx.ellipse(px + 23 * menuScale, py + 7, 24 * menuScale, 8, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // More realistic menu-side character sprite.
-  const bob = Math.abs(anim) * 1.5;
-  const headX = px + 10 * menuScale;
-  const headY = py - 62 * menuScale + bob;
-  const bodyX = px + 8 * menuScale;
-  const bodyY = py - 50 * menuScale + bob;
-
-  // Head + hair.
-  ctx.fillStyle = "#efcfab";
-  ctx.fillRect(headX, headY, 28 * menuScale, 12 * menuScale);
-  ctx.fillStyle = "#2a1e16";
-  ctx.fillRect(headX - 1 * menuScale, headY - 4 * menuScale, 30 * menuScale, 5 * menuScale);
-  ctx.fillRect(headX - 2 * menuScale, headY, 5 * menuScale, 3 * menuScale);
-  if (player.label === "Dwight") {
-    // Dwight hairline: receded forehead + center split.
-    ctx.fillStyle = "#efcfab";
-    ctx.fillRect(headX + 8 * menuScale, headY - 2 * menuScale, 14 * menuScale, 4 * menuScale);
-    ctx.fillRect(headX + 13 * menuScale, headY - 4 * menuScale, 2 * menuScale, 7 * menuScale);
-    ctx.fillStyle = "#2a1e16";
-    ctx.fillRect(headX + 6 * menuScale, headY - 2 * menuScale, 3 * menuScale, 2 * menuScale);
-    ctx.fillRect(headX + 21 * menuScale, headY - 2 * menuScale, 3 * menuScale, 2 * menuScale);
-  }
-
-  // Face details.
-  ctx.fillStyle = "#1e2431";
-  if (player.label === "Dwight") {
-    ctx.strokeStyle = "#96a3b3";
-    ctx.lineWidth = Math.max(1, menuScale);
-    ctx.strokeRect(headX + 5.5 * menuScale, headY + 3.5 * menuScale, 6 * menuScale, 5 * menuScale);
-    ctx.strokeRect(headX + 17.5 * menuScale, headY + 3.5 * menuScale, 6 * menuScale, 5 * menuScale);
-    ctx.beginPath();
-    ctx.moveTo(headX + 11.5 * menuScale, headY + 6 * menuScale);
-    ctx.lineTo(headX + 17.5 * menuScale, headY + 6 * menuScale);
-    ctx.stroke();
-    // Single eye set inside glasses.
-    ctx.fillRect(headX + 8 * menuScale, headY + 6 * menuScale, 1 * menuScale, 1 * menuScale);
-    ctx.fillRect(headX + 20 * menuScale, headY + 6 * menuScale, 1 * menuScale, 1 * menuScale);
-  } else {
-    ctx.fillRect(headX + 7 * menuScale, headY + 4 * menuScale, 2 * menuScale, 2 * menuScale);
-    ctx.fillRect(headX + 19 * menuScale, headY + 4 * menuScale, 2 * menuScale, 2 * menuScale);
-  }
-  ctx.fillRect(headX + 12 * menuScale, headY + 8 * menuScale, 6 * menuScale, 1 * menuScale);
-  if (equippedOutfit === "goldenface") {
-    ctx.fillStyle = "#e4ba53";
-    ctx.fillRect(headX, headY, 28 * menuScale, 12 * menuScale);
-    ctx.fillStyle = "#1b1a1c";
-    ctx.fillRect(headX + 7 * menuScale, headY + 4 * menuScale, 2 * menuScale, 2 * menuScale);
-    ctx.fillRect(headX + 19 * menuScale, headY + 4 * menuScale, 2 * menuScale, 2 * menuScale);
-    ctx.fillRect(headX + 11 * menuScale, headY + 8 * menuScale, 8 * menuScale, 1 * menuScale);
-  }
-  if (equippedOutfit === "ryan_beard") {
-    ctx.fillStyle = "#151518";
-    ctx.fillRect(headX + 4 * menuScale, headY + 7 * menuScale, 3 * menuScale, 5 * menuScale);
-    ctx.fillRect(headX + 21 * menuScale, headY + 7 * menuScale, 3 * menuScale, 5 * menuScale);
-    ctx.fillRect(headX + 7 * menuScale, headY + 8 * menuScale, 14 * menuScale, 2 * menuScale);
-    ctx.fillRect(headX + 7 * menuScale, headY + 10 * menuScale, 14 * menuScale, 1 * menuScale);
-    ctx.fillRect(headX + 8 * menuScale, headY + 11 * menuScale, 12 * menuScale, 1 * menuScale);
-  }
-
-  // Shirt and tie.
-  let shirtColor = player.color;
-  let tieColor = player.tieColor;
-  if (equippedOutfit === "cornell_fit") {
-    shirtColor = "#8a2432";
-    tieColor = "#f4d76b";
-  } else if (equippedOutfit === "goldenface") {
-    shirtColor = "#121316";
-    tieColor = "#d6b255";
-  } else if (equippedOutfit === "date_mike") {
-    shirtColor = "#1e2f4e";
-    tieColor = "#9a1f2f";
-  } else if (equippedOutfit === "wrong_fit") {
-    shirtColor = "#cb5fa4";
-    tieColor = "#f5d35b";
-  } else if (equippedOutfit === "recyclops") {
-    shirtColor = "#5c8f3c";
-    tieColor = "#2d5a2e";
-  } else if (equippedOutfit === "three_hole_gym") {
-    shirtColor = "#d9dde4";
-    tieColor = "#d9dde4";
-  }
-  const hideTie = equippedOutfit === "three_hole_gym";
-
-  ctx.fillStyle = shirtColor;
-  ctx.fillRect(bodyX, bodyY, 34 * menuScale, 36 * menuScale);
-  ctx.fillStyle = "rgba(255,255,255,0.12)";
-  ctx.fillRect(bodyX + 20 * menuScale, bodyY + 1 * menuScale, 10 * menuScale, 34 * menuScale);
-  if (!hideTie) {
-    ctx.fillStyle = tieColor;
-    ctx.fillRect(bodyX + 15 * menuScale, bodyY + 4 * menuScale, 4 * menuScale, 20 * menuScale);
-  }
-  if (equippedOutfit === "three_hole_gym") {
-    ctx.fillStyle = "#0f1118";
-    ctx.fillRect(bodyX + 15 * menuScale, bodyY + 9 * menuScale, 4 * menuScale, 4 * menuScale);
-    ctx.fillRect(bodyX + 15 * menuScale, bodyY + 14 * menuScale, 4 * menuScale, 4 * menuScale);
-    ctx.fillRect(bodyX + 15 * menuScale, bodyY + 19 * menuScale, 4 * menuScale, 4 * menuScale);
-  } else if (equippedOutfit === "date_mike") {
-    ctx.fillStyle = "#0d1118";
-    ctx.fillRect(headX - 1 * menuScale, headY - 8 * menuScale, 30 * menuScale, 3 * menuScale);
-    ctx.fillRect(headX + 5 * menuScale, headY - 13 * menuScale, 18 * menuScale, 5 * menuScale);
-  } else if (equippedOutfit === "recyclops") {
-    ctx.fillStyle = "#9be467";
-    ctx.fillRect(headX + 6 * menuScale, headY + 2 * menuScale, 22 * menuScale, 2 * menuScale);
-    ctx.fillStyle = "#2f4f2f";
-    ctx.fillRect(headX + 15 * menuScale, headY + 2 * menuScale, 4 * menuScale, 2 * menuScale);
-  }
-  if (equippedOutfit === "goldenface") {
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(bodyX + 14 * menuScale, bodyY + 4 * menuScale, 8 * menuScale, 20 * menuScale);
-    ctx.fillStyle = "#121316";
-    ctx.fillRect(bodyX, bodyY, 7 * menuScale, 36 * menuScale);
-    ctx.fillRect(bodyX + 27 * menuScale, bodyY, 7 * menuScale, 36 * menuScale);
-    ctx.fillRect(bodyX + 9 * menuScale, bodyY + 4 * menuScale, 5 * menuScale, 20 * menuScale);
-    ctx.fillRect(bodyX + 22 * menuScale, bodyY + 4 * menuScale, 5 * menuScale, 20 * menuScale);
-  }
-
-  // Arms with subtle swing.
-  const armSwingA = anim * 2.2;
-  const armSwingB = -anim * 2.2;
-  ctx.fillStyle = "#d4b28f";
-  ctx.fillRect(bodyX - 3 * menuScale, bodyY + 8 * menuScale + armSwingA, 5 * menuScale, 16 * menuScale);
-  ctx.fillRect(bodyX + 34 * menuScale, bodyY + 8 * menuScale + armSwingB, 5 * menuScale, 16 * menuScale);
-  if (player.label !== "Dwight" && player.label !== "Kelly") {
-    ctx.fillStyle = shirtColor;
-    ctx.fillRect(bodyX - 3 * menuScale, bodyY + 8 * menuScale + armSwingA, 5 * menuScale, 7 * menuScale);
-    ctx.fillRect(bodyX + 34 * menuScale, bodyY + 8 * menuScale + armSwingB, 5 * menuScale, 7 * menuScale);
-  }
-
-  // Pants + shoes.
-  ctx.fillStyle = "#1c2431";
-  ctx.fillRect(px + 13 * menuScale, py - 14 * menuScale, 9 * menuScale, 15 * menuScale + Math.abs(anim * 3));
-  ctx.fillRect(px + 27 * menuScale, py - 14 * menuScale, 9 * menuScale, 15 * menuScale + Math.abs(-anim * 3));
-  ctx.fillStyle = "#111722";
-  ctx.fillRect(px + 12 * menuScale, py + 1 * menuScale, 10 * menuScale, 3 * menuScale);
-  ctx.fillRect(px + 27 * menuScale, py + 1 * menuScale, 10 * menuScale, 3 * menuScale);
+  drawHeroPortraitSprite(px, py, menuScale, { label: player.label, outfitId: equippedOutfit });
 
   ctx.fillStyle = "rgba(15,20,30,0.82)";
   ctx.fillRect(20, 458, 920, 72);
@@ -4411,6 +4514,20 @@ function drawShopScene() {
   const vmW = 404;
   const vmH = 262;
   drawPixelPanel(vmX, vmY, vmW, vmH, "#3a4762", "#2f3b53", "#9fd7ff", "rgba(217,240,255,0.64)");
+  // Vending glass reflections + product strips.
+  ctx.fillStyle = "rgba(230,245,255,0.18)";
+  ctx.fillRect(vmX + 16, vmY + 18, 8, vmH - 36);
+  ctx.fillRect(vmX + 34, vmY + 18, 4, vmH - 36);
+  for (let r = 0; r < 2; r += 1) {
+    for (let c = 0; c < 3; c += 1) {
+      const px = vmX + 20 + c * 98;
+      const py = vmY + 36 + r * 116;
+      ctx.fillStyle = r === 0 ? "rgba(245,201,95,0.35)" : "rgba(153,210,255,0.34)";
+      ctx.fillRect(px, py, 80, 3);
+      ctx.fillStyle = "rgba(255,255,255,0.18)";
+      ctx.fillRect(px + 4, py + 1, 30, 1);
+    }
+  }
   ctx.fillStyle = "#9aa5b7";
   ctx.fillRect(vmX + vmW - 78, vmY + 22, 58, vmH - 44);
   ctx.fillStyle = "#252b38";
@@ -4426,42 +4543,7 @@ function drawShopScene() {
   const jimW = 40 * jimScale;
   const jimH = 70 * jimScale;
   state.shopJimBounds = { x: jimX, y: jimY - jimH, w: jimW, h: jimH };
-  ctx.fillStyle = "rgba(0,0,0,0.24)";
-  ctx.beginPath();
-  ctx.ellipse(jimX + 20 * jimScale, jimY + 8 * jimScale, 20 * jimScale, 7 * jimScale, 0, 0, Math.PI * 2);
-  ctx.fill();
-  // Clean 3/4 pose with one arm clearly on the machine.
-  ctx.fillStyle = "#efcfab";
-  ctx.fillRect(jimX + 8 * jimScale, jimY - 58 * jimScale, 16 * jimScale, 12 * jimScale);
-  ctx.fillStyle = "#2a1e16";
-  ctx.fillRect(jimX + 6 * jimScale, jimY - 63 * jimScale, 20 * jimScale, 6 * jimScale);
-  ctx.fillRect(jimX + 5 * jimScale, jimY - 59 * jimScale, 5 * jimScale, 3 * jimScale);
-  ctx.fillStyle = "#1e2431";
-  ctx.fillRect(jimX + 12 * jimScale, jimY - 54 * jimScale, 2 * jimScale, 2 * jimScale);
-  ctx.fillRect(jimX + 18 * jimScale, jimY - 54 * jimScale, 2 * jimScale, 2 * jimScale);
-  ctx.fillRect(jimX + 13 * jimScale, jimY - 50 * jimScale, 6 * jimScale, 1 * jimScale);
-
-  ctx.fillStyle = "#5f8fca";
-  ctx.fillRect(jimX + 6 * jimScale, jimY - 46 * jimScale, 24 * jimScale, 30 * jimScale);
-  ctx.fillStyle = "#4f7fb7";
-  ctx.fillRect(jimX + 22 * jimScale, jimY - 44 * jimScale, 7 * jimScale, 26 * jimScale);
-  ctx.fillStyle = "#2f4f7a";
-  ctx.fillRect(jimX + 15 * jimScale, jimY - 44 * jimScale, 3 * jimScale, 18 * jimScale);
-
-  // Arms at sides.
-  ctx.fillStyle = "#5f8fca";
-  ctx.fillRect(jimX + 2 * jimScale, jimY - 40 * jimScale, 5 * jimScale, 16 * jimScale);
-  ctx.fillRect(jimX + 29 * jimScale, jimY - 40 * jimScale, 5 * jimScale, 16 * jimScale);
-  ctx.fillStyle = "#d4b28f";
-  ctx.fillRect(jimX + 2 * jimScale, jimY - 26 * jimScale, 4 * jimScale, 4 * jimScale);
-  ctx.fillRect(jimX + 30 * jimScale, jimY - 26 * jimScale, 4 * jimScale, 4 * jimScale);
-
-  ctx.fillStyle = "#1b2838";
-  ctx.fillRect(jimX + 10 * jimScale, jimY - 16 * jimScale, 7 * jimScale, 18 * jimScale);
-  ctx.fillRect(jimX + 20 * jimScale, jimY - 16 * jimScale, 7 * jimScale, 18 * jimScale);
-  ctx.fillStyle = "#111722";
-  ctx.fillRect(jimX + 9 * jimScale, jimY + 2 * jimScale, 8 * jimScale, 3 * jimScale);
-  ctx.fillRect(jimX + 20 * jimScale, jimY + 2 * jimScale, 8 * jimScale, 3 * jimScale);
+  drawHeroPortraitSprite(jimX, jimY, jimScale, { label: "Jim", shirtColor: "#5f8fca", tieColor: "#2f4f7a" });
   state.shopTalkBounds = [];
 
   // After quest completion, Pam stands beside Jim.
@@ -4472,47 +4554,7 @@ function drawShopScene() {
     const pamW = 40 * pamScale;
     const pamH = 70 * pamScale;
     state.shopPamBounds = { x: pamX, y: pamY - pamH, w: pamW, h: pamH };
-
-    ctx.fillStyle = "rgba(0,0,0,0.22)";
-    ctx.beginPath();
-    ctx.ellipse(pamX + 16 * pamScale, pamY + 7 * pamScale, 17 * pamScale, 6 * pamScale, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Hair + face.
-    ctx.fillStyle = "#7e5139";
-    ctx.fillRect(pamX + 7 * pamScale, pamY - 55 * pamScale, 18 * pamScale, 6 * pamScale);
-    ctx.fillRect(pamX + 5 * pamScale, pamY - 51 * pamScale, 6 * pamScale, 13 * pamScale);
-    ctx.fillRect(pamX + 21 * pamScale, pamY - 51 * pamScale, 6 * pamScale, 13 * pamScale);
-    ctx.fillRect(pamX + 9 * pamScale, pamY - 40 * pamScale, 16 * pamScale, 4 * pamScale);
-    ctx.fillStyle = "#f1cfb3";
-    ctx.fillRect(pamX + 8 * pamScale, pamY - 48 * pamScale, 16 * pamScale, 12 * pamScale);
-    ctx.fillStyle = "#1d2532";
-    ctx.fillRect(pamX + 12 * pamScale, pamY - 44 * pamScale, 2 * pamScale, 2 * pamScale);
-    ctx.fillRect(pamX + 18 * pamScale, pamY - 44 * pamScale, 2 * pamScale, 2 * pamScale);
-    ctx.fillRect(pamX + 13 * pamScale, pamY - 40 * pamScale, 7 * pamScale, 1 * pamScale);
-
-    // Outfit.
-    ctx.fillStyle = "#d9eef9";
-    ctx.fillRect(pamX + 7 * pamScale, pamY - 36 * pamScale, 18 * pamScale, 23 * pamScale);
-    ctx.fillStyle = "#7f96bf";
-    ctx.fillRect(pamX + 7 * pamScale, pamY - 36 * pamScale, 4 * pamScale, 23 * pamScale);
-    ctx.fillRect(pamX + 21 * pamScale, pamY - 36 * pamScale, 4 * pamScale, 23 * pamScale);
-    ctx.fillStyle = "#f1cfb3";
-    ctx.fillRect(pamX + 4 * pamScale, pamY - 33 * pamScale, 3 * pamScale, 12 * pamScale);
-    ctx.fillRect(pamX + 25 * pamScale, pamY - 33 * pamScale, 3 * pamScale, 12 * pamScale);
-    ctx.fillStyle = "#d9eef9";
-    ctx.fillRect(pamX + 4 * pamScale, pamY - 33 * pamScale, 3 * pamScale, 5 * pamScale);
-    ctx.fillRect(pamX + 25 * pamScale, pamY - 33 * pamScale, 3 * pamScale, 5 * pamScale);
-
-    // Skirt + legs + shoes.
-    ctx.fillStyle = "#514a73";
-    ctx.fillRect(pamX + 11 * pamScale, pamY - 13 * pamScale, 10 * pamScale, 8 * pamScale);
-    ctx.fillStyle = "#1a2231";
-    ctx.fillRect(pamX + 12 * pamScale, pamY - 5 * pamScale, 3 * pamScale, 8 * pamScale);
-    ctx.fillRect(pamX + 18 * pamScale, pamY - 5 * pamScale, 3 * pamScale, 8 * pamScale);
-    ctx.fillStyle = "#111722";
-    ctx.fillRect(pamX + 11 * pamScale, pamY + 3 * pamScale, 4 * pamScale, 2 * pamScale);
-    ctx.fillRect(pamX + 18 * pamScale, pamY + 3 * pamScale, 4 * pamScale, 2 * pamScale);
+    drawHeroPortraitSprite(pamX, pamY, pamScale, { label: "Pam", style: "pam", hideTie: true });
 
     // TALK callout above Pam.
     const pamTalkX = pamX - 2;
@@ -4755,6 +4797,23 @@ function drawDeskScene() {
     ctx.fillRect(x + 6, 78, 80, 46);
     ctx.fillStyle = "#3a4253";
   }
+  // Desk scene props: monitor, lamp, and plant.
+  ctx.fillStyle = "#202736";
+  ctx.fillRect(450, 178, 118, 68);
+  ctx.fillStyle = "#5f6f87";
+  ctx.fillRect(456, 184, 106, 54);
+  ctx.fillStyle = "#2a3345";
+  ctx.fillRect(500, 246, 18, 10);
+  ctx.fillRect(484, 256, 50, 4);
+  ctx.fillStyle = "#d6c892";
+  ctx.fillRect(598, 222, 8, 40);
+  ctx.fillStyle = "#eadca7";
+  ctx.fillRect(576, 212, 40, 12);
+  ctx.fillStyle = "#5a6d48";
+  ctx.fillRect(250, 212, 20, 14);
+  ctx.fillStyle = "#7ea06a";
+  ctx.fillRect(244, 204, 10, 10);
+  ctx.fillRect(262, 204, 10, 10);
 
   // Desk and office props.
   ctx.fillStyle = "#2c3748";
@@ -4791,6 +4850,8 @@ function drawDeskScene() {
   ctx.fillRect(drawerX + 78, drawerY + 33, 22, 10);
   ctx.fillStyle = "#2a2a2a";
   ctx.fillRect(drawerX + 86, drawerY + 35, 6, 6);
+  ctx.fillStyle = "rgba(255,225,192,0.18)";
+  ctx.fillRect(drawerX + 4, drawerY + 4, drawerW - 8, 2);
 
   if (state.deskDrawerOpen && hasKey) {
     const trayY = drawerY + 46;
@@ -5124,6 +5185,24 @@ function drawMissionsScene() {
   const savePam = state.saveData.missions.savePam;
   const capture = state.saveData.missions.captureStrangler;
   const tlm = state.saveData.missions.threatLevelMidnight;
+  // Mission rows with status indicator badges.
+  const missionRows = [
+    { y: 136, done: savePam.completed, color: "#7ee0a2" },
+    { y: 266, done: capture.completed, color: "#9dc9ff" },
+    { y: 366, done: tlm.completed, color: "#f4cc7a" },
+  ];
+  for (const row of missionRows) {
+    ctx.fillStyle = "rgba(255,255,255,0.06)";
+    ctx.fillRect(88, row.y, 784, 94);
+    ctx.fillStyle = row.done ? row.color : "#3e4b64";
+    ctx.fillRect(96, row.y + 12, 14, 14);
+    if (row.done) {
+      ctx.fillStyle = "#122334";
+      ctx.fillRect(100, row.y + 18, 3, 3);
+      ctx.fillRect(103, row.y + 21, 3, 3);
+      ctx.fillRect(106, row.y + 18, 4, 3);
+    }
+  }
   ctx.fillStyle = "#f5ead6";
   ctx.font = "bold 22px Trebuchet MS";
   ctx.fillText("Save Pam", 106, 158);
@@ -5202,6 +5281,21 @@ function drawAnnexScene() {
     ctx.fillStyle = "rgba(255,220,255,0.12)";
     ctx.fillRect(x + 8, 430, 24, 2);
   }
+  // Boutique mirror + clothing rack props.
+  drawPixelPanel(706, 108, 138, 132, "#5e6e8b", "#44546d", "#bcd8ff", "rgba(225,240,255,0.76)");
+  ctx.fillStyle = "rgba(220,245,255,0.34)";
+  ctx.fillRect(716, 118, 118, 112);
+  ctx.fillStyle = "#8c97ac";
+  ctx.fillRect(112, 132, 166, 4);
+  ctx.fillRect(126, 136, 2, 34);
+  ctx.fillRect(164, 136, 2, 34);
+  ctx.fillRect(202, 136, 2, 34);
+  ctx.fillRect(240, 136, 2, 34);
+  ctx.fillStyle = "#d0bfa6";
+  ctx.fillRect(122, 170, 10, 16);
+  ctx.fillRect(160, 170, 10, 16);
+  ctx.fillRect(198, 170, 10, 16);
+  ctx.fillRect(236, 170, 10, 16);
 
   drawPixelPanel(42, 68, 916, 412, "rgba(38,22,46,0.82)", "rgba(27,17,35,0.82)", "#ffd787", "rgba(255,232,186,0.6)");
 
@@ -5245,180 +5339,19 @@ function drawAnnexScene() {
   // Kelly sprite.
   const kx = 832;
   const ky = 424;
-  const ks = 2.2;
-  ctx.fillStyle = "rgba(0,0,0,0.24)";
-  ctx.beginPath();
-  ctx.ellipse(kx + 18 * ks, ky + 8, 20 * ks, 7, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "#221616";
-  ctx.fillRect(kx + 6 * ks, ky - 58 * ks, 24 * ks, 14 * ks);
-  ctx.fillRect(kx + 4 * ks, ky - 52 * ks, 6 * ks, 18 * ks);
-  ctx.fillRect(kx + 26 * ks, ky - 52 * ks, 6 * ks, 18 * ks);
-  ctx.fillStyle = "#b98262";
-  ctx.fillRect(kx + 9 * ks, ky - 50 * ks, 18 * ks, 13 * ks);
-  ctx.fillStyle = "#2b2130";
-  ctx.fillRect(kx + 13 * ks, ky - 45 * ks, 2 * ks, 2 * ks);
-  ctx.fillRect(kx + 20 * ks, ky - 45 * ks, 2 * ks, 2 * ks);
-  // Smile.
-  ctx.fillRect(kx + 14 * ks, ky - 41 * ks, 2 * ks, 1 * ks);
-  ctx.fillRect(kx + 19 * ks, ky - 41 * ks, 2 * ks, 1 * ks);
-  ctx.fillRect(kx + 16 * ks, ky - 40 * ks, 3 * ks, 1 * ks);
-  ctx.fillStyle = "#cf66a8";
-  ctx.fillRect(kx + 8 * ks, ky - 37 * ks, 20 * ks, 22 * ks);
-  ctx.fillStyle = "#b98262";
-  ctx.fillRect(kx + 5 * ks, ky - 33 * ks, 3 * ks, 12 * ks);
-  ctx.fillRect(kx + 28 * ks, ky - 33 * ks, 3 * ks, 12 * ks);
-  ctx.fillStyle = "#2a3042";
-  ctx.fillRect(kx + 11 * ks, ky - 15 * ks, 6 * ks, 18 * ks);
-  ctx.fillRect(kx + 19 * ks, ky - 15 * ks, 6 * ks, 18 * ks);
-  ctx.fillStyle = "#111722";
-  ctx.fillRect(kx + 10 * ks, ky + 3 * ks, 7 * ks, 2 * ks);
-  ctx.fillRect(kx + 19 * ks, ky + 3 * ks, 7 * ks, 2 * ks);
+  const ks = 1.82;
+  drawHeroPortraitSprite(kx, ky, ks, {
+    label: "Kelly",
+    shirtColor: "#cf66a8",
+    hideTie: true,
+    hairBase: "#221616",
+  });
 
   // Player preview wearing the currently equipped outfit.
   const px = 852;
   const py = 286;
   const ps = 1.8;
-  ctx.fillStyle = "rgba(0,0,0,0.22)";
-  ctx.beginPath();
-  ctx.ellipse(px + 20 * ps, py + 8, 21 * ps, 7, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Head + hair.
-  ctx.fillStyle = "#efcfab";
-  ctx.fillRect(px + 7 * ps, py - 60 * ps, 28 * ps, 12 * ps);
-  ctx.fillStyle = "#2a1e16";
-  ctx.fillRect(px + 6 * ps, py - 64 * ps, 30 * ps, 5 * ps);
-  ctx.fillRect(px + 5 * ps, py - 61 * ps, 6 * ps, 3 * ps);
-
-  if (runnerPreset.label === "Dwight") {
-    ctx.fillStyle = "#efcfab";
-    ctx.fillRect(px + 14 * ps, py - 63 * ps, 14 * ps, 4 * ps);
-    ctx.fillRect(px + 19 * ps, py - 64 * ps, 2 * ps, 6 * ps);
-    ctx.fillStyle = "#2a1e16";
-    ctx.fillRect(px + 12 * ps, py - 63 * ps, 3 * ps, 2 * ps);
-    ctx.fillRect(px + 27 * ps, py - 63 * ps, 3 * ps, 2 * ps);
-  }
-
-  // Face details.
-  ctx.fillStyle = "#1b2230";
-  if (runnerPreset.label === "Dwight") {
-    ctx.strokeStyle = "#96a3b3";
-    ctx.lineWidth = Math.max(1, ps);
-    ctx.strokeRect(px + 11.5 * ps, py - 57.5 * ps, 6 * ps, 5 * ps);
-    ctx.strokeRect(px + 23.5 * ps, py - 57.5 * ps, 6 * ps, 5 * ps);
-    ctx.beginPath();
-    ctx.moveTo(px + 17.5 * ps, py - 55 * ps);
-    ctx.lineTo(px + 23.5 * ps, py - 55 * ps);
-    ctx.stroke();
-    ctx.fillRect(px + 14 * ps, py - 55 * ps, 1 * ps, 1 * ps);
-    ctx.fillRect(px + 26 * ps, py - 55 * ps, 1 * ps, 1 * ps);
-  } else {
-    ctx.fillRect(px + 13 * ps, py - 56 * ps, 2 * ps, 2 * ps);
-    ctx.fillRect(px + 25 * ps, py - 56 * ps, 2 * ps, 2 * ps);
-  }
-  ctx.fillRect(px + 17 * ps, py - 52 * ps, 8 * ps, 1 * ps);
-  if (equipped === "goldenface") {
-    ctx.fillStyle = "#e4ba53";
-    ctx.fillRect(px + 7 * ps, py - 60 * ps, 28 * ps, 12 * ps);
-    ctx.fillStyle = "#1b1a1c";
-    ctx.fillRect(px + 13 * ps, py - 56 * ps, 2 * ps, 2 * ps);
-    ctx.fillRect(px + 25 * ps, py - 56 * ps, 2 * ps, 2 * ps);
-    ctx.fillRect(px + 16 * ps, py - 52 * ps, 10 * ps, 1 * ps);
-  }
-
-  let shirtColor = runnerPreset.color;
-  let tieColor = runnerPreset.tieColor;
-  if (equipped === "cornell_fit") {
-    shirtColor = "#8a2432";
-    tieColor = "#f4d76b";
-  } else if (equipped === "goldenface") {
-    shirtColor = "#121316";
-    tieColor = "#d6b255";
-  } else if (equipped === "date_mike") {
-    shirtColor = "#1e2f4e";
-    tieColor = "#9a1f2f";
-  } else if (equipped === "wrong_fit") {
-    shirtColor = "#cb5fa4";
-    tieColor = "#f5d35b";
-  } else if (equipped === "recyclops") {
-    shirtColor = "#5c8f3c";
-    tieColor = "#2d5a2e";
-  } else if (equipped === "three_hole_gym") {
-    shirtColor = "#d9dde4";
-    tieColor = "#d9dde4";
-  }
-  const hideTie = equipped === "three_hole_gym";
-
-  // Torso + tie.
-  ctx.fillStyle = shirtColor;
-  ctx.fillRect(px + 4 * ps, py - 48 * ps, 34 * ps, 34 * ps);
-  ctx.fillStyle = "rgba(255,255,255,0.12)";
-  ctx.fillRect(px + 24 * ps, py - 47 * ps, 11 * ps, 32 * ps);
-  ctx.fillStyle = "rgba(0,0,0,0.12)";
-  ctx.fillRect(px + 4 * ps, py - 47 * ps, 5 * ps, 32 * ps);
-  ctx.fillStyle = "#f4ead9";
-  ctx.fillRect(px + 16 * ps, py - 46 * ps, 10 * ps, 3 * ps);
-  if (!hideTie) {
-    ctx.fillStyle = tieColor;
-    ctx.fillRect(px + 19 * ps, py - 44 * ps, 4 * ps, 20 * ps);
-    ctx.fillRect(px + 18 * ps, py - 22 * ps, 6 * ps, 4 * ps);
-  }
-  if (equipped === "three_hole_gym") {
-    ctx.fillStyle = "#0f1118";
-    ctx.fillRect(px + 19 * ps, py - 40 * ps, 4 * ps, 4 * ps);
-    ctx.fillRect(px + 19 * ps, py - 35 * ps, 4 * ps, 4 * ps);
-    ctx.fillRect(px + 19 * ps, py - 30 * ps, 4 * ps, 4 * ps);
-  }
-  if (equipped === "goldenface") {
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(px + 16 * ps, py - 44 * ps, 10 * ps, 20 * ps);
-    ctx.fillStyle = "#121316";
-    ctx.fillRect(px + 4 * ps, py - 48 * ps, 8 * ps, 34 * ps);
-    ctx.fillRect(px + 30 * ps, py - 48 * ps, 8 * ps, 34 * ps);
-    ctx.fillRect(px + 12 * ps, py - 44 * ps, 4 * ps, 20 * ps);
-    ctx.fillRect(px + 26 * ps, py - 44 * ps, 4 * ps, 20 * ps);
-  }
-  if (equipped === "goldenface") {
-    ctx.fillStyle = "#1f1d1b";
-    ctx.fillRect(px + 11 * ps, py - 56 * ps, 16 * ps, 3 * ps);
-  }
-
-  if (equipped === "ryan_beard") {
-    ctx.fillStyle = "#151518";
-    ctx.fillRect(px + 9 * ps, py - 55 * ps, 4 * ps, 6 * ps);
-    ctx.fillRect(px + 27 * ps, py - 55 * ps, 4 * ps, 6 * ps);
-    ctx.fillRect(px + 13 * ps, py - 53 * ps, 14 * ps, 3 * ps);
-    ctx.fillRect(px + 13 * ps, py - 50 * ps, 14 * ps, 2 * ps);
-    ctx.fillRect(px + 15 * ps, py - 48 * ps, 10 * ps, 1 * ps);
-  } else if (equipped === "date_mike") {
-    ctx.fillStyle = "#0d1118";
-    ctx.fillRect(px + 6 * ps, py - 68 * ps, 30 * ps, 4 * ps);
-    ctx.fillRect(px + 12 * ps, py - 73 * ps, 18 * ps, 6 * ps);
-  } else if (equipped === "recyclops") {
-    ctx.fillStyle = "#9be467";
-    ctx.fillRect(px + 10 * ps, py - 59 * ps, 22 * ps, 2 * ps);
-    ctx.fillStyle = "#2f4f2f";
-    ctx.fillRect(px + 19 * ps, py - 59 * ps, 4 * ps, 2 * ps);
-  }
-
-  // Arms.
-  ctx.fillStyle = "#d9ba97";
-  ctx.fillRect(px + 1 * ps, py - 40 * ps, 8 * ps, 16 * ps);
-  ctx.fillRect(px + 35 * ps, py - 40 * ps, 8 * ps, 16 * ps);
-  if (runnerPreset.label !== "Dwight" && runnerPreset.label !== "Kelly") {
-    ctx.fillStyle = shirtColor;
-    ctx.fillRect(px + 1 * ps, py - 40 * ps, 8 * ps, 7 * ps);
-    ctx.fillRect(px + 35 * ps, py - 40 * ps, 8 * ps, 7 * ps);
-  }
-
-  // Legs + shoes.
-  ctx.fillStyle = "#202a39";
-  ctx.fillRect(px + 10 * ps, py - 14 * ps, 9 * ps, 14 * ps);
-  ctx.fillRect(px + 24 * ps, py - 14 * ps, 9 * ps, 14 * ps);
-  ctx.fillStyle = "#141a25";
-  ctx.fillRect(px + 9 * ps, py, 10 * ps, 3 * ps);
-  ctx.fillRect(px + 24 * ps, py, 10 * ps, 3 * ps);
+  drawHeroPortraitSprite(px, py, ps, { label: runnerPreset.label, outfitId: equipped });
 
   // Outfit cards.
   state.annexCards = [];
@@ -5443,6 +5376,7 @@ function drawAnnexScene() {
     ctx.fillRect(x, y, cardW, cardH);
     ctx.strokeStyle = isEquipped ? "#b7f5c8" : usable ? "#91d2ff" : "#8e889a";
     ctx.strokeRect(x, y, cardW, cardH);
+    drawPixelTexture(x + 1, y + 1, cardW - 2, cardH - 2, "rgba(0,0,0,0.12)", "rgba(255,255,255,0.08)");
     drawOutfitCardThumbnail(x + 116, y + 64, outfit.id);
     ctx.fillStyle = "#f5ead6";
     ctx.font = "bold 14px Trebuchet MS";
