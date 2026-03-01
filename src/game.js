@@ -4212,17 +4212,17 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     if (isDwight) {
       // Pixel-aligned silver glasses and centered eyes.
       ctx.fillStyle = "#9ba9ba";
-      ctx.fillRect(x + 11 * scale, y - 55 * scale, 4 * scale, 1 * scale);
-      ctx.fillRect(x + 11 * scale, y - 52 * scale, 4 * scale, 1 * scale);
-      ctx.fillRect(x + 11 * scale, y - 54 * scale, 1 * scale, 2 * scale);
-      ctx.fillRect(x + 14 * scale, y - 54 * scale, 1 * scale, 2 * scale);
-      ctx.fillRect(x + 17 * scale, y - 55 * scale, 4 * scale, 1 * scale);
-      ctx.fillRect(x + 17 * scale, y - 52 * scale, 4 * scale, 1 * scale);
-      ctx.fillRect(x + 17 * scale, y - 54 * scale, 1 * scale, 2 * scale);
-      ctx.fillRect(x + 20 * scale, y - 54 * scale, 1 * scale, 2 * scale);
+      ctx.fillRect(x + 10 * scale, y - 56 * scale, 5 * scale, 1 * scale);
+      ctx.fillRect(x + 10 * scale, y - 52 * scale, 5 * scale, 1 * scale);
+      ctx.fillRect(x + 10 * scale, y - 55 * scale, 1 * scale, 3 * scale);
+      ctx.fillRect(x + 14 * scale, y - 55 * scale, 1 * scale, 3 * scale);
+      ctx.fillRect(x + 17 * scale, y - 56 * scale, 5 * scale, 1 * scale);
+      ctx.fillRect(x + 17 * scale, y - 52 * scale, 5 * scale, 1 * scale);
+      ctx.fillRect(x + 17 * scale, y - 55 * scale, 1 * scale, 3 * scale);
+      ctx.fillRect(x + 21 * scale, y - 55 * scale, 1 * scale, 3 * scale);
       ctx.fillRect(x + 15 * scale, y - 54 * scale, 2 * scale, 1 * scale);
       ctx.fillStyle = "#1e2431";
-      ctx.fillRect(x + 13 * scale, y - 54 * scale, 1 * scale, 1 * scale);
+      ctx.fillRect(x + 12 * scale, y - 54 * scale, 1 * scale, 1 * scale);
       ctx.fillRect(x + 19 * scale, y - 54 * scale, 1 * scale, 1 * scale);
     } else {
       const g = "#8fa3bd";
