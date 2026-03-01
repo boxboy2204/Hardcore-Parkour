@@ -263,6 +263,16 @@ const ANNEX_OUTFITS = [
     tagline: "Secret mission fit. Jim's desk stash for full villain energy.",
     kelly: "Kelly: Goldenface is giving dramatic anti-hero and I respect that commitment.",
   },
+  {
+    id: "strangler_hood",
+    name: "Strangler's Hood",
+    cost: 0,
+    character: "all",
+    requiredAchievement: null,
+    requiredMission: "captureStrangler",
+    tagline: "Final pursuit reward. Shadowy hood, alleyway menace energy.",
+    kelly: "Kelly: This hood says mysterious, dramatic, and mildly lawsuit-adjacent.",
+  },
 ];
 
 const state = {
@@ -1121,6 +1131,11 @@ function syncPostKeyMissionRewards() {
     }
   }
 
+  if (missions.captureStrangler?.completed && !state.saveData.unlocks.outfitsUnlocked.includes("strangler_hood")) {
+    state.saveData.unlocks.outfitsUnlocked.push("strangler_hood");
+    changed = true;
+  }
+
   if (changed) persistSave();
 }
 
@@ -1249,8 +1264,9 @@ function isOutfitUsableByRunner(outfit, runnerId = getRunnerId()) {
 }
 
 function hasOutfitAchievementRequirement(outfit) {
-  if (!outfit.requiredAchievement) return true;
-  return Boolean(state.saveData.achievements[outfit.requiredAchievement]);
+  if (outfit.requiredAchievement && !state.saveData.achievements[outfit.requiredAchievement]) return false;
+  if (outfit.requiredMission && !state.saveData.missions?.[outfit.requiredMission]?.completed) return false;
+  return true;
 }
 
 function isDundieRewardOutfit(outfit) {
@@ -1294,6 +1310,8 @@ function toggleOutfit(outfitId) {
       showAnnexMessage(
         `Kelly: This unlock comes from the "${getAchievementLabel(outfit.requiredAchievement)}" Dundie. Go earn it.`
       );
+    } else if (outfit.requiredMission) {
+      showAnnexMessage("Kelly: Finish the Final Pursuit and catch the Strangler to unlock that one.");
     } else {
       showAnnexMessage("Kelly: Win more Dundies first. Fashion is merit-based, like chaos.");
     }
@@ -1941,6 +1959,10 @@ function endRun(reason = "time") {
     if (capture.added && !capture.completed) {
       capture.completed = true;
       questEndingLine = "Mission Complete: Capture the Strangler. Talk to Pam for your reward.";
+    }
+    if (!state.saveData.unlocks.outfitsUnlocked.includes("strangler_hood")) {
+      state.saveData.unlocks.outfitsUnlocked.push("strangler_hood");
+      questEndingLine += `${questEndingLine ? " " : ""}Outfit Unlocked: Strangler's Hood.`;
     }
   }
 
@@ -2746,61 +2768,78 @@ function drawRunBackground() {
       ctx.fillRect(x + 12, baseY + h - 26, 14, 2);
     }
 
-    // Street-side winter life: people, tossed snowballs, trees, and snowmen.
-    for (let i = 0; i < 7; i += 1) {
-      const bx = i * 156 - ((xShift * 0.62) % 156);
-      // Place this layer in the open space below the buildings (not on the road lane).
-      const baseY = 336 + (i % 2) * 10;
+    // Street-side winter life: scattered people, trees, snowmen, and background snowball action.
+    const scatterX = [-18, 21, -34, 13, -9, 27, -25, 6, -31];
+    const scatterY = [0, 8, 4, 12, 3, 10, 6, 1, 9];
+    for (let i = 0; i < 9; i += 1) {
+      const bx = i * 126 - ((xShift * 0.62) % 126) + scatterX[i];
+      const baseY = 332 + scatterY[i];
+      const pose = i % 3; // 0: throwing, 1: making snowman, 2: taking cover
 
       // Snowy pine tree.
       ctx.fillStyle = "#40697a";
-      ctx.fillRect(bx + 20, baseY + 10, 8, 18);
+      ctx.fillRect(bx + 14, baseY + 11, 8, 18);
       ctx.fillStyle = "#5e8da2";
-      ctx.fillRect(bx + 12, baseY + 4, 24, 8);
-      ctx.fillRect(bx + 14, baseY - 2, 20, 7);
-      ctx.fillRect(bx + 16, baseY - 8, 16, 6);
+      ctx.fillRect(bx + 6, baseY + 5, 24, 8);
+      ctx.fillRect(bx + 8, baseY - 1, 20, 7);
+      ctx.fillRect(bx + 10, baseY - 7, 16, 6);
       ctx.fillStyle = "#eaf6ff";
-      ctx.fillRect(bx + 14, baseY - 2, 8, 2);
-      ctx.fillRect(bx + 18, baseY + 4, 10, 2);
+      ctx.fillRect(bx + 9, baseY - 1, 8, 2);
+      ctx.fillRect(bx + 13, baseY + 5, 10, 2);
 
-      // Snowman.
-      const smx = bx + 64;
+      // Snowman cluster.
+      const smx = bx + 48;
       ctx.fillStyle = "#f3f9ff";
       ctx.beginPath();
-      ctx.arc(smx + 11, baseY + 21, 8, 0, Math.PI * 2);
+      ctx.arc(smx + 11, baseY + 22, 8, 0, Math.PI * 2);
       ctx.fill();
       ctx.beginPath();
-      ctx.arc(smx + 11, baseY + 11, 6, 0, Math.PI * 2);
+      ctx.arc(smx + 11, baseY + 12, 6, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = "#1e2a3d";
-      ctx.fillRect(smx + 8, baseY + 9, 2, 2);
-      ctx.fillRect(smx + 12, baseY + 9, 2, 2);
-      ctx.fillRect(smx + 9, baseY + 14, 4, 1);
-      ctx.fillRect(smx + 7, baseY + 3, 8, 2);
+      ctx.fillRect(smx + 8, baseY + 10, 2, 2);
+      ctx.fillRect(smx + 12, baseY + 10, 2, 2);
+      ctx.fillRect(smx + 9, baseY + 15, 4, 1);
+      ctx.fillRect(smx + 7, baseY + 4, 8, 2);
       ctx.fillStyle = "#3f5b7d";
-      ctx.fillRect(smx + 9, baseY + 0, 4, 3);
+      ctx.fillRect(smx + 9, baseY + 1, 4, 3);
 
-      // Bundled-up background person.
-      const px = bx + 108;
-      const armSwing = Math.sin(state.elapsedSec * 5 + i) * 1.5;
+      // Background person with varied poses.
+      const px = bx + 88;
+      const swing = Math.sin(state.elapsedSec * 5 + i) * 1.5;
       ctx.fillStyle = "#2f4569";
-      ctx.fillRect(px + 4, baseY + 11, 10, 12);
+      ctx.fillRect(px + 4, baseY + 12, 10, 12);
       ctx.fillStyle = "#1f2f4e";
-      ctx.fillRect(px + 6, baseY + 23, 3, 8);
-      ctx.fillRect(px + 10, baseY + 23, 3, 8);
+      ctx.fillRect(px + 6, baseY + 24, 3, 8);
+      ctx.fillRect(px + 10, baseY + 24, 3, 8);
       ctx.fillStyle = "#d6be9f";
-      ctx.fillRect(px + 6, baseY + 5, 6, 6);
+      ctx.fillRect(px + 6, baseY + 6, 6, 6);
       ctx.fillStyle = "#2a1f1a";
-      ctx.fillRect(px + 5, baseY + 3, 8, 2);
+      ctx.fillRect(px + 5, baseY + 4, 8, 2);
       ctx.fillStyle = "#dfefff";
-      ctx.fillRect(px + 2, baseY + 13 + armSwing, 2, 5);
-      ctx.fillRect(px + 14, baseY + 13 - armSwing, 2, 5);
+      if (pose === 0) {
+        // Throwing.
+        ctx.fillRect(px + 1, baseY + 13 + swing, 2, 5);
+        ctx.fillRect(px + 14, baseY + 10 - swing, 3, 5);
+      } else if (pose === 1) {
+        // Making snowman.
+        ctx.fillRect(px + 2, baseY + 16, 2, 4);
+        ctx.fillRect(px + 13, baseY + 16, 2, 4);
+      } else {
+        // Taking cover.
+        ctx.fillRect(px + 2, baseY + 18, 2, 3);
+        ctx.fillRect(px + 14, baseY + 18, 2, 3);
+        ctx.fillStyle = "#2f4569";
+        ctx.fillRect(px + 4, baseY + 14, 10, 6);
+      }
 
-      // Tossed snowball behind gameplay (pure visual).
-      const sbx = px + 24 - (state.worldTimeSec * 54 + i * 18) % 44;
-      const sby = baseY + 9 + Math.sin(state.worldTimeSec * 6 + i * 0.8) * 4;
-      ctx.fillStyle = "rgba(245, 252, 255, 0.9)";
-      ctx.fillRect(sbx, sby, 3, 3);
+      // Tossed snowball visual only, mostly from "throwing" pose.
+      if (pose === 0 || i % 4 === 0) {
+        const sbx = px + 20 - (state.worldTimeSec * 56 + i * 14) % 52;
+        const sby = baseY + 10 + Math.sin(state.worldTimeSec * 6 + i * 0.8) * 5;
+        ctx.fillStyle = "rgba(245, 252, 255, 0.9)";
+        ctx.fillRect(sbx, sby, 3, 3);
+      }
     }
 
     // Snowbanks and icy curb (keep them on the ground line).
@@ -2936,33 +2975,62 @@ function drawRunBackground() {
       const x = i * 120 - ((xShift * 1.1) % 120);
       ctx.fillRect(x + 40, 306, 44, 4);
     }
+
+    if (state.theme === "pursuit") {
+      // Distant background road traffic (decorative only).
+      const bgCars = [
+        { laneY: 302, speed: 0.72, spacing: 228, seed: 0, body: "#111824", window: "#7e9ac2" },
+        { laneY: 311, speed: 0.94, spacing: 196, seed: 72, body: "#2a2234", window: "#9bb4d8" },
+      ];
+      for (const lane of bgCars) {
+        for (let i = 0; i < 8; i += 1) {
+          const cx = i * lane.spacing - ((xShift * lane.speed + lane.seed) % lane.spacing) - 40;
+          const carW = 34 + (i % 2) * 6;
+          const carH = 8;
+          ctx.fillStyle = lane.body;
+          ctx.fillRect(cx, lane.laneY, carW, carH);
+          ctx.fillRect(cx + 6, lane.laneY - 3, carW - 16, 3);
+          ctx.fillStyle = lane.window;
+          ctx.fillRect(cx + 9, lane.laneY - 2, 8, 2);
+          ctx.fillRect(cx + 19, lane.laneY - 2, 6, 2);
+          ctx.fillStyle = "#0b1020";
+          ctx.fillRect(cx + 4, lane.laneY + 7, 6, 2);
+          ctx.fillRect(cx + carW - 10, lane.laneY + 7, 6, 2);
+          ctx.fillStyle = "rgba(255, 185, 130, 0.75)";
+          ctx.fillRect(cx + carW - 2, lane.laneY + 3, 2, 2);
+          ctx.fillStyle = "rgba(185, 220, 255, 0.65)";
+          ctx.fillRect(cx, lane.laneY + 3, 2, 2);
+        }
+      }
+    }
   }
 
   if (state.theme === "pursuit") {
+    const roadTop = GAME.groundY - 8;
     // Make the chase lane clearly read as a road.
     ctx.fillStyle = "#2d3139";
-    ctx.fillRect(0, GAME.floorTop, canvas.width, canvas.height - GAME.floorTop);
+    ctx.fillRect(0, roadTop, canvas.width, canvas.height - roadTop);
     ctx.fillStyle = "#1e232b";
     for (let i = 0; i < 24; i += 1) {
       const x = i * 52 - ((xShift * 1.05) % 52);
-      ctx.fillRect(x, GAME.floorTop + 8, 28, canvas.height - GAME.floorTop - 8);
+      ctx.fillRect(x, roadTop + 8, 28, canvas.height - roadTop - 8);
     }
     ctx.fillStyle = "#f4f2c9";
     for (let i = 0; i < 16; i += 1) {
       const x = i * 72 - ((xShift * 1.28) % 72);
-      ctx.fillRect(x + 8, GAME.floorTop + 28, 38, 6);
+      ctx.fillRect(x + 8, roadTop + 28, 38, 6);
     }
     ctx.fillStyle = "#cfd7e2";
     for (let i = 0; i < 20; i += 1) {
       const x = i * 58 - ((xShift * 1.16) % 58);
-      ctx.fillRect(x + 6, GAME.floorTop + 4, 2, 10);
+      ctx.fillRect(x + 6, roadTop + 4, 2, 10);
       ctx.fillRect(x + 6, canvas.height - 16, 2, 10);
     }
     // Guardrail posts.
     ctx.fillStyle = "#4b5667";
     for (let i = 0; i < 18; i += 1) {
       const x = i * 64 - ((xShift * 1.1) % 64);
-      ctx.fillRect(x + 2, GAME.floorTop + 12, 4, 18);
+      ctx.fillRect(x + 2, roadTop + 12, 4, 18);
     }
     // Extra building detail for the pursuit skyline.
     ctx.fillStyle = "rgba(255, 210, 150, 0.6)";
@@ -3187,6 +3255,7 @@ function drawPlayer() {
   else if (outfitId === "date_mike") shirtColor = "#1e2f4e";
   else if (outfitId === "wrong_fit") shirtColor = "#cb5fa4";
   else if (outfitId === "recyclops") shirtColor = "#5c8f3c";
+  else if (outfitId === "strangler_hood") shirtColor = "#171a23";
   else if (outfitId === "three_hole_gym") shirtColor = "#d9dde4";
   let skinBase = label === "Darryl" ? "#8b664b" : label === "Kelly" ? "#a47657" : label === "Pam" ? "#f1cfb3" : "#efcfab";
   let hairBase =
@@ -3257,7 +3326,7 @@ function drawPlayer() {
     }
     ctx.fillStyle = "rgba(255,255,255,0.14)";
     ctx.fillRect(x + 30, hipY - 12, 5, 8);
-    if (outfitId !== "three_hole_gym") {
+    if (outfitId !== "three_hole_gym" && outfitId !== "strangler_hood") {
       let tie = player.preset.tieColor || "#2f4f7a";
       if (outfitId === "cornell_fit") tie = "#f4d76b";
       else if (outfitId === "goldenface") tie = "#d6b255";
@@ -3275,6 +3344,14 @@ function drawPlayer() {
     ctx.fillRect(x + 35, hipY - 10, 8, 3); // front arm reach
     ctx.fillStyle = skinBase;
     ctx.fillRect(x + 42, hipY - 9, 4, 3);
+
+    if (outfitId === "strangler_hood") {
+      // Hood shape in slide pose.
+      ctx.fillStyle = "#141824";
+      ctx.fillRect(x + 5, hipY - 19, 18, 3);
+      ctx.fillRect(x + 5, hipY - 16, 3, 8);
+      ctx.fillRect(x + 20, hipY - 16, 3, 8);
+    }
 
     // Legs: directly connected to torso edge (no middle piece at all).
     const legBaseX = x + 24;
@@ -4232,10 +4309,11 @@ function drawPursuitTarget() {
   if (state.runWorldId !== "pursuit") return;
 
   const { x: carX, y: carY } = getPursuitCarPosition();
+  const roadTop = GAME.groundY - 8;
 
   ctx.fillStyle = "rgba(0,0,0,0.24)";
   ctx.beginPath();
-  ctx.ellipse(carX + 100, GAME.floorTop + 13, 104, 13, 0, 0, Math.PI * 2);
+  ctx.ellipse(carX + 100, roadTop + 13, 104, 13, 0, 0, Math.PI * 2);
   ctx.fill();
 
   // Large black car.
@@ -4412,6 +4490,10 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
   } else if (outfitId === "recyclops") {
     shirtColor = "#5c8f3c";
     tieColor = "#2d5a2e";
+  } else if (outfitId === "strangler_hood") {
+    shirtColor = "#171a23";
+    tieColor = "#171a23";
+    hideTie = true;
   } else if (outfitId === "three_hole_gym") {
     shirtColor = "#d9dde4";
     tieColor = "#d9dde4";
@@ -4548,6 +4630,16 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     ctx.fillRect(x + 10 * scale, y - 58 * scale, 12 * scale, 2 * scale);
     ctx.fillStyle = "#2f4f2f";
     ctx.fillRect(x + 15 * scale, y - 58 * scale, 2 * scale, 2 * scale);
+  }
+  if (outfitId === "strangler_hood") {
+    // Hood silhouette framing the face.
+    ctx.fillStyle = "#141824";
+    ctx.fillRect(x + 6 * scale, y - 63 * scale, 20 * scale, 4 * scale);
+    ctx.fillRect(x + 5 * scale, y - 59 * scale, 4 * scale, 15 * scale);
+    ctx.fillRect(x + 23 * scale, y - 59 * scale, 4 * scale, 15 * scale);
+    ctx.fillStyle = "#0f121a";
+    ctx.fillRect(x + 9 * scale, y - 58 * scale, 2 * scale, 10 * scale);
+    ctx.fillRect(x + 21 * scale, y - 58 * scale, 2 * scale, 10 * scale);
   }
 
   // Torso.
@@ -5943,6 +6035,9 @@ function drawAnnexScene() {
     if (outfit.id === "goldenface") {
       return Boolean(state.saveData.unlocks.goldenfaceTakenFromDesk || ownsOutfit("goldenface"));
     }
+    if (outfit.id === "strangler_hood") {
+      return Boolean(state.saveData.missions.captureStrangler.completed || ownsOutfit("strangler_hood"));
+    }
     return true;
   });
   for (let i = 0; i < visibleOutfits.length; i += 1) {
@@ -5968,7 +6063,7 @@ function drawAnnexScene() {
     drawWrappedText(outfit.tagline, x + 8, y + 50, 104, 13, 4);
 
     let badge = isDundieRewardOutfit(outfit) ? "EARN FROM DUNDIE" : `BUY ${outfit.cost} [SB]`;
-    if (isDundieRewardOutfit(outfit) && !reqMet) badge = "LOCKED (DUNDIE)";
+    if (!reqMet) badge = isDundieRewardOutfit(outfit) ? "LOCKED (DUNDIE)" : "LOCKED";
     else if (isEquipped) badge = "EQUIPPED";
     else if (owned) badge = "EQUIP";
     ctx.fillStyle = isEquipped ? "#d6ffd8" : "#ffe0a8";
@@ -6234,6 +6329,9 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
   } else if (outfitId === "recyclops") {
     shirtColor = "#5c8f3c";
     tieColor = "#2d5a2e";
+  } else if (outfitId === "strangler_hood") {
+    shirtColor = "#171a23";
+    tieColor = "#171a23";
   } else if (outfitId === "three_hole_gym") {
     shirtColor = "#d9dde4";
     tieColor = "#d9dde4";
@@ -6242,7 +6340,7 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
     tieColor = "#9a1f2f";
   }
 
-  const hideTie = outfitId === "three_hole_gym";
+  const hideTie = outfitId === "three_hole_gym" || outfitId === "strangler_hood";
 
   ctx.fillStyle = "rgba(0,0,0,0.2)";
   ctx.beginPath();
@@ -6305,6 +6403,11 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
     ctx.fillRect(baseX + 9 * s, baseY + 2 * s, 10 * s, 1 * s);
     ctx.fillStyle = "#2f4f2f";
     ctx.fillRect(baseX + 13 * s, baseY + 2 * s, 2 * s, 1 * s);
+  } else if (outfitId === "strangler_hood") {
+    ctx.fillStyle = "#141824";
+    ctx.fillRect(baseX + 6 * s, baseY - 1 * s, 16 * s, 3 * s);
+    ctx.fillRect(baseX + 6 * s, baseY + 2 * s, 3 * s, 8 * s);
+    ctx.fillRect(baseX + 19 * s, baseY + 2 * s, 3 * s, 8 * s);
   }
 
   ctx.fillStyle = "#d9ba97";
