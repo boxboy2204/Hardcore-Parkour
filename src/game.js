@@ -4628,40 +4628,53 @@ function drawPamQuestBackgroundSprite() {
 }
 
 function drawHud() {
-  drawPixelPanel(12, 12, 450, 188, "rgba(18,28,46,0.86)", "rgba(10,18,34,0.86)", "#7ecfff", "rgba(218,236,255,0.65)");
+  drawPixelPanel(12, 12, 560, 188, "rgba(18,28,46,0.86)", "rgba(10,18,34,0.86)", "#7ecfff", "rgba(218,236,255,0.65)");
+
+  const leftX = 20;
+  const rightX = 300;
+  const row1Y = 34;
+  const row2Y = 58;
+  const row3Y = 82;
+  const row4Y = 106;
+  const row5Y = 130;
 
   ctx.fillStyle = "#fff";
   ctx.font = "16px Trebuchet MS";
-  ctx.fillText(`Runner: ${state.player.preset.label}`, 20, 34);
-  ctx.fillText(`HP: ${state.player.hp}`, 20, 56);
-  ctx.fillText(`Style: ${Math.floor(state.style)}`, 20, 78);
-  ctx.fillText("Wallet:", 20, 100);
-  const walletY = 109;
-  const sbIconW = drawCurrencyIcon("schrute_buck", 86, walletY, 1.05);
+  ctx.fillText(`Runner: ${state.player.preset.label}`, leftX, row1Y);
+  ctx.fillText(`HP: ${state.player.hp}`, leftX, row2Y);
+  ctx.fillText(`Style: ${Math.floor(state.style)}`, leftX, row3Y);
+
   ctx.fillStyle = "#f5f8ff";
-  ctx.fillText(`${state.saveData.currencies.schruteBucks}`, 86 + sbIconW + 6, 100);
-  const snIconW = drawCurrencyIcon("stanley_nickel", 166, walletY + 1, 1.05);
-  ctx.fillText(`${state.saveData.currencies.stanleyNickels}`, 166 + snIconW + 6, 100);
+  ctx.fillText("Wallet:", leftX, row4Y);
+  let walletX = leftX + 74;
+  walletX += drawCurrencyIcon("schrute_buck", walletX, row4Y - 11, 1.0) + 6;
+  const walletSbText = `${state.saveData.currencies.schruteBucks}`;
+  ctx.fillText(walletSbText, walletX, row4Y);
+  walletX += ctx.measureText(walletSbText).width + 18;
+  walletX += drawCurrencyIcon("stanley_nickel", walletX, row4Y - 10, 1.0) + 6;
+  ctx.fillText(`${state.saveData.currencies.stanleyNickels}`, walletX, row4Y);
+
   ctx.fillStyle = "#ffdfa6";
-  ctx.fillText("Run Loot:", 20, 124);
-  const runY = 133;
-  const runSbIconW = drawCurrencyIcon("schrute_buck", 98, runY, 1.0);
-  ctx.fillText(`+${state.runCollectedSchruteBucks}`, 98 + runSbIconW + 6, 124);
-  const runSnIconW = drawCurrencyIcon("stanley_nickel", 176, runY + 1, 1.0);
-  ctx.fillText(`+${state.runCollectedStanleyNickels}`, 176 + runSnIconW + 6, 124);
+  ctx.fillText("Run Loot:", leftX, row5Y);
+  let lootX = leftX + 84;
+  lootX += drawCurrencyIcon("schrute_buck", lootX, row5Y - 11, 0.95) + 6;
+  const runSbText = `+${state.runCollectedSchruteBucks}`;
+  ctx.fillText(runSbText, lootX, row5Y);
+  lootX += ctx.measureText(runSbText).width + 18;
+  lootX += drawCurrencyIcon("stanley_nickel", lootX, row5Y - 10, 0.95) + 6;
+  ctx.fillText(`+${state.runCollectedStanleyNickels}`, lootX, row5Y);
 
   ctx.fillStyle = "#ffd54d";
-  ctx.fillText(`x${state.multiplier} Hardcore`, 210, 56);
+  ctx.fillText(`x${state.multiplier} Hardcore`, rightX, row1Y);
 
   const timeLeft = Math.max(0, GAME.runTimeSec - state.worldTimeSec);
   const difficulty = LEVEL_DIFFICULTY[state.runWorldId] || LEVEL_DIFFICULTY.bullpen;
   ctx.fillStyle = "#d4e6ff";
-  if (state.runWorldId === "pursuit") ctx.fillText("Time: -- (Chase Mode)", 210, 78);
-  else if (state.runWorldId === "skarn") ctx.fillText("Time: -- (Showdown)", 210, 78);
-  else ctx.fillText(`Time: ${timeLeft.toFixed(1)}s`, 210, 78);
-  ctx.fillText(`World: ${THEME_LABELS[state.theme] || state.theme}`, 210, 100);
-  // Keep difficulty on its own row so it never collides with wallet text.
-  ctx.fillText(`Difficulty: ${difficulty.label}`, 210, 168);
+  if (state.runWorldId === "pursuit") ctx.fillText("Time: -- (Chase Mode)", rightX, row2Y);
+  else if (state.runWorldId === "skarn") ctx.fillText("Time: -- (Showdown)", rightX, row2Y);
+  else ctx.fillText(`Time: ${timeLeft.toFixed(1)}s`, rightX, row2Y);
+  ctx.fillText(`World: ${THEME_LABELS[state.theme] || state.theme}`, rightX, row3Y);
+  ctx.fillText(`Difficulty: ${difficulty.label}`, rightX, row4Y);
   if (state.pamQuestRun) {
     ctx.fillStyle = "#ffeeb2";
     ctx.fillText(`Find Pam: ${state.pamSpottedCount}/${state.pamRequiredCount} (Press P when she appears)`, 500, 100);
@@ -4673,13 +4686,11 @@ function drawHud() {
 
   if (state.slideActive) {
     ctx.fillStyle = "#8fdcff";
-    ctx.fillText(`Slide: ${Math.ceil(state.slideSpeed)}`, 338, 56);
+    ctx.fillText(`Slide: ${Math.ceil(state.slideSpeed)}`, rightX + 164, row1Y);
   }
   if (state.speedBoostLeft > 0) {
     ctx.fillStyle = "#b8ffe0";
-    // Keep boost status away from pursuit "Chase Mode" row.
-    if (state.runWorldId === "pursuit") ctx.fillText("Invincible", 338, 188);
-    else ctx.fillText("Invincible", 338, 78);
+    ctx.fillText("Invincible", rightX, row5Y);
   }
 
   if (state.runWorldId === "pursuit") {
