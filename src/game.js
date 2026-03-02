@@ -4677,6 +4677,13 @@ function drawHud() {
   else ctx.fillText(`Time: ${timeLeft.toFixed(1)}s`, rightX, row2Y);
   ctx.fillText(`World: ${THEME_LABELS[state.theme] || state.theme}`, rightX, row3Y);
   ctx.fillText(`Difficulty: ${difficulty.label}`, rightX, row4Y);
+  if (state.runWorldId === "pursuit") {
+    ctx.fillStyle = "#ffe38f";
+    ctx.fillText(`Catch Strangler: ${Math.ceil(state.tobyDistance)}m`, rightX, row5Y);
+  } else if (state.runWorldId === "skarn") {
+    ctx.fillStyle = "#ffe38f";
+    ctx.fillText(`Goldenface Hits: ${state.skarnGoldenfaceHits}/10`, rightX, row5Y);
+  }
   if (state.pamQuestRun) {
     ctx.fillStyle = "#ffeeb2";
     ctx.fillText(`Find Pam: ${state.pamSpottedCount}/${state.pamRequiredCount} (Press P when she appears)`, 500, 100);
@@ -4686,10 +4693,6 @@ function drawHud() {
   if (state.slideActive) {
     ctx.fillStyle = "#8fdcff";
     ctx.fillText(`Slide: ${Math.ceil(state.slideSpeed)}`, rightX + 164, row1Y);
-  }
-  if (state.speedBoostLeft > 0) {
-    ctx.fillStyle = "#b8ffe0";
-    ctx.fillText("Invincible", rightX, row5Y);
   }
 
   // Keep controls and world-specific instructions inside the HUD panel.
@@ -4707,13 +4710,6 @@ function drawHud() {
   }
   ctx.font = "16px Trebuchet MS";
 
-  if (state.runWorldId === "pursuit") {
-    ctx.fillStyle = "#ffe38f";
-    ctx.fillText(`Catch Strangler: ${Math.ceil(state.tobyDistance)}m`, 480, 78);
-  } else if (state.runWorldId === "skarn") {
-    ctx.fillStyle = "#ffe38f";
-    ctx.fillText(`Goldenface Hits: ${state.skarnGoldenfaceHits}/10`, 480, 78);
-  }
   if (state.cheatInvincible) {
     ctx.fillStyle = "#9dffd0";
     ctx.fillText("Cheat: No Injury (BEETS)", 480, 56);
