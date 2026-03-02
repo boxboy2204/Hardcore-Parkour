@@ -2,6 +2,15 @@
 
 Playable vertical-slice prototype built from the project game plan.
 
+## Play Online
+- Game: https://boxboy2204.github.io/Hardcore-Parkour/
+
+## Development Status
+This game is still under active development, so you will likely run into bugs or unfinished behavior.
+
+If you find a bug, please report it here:
+- Issues: https://github.com/boxboy2204/Hardcore-Parkour/issues
+
 ## Current UI
 ![Hardcore Parkour current UI](./assets/ui-screenshot.png?v=2)
 
