@@ -34,21 +34,19 @@ const CHARACTER_PRESETS = {
     hardcoreInvincible: true,
     hpBonus: 0,
     hitboxScale: 1.0,
-    canBreakWeakFloorboard: false,
   },
   dwight: {
     label: "Dwight",
     color: "#b07a2f",
     tieColor: "#654531",
-    baseSpeed: 280,
-    jumpPower: 675,
+    baseSpeed: 300,
+    jumpPower: 700,
     styleGain: 1.45,
     maxJumps: 1,
     boostMul: 1.0,
     hardcoreInvincible: false,
     hpBonus: 1,
     hitboxScale: 0.92,
-    canBreakWeakFloorboard: true,
   },
   andy: {
     label: "Andy",
@@ -62,7 +60,6 @@ const CHARACTER_PRESETS = {
     hardcoreInvincible: false,
     hpBonus: 0,
     hitboxScale: 1.18,
-    canBreakWeakFloorboard: false,
   },
 };
 
@@ -82,6 +79,7 @@ const GAME = {
   slideDeceleration: 720,
   slideScorePerObstacle: 80,
 };
+const SKARN_RINK_TOP = 222;
 
 const COLLECTIBLE_SPAWN = {
   baseGap: 1.55,
@@ -103,7 +101,7 @@ const THEME_OBSTACLE_POOLS = {
   streets: ["lightpole", "jim_snowball", "hydrant", "ice_patch"],
   corporate: ["desk", "jan_folder", "bystander", "chili_spill"],
   pursuit: ["folder", "paper_ream", "mung_beans"],
-  skarn: ["hockey_puck", "hydrant", "goldenface_minion"],
+  skarn: ["hockey_puck"],
 };
 
 const THEME_LABELS = {
@@ -276,8 +274,8 @@ const ANNEX_OUTFITS = [
 ];
 
 const state = {
-  scene: "menu",
-  previousScene: "menu",
+  scene: "characters",
+  previousScene: "characters",
   running: false,
   paused: false,
   gameOver: false,
@@ -384,6 +382,10 @@ const state = {
   jackpotRainLeft: 0,
   jackpotRainSpawnAcc: 0,
   jackpotRainDrops: [],
+  skarnShotCooldownLeft: 0,
+  skarnGoldenfaceHits: 0,
+  skarnAimActive: false,
+  skarnAimPhase: 0,
   cheatInvincible: false,
   cheatProgress: 0,
   reviewData: null,
@@ -1022,6 +1024,44 @@ function setMenuDialogue() {
     state.menuDialogue = `Pick ${selected.label}. ${quip}`;
   } else if (runner === "dwight") {
     state.menuDialogue = `${selected.label} is tactically sound. ${quip}`;
+  } else if (state.theme === "skarn") {
+    const skyGrad = ctx.createLinearGradient(0, 0, 0, GAME.floorTop);
+    skyGrad.addColorStop(0, "#101f45");
+    skyGrad.addColorStop(1, "#1f3e78");
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0, 0, canvas.width, GAME.floorTop);
+
+    // Arena ceiling truss + lights.
+    ctx.fillStyle = "#1a2d56";
+    ctx.fillRect(0, 18, canvas.width, 8);
+    ctx.fillRect(0, 52, canvas.width, 6);
+    for (let i = 0; i < 16; i += 1) {
+      const lx = i * 64 - ((xShift * 0.18) % 64);
+      ctx.fillStyle = "rgba(210, 234, 255, 0.72)";
+      ctx.fillRect(lx + 10, 24, 10, 3);
+      ctx.fillRect(lx + 10, 56, 10, 2);
+    }
+
+    // Distant crowd stands.
+    ctx.fillStyle = "#1d315f";
+    ctx.fillRect(0, 86, canvas.width, 96);
+    for (let i = 0; i < 140; i += 1) {
+      const px = (i * 13 + Math.floor(i / 3) * 7) % canvas.width;
+      const py = 92 + ((i * 9) % 84);
+      ctx.fillStyle = i % 5 === 0 ? "#5d84c8" : i % 3 === 0 ? "#7ba4df" : "#314c82";
+      ctx.fillRect(px, py, 2, 2);
+    }
+
+    // Far glass boards around rink.
+    ctx.fillStyle = "#d2ebff";
+    ctx.fillRect(0, 208, canvas.width, 4);
+    ctx.fillStyle = "#9cc1e6";
+    ctx.fillRect(0, 212, canvas.width, 8);
+    for (let i = 0; i < 12; i += 1) {
+      const sx = i * 84 - ((xShift * 0.72) % 84);
+      ctx.fillStyle = "rgba(190,220,248,0.62)";
+      ctx.fillRect(sx + 12, 212, 2, 30);
+    }
   } else {
     state.menuDialogue = `${selected.label} gets a cappella hype. ${quip}`;
   }
@@ -1515,8 +1555,16 @@ function handlePamConversationClick(choiceId) {
   if (state.shopConversation.step === "offer_help") {
     if (!capture.added) {
       capture.added = true;
+      const alreadyCaughtStrangler = state.saveData.unlocks.outfitsUnlocked.includes("strangler_hood");
+      if (alreadyCaughtStrangler) {
+        capture.completed = true;
+      }
       persistSave();
-      showMissionToast("New Mission: Capture The Strangler");
+      if (alreadyCaughtStrangler) {
+        showMissionToast("Mission Auto-Completed: Capture The Strangler");
+      } else {
+        showMissionToast("New Mission: Capture The Strangler");
+      }
     }
     state.shopConversation = null;
     return;
@@ -1660,7 +1708,8 @@ function updateUiForScene() {
 }
 
 function resetRunState(worldId = state.selectedWorldId) {
-  const preset = CHARACTER_PRESETS[characterSelect.value];
+  const selectedPreset = CHARACTER_PRESETS[characterSelect.value];
+  const preset = worldId === "skarn" ? CHARACTER_PRESETS.michael : selectedPreset;
   const savePam = state.saveData.missions.savePam;
   const pamQuestRun = worldId === "warehouse" && savePam.added && !savePam.completed && savePam.warehouseCleared;
   state.scene = "run";
@@ -1718,6 +1767,10 @@ function resetRunState(worldId = state.selectedWorldId) {
   state.reviewData = null;
   state.reviewAnimSec = 0;
   state.obstacles = [];
+  state.skarnShotCooldownLeft = 0;
+  state.skarnGoldenfaceHits = 0;
+  state.skarnAimActive = false;
+  state.skarnAimPhase = 0;
 
   if (pamQuestRun) state.worldBannerText = "Warehouse: Save Pam";
 
@@ -1794,6 +1847,65 @@ function canPromptPursuitJump() {
   return px >= zone.x - 52;
 }
 
+function getSkarnGoldenfacePose() {
+  const baseX = canvas.width - 164;
+  const baseY = GAME.floorTop - 6;
+  const bob = Math.sin(state.worldTimeSec * 2.8) * 1.4;
+  const shotPhase = (state.worldTimeSec * 2.35) % 1;
+  const firing = shotPhase < 0.18;
+  const recoil = firing ? Math.sin((shotPhase / 0.18) * Math.PI) * 2.4 : 0;
+  const armY = baseY - 33 + bob + recoil * 0.25;
+  const muzzleX = baseX - 20 + recoil;
+  const muzzleY = armY + 2;
+  return { baseX, baseY, bob, firing, recoil, armY, muzzleX, muzzleY };
+}
+
+function getSkarnGoldenfaceHitbox() {
+  const pose = getSkarnGoldenfacePose();
+  return {
+    x: pose.baseX + 7,
+    y: pose.baseY - 58 + pose.bob,
+    width: 24,
+    height: 40,
+  };
+}
+
+function getSkarnPlayerGunPose() {
+  if (!state.player) return { x: 0, y: 0 };
+  const player = state.player;
+  const slideHeight = state.slideActive ? 22 : 0;
+  const visualHeight = player.height - slideHeight;
+  const yTop = player.y - visualHeight;
+  const runCycle = Math.sin(state.worldTimeSec * 15);
+  const sway = player.grounded && !state.slideActive ? Math.round(runCycle * 1.1) : 0;
+  const bob = player.grounded ? Math.abs(Math.sin(state.worldTimeSec * 14)) * 1.25 : -1.5;
+  const shoulderX = player.x + sway + 27;
+  const shoulderY = yTop + 30 + (player.grounded ? bob : 0);
+  const aiming = state.skarnAimActive;
+  const elbowX = shoulderX + 9;
+  const elbowY = shoulderY;
+  const handX = shoulderX + 18;
+  const handY = shoulderY;
+  const barrelOffsetY = aiming ? Math.round(Math.sin(state.skarnAimPhase) * 16) : 0;
+  const muzzleX = handX + 14;
+  const muzzleY = handY + barrelOffsetY;
+  return {
+    shoulderX,
+    shoulderY,
+    elbowX,
+    elbowY,
+    handX,
+    handY,
+    muzzleX,
+    muzzleY,
+    aiming,
+  };
+}
+
+function getSkarnAimY() {
+  return getSkarnPlayerGunPose().muzzleY;
+}
+
 function triggerPursuitBoarding() {
   if (state.runWorldId !== "pursuit" || state.pursuitEndPending || state.multiplier < 10 || !state.player) return false;
   if (!canPromptPursuitJump()) return false;
@@ -1857,6 +1969,11 @@ function spawnObstacle() {
     }[type];
     if (typeof ejectY === "number") top = ejectY;
   }
+  if (state.runWorldId === "skarn" && type === "hockey_puck") {
+    const pose = getSkarnGoldenfacePose();
+    spawnX = pose.muzzleX - 6;
+    top = pose.muzzleY - 2 + (Math.random() * 18 - 9);
+  }
 
   const obstacle = {
     type,
@@ -1913,7 +2030,10 @@ function endRun(reason = "time") {
   state.pursuitEndCardLeft = 0;
   state.pursuitEndCardCuePlayed = false;
   state.pursuitEndFade = 0;
-  state.stars = reason === "toby_caught" && state.runWorldId === "pursuit" ? 5 : calculateStars();
+  state.stars =
+    (reason === "toby_caught" && state.runWorldId === "pursuit") || (reason === "goldenface_down" && state.runWorldId === "skarn")
+      ? 5
+      : calculateStars();
   // Economy v3: only currency collected inside the level is rewarded.
   state.earnedSchruteBucks = state.runCollectedSchruteBucks;
   state.earnedStanleyNickels = state.runCollectedStanleyNickels;
@@ -1925,7 +2045,7 @@ function endRun(reason = "time") {
   state.saveData.stats.bestHardcoreChain = Math.max(state.saveData.stats.bestHardcoreChain, state.bestChain);
 
   let questEndingLine = "";
-  if (reason === "time") {
+  if (reason === "time" || (reason === "goldenface_down" && state.runWorldId === "skarn")) {
     const worldIdx = WORLDS.findIndex((w) => w.id === state.runWorldId);
     if (worldIdx !== -1) {
       state.saveData.unlockedWorldIndex = Math.max(state.saveData.unlockedWorldIndex, worldIdx + 1);
@@ -1965,12 +2085,15 @@ function endRun(reason = "time") {
       questEndingLine += `${questEndingLine ? " " : ""}Outfit Unlocked: Strangler's Hood.`;
     }
   }
+  if (reason === "goldenface_down" && state.runWorldId === "skarn") {
+    questEndingLine = "Threat Level Midnight complete: Goldenface is down.";
+  }
 
   persistSave();
 
   const worldIdx = WORLDS.findIndex((w) => w.id === state.runWorldId);
   const hasNextLevel = worldIdx !== -1 && worldIdx < WORLDS.length - 1;
-  const successfulFinish = reason === "time" || reason === "toby_caught";
+  const successfulFinish = reason === "time" || reason === "toby_caught" || reason === "goldenface_down";
   state.pendingNextAction = null;
   if (successfulFinish && hasNextLevel) {
     const nextWorld = WORLDS[worldIdx + 1];
@@ -1995,6 +2118,8 @@ function endRun(reason = "time") {
       : "David Wallace approves this performance review.";
   if (reason === "toby_caught") {
     endingLine = "Finale unlocked: You caught Toby's car. The Scranton Strangler was Toby.";
+  } else if (reason === "goldenface_down") {
+    endingLine = "Threat Level Midnight: You tagged Goldenface 5 times and shut down the rink showdown.";
   }
 
   state.reviewData = {
@@ -2068,9 +2193,43 @@ function doParkourShout() {
 }
 
 function attack() {
-  if (!state.running || state.paused || state.attackCooldownLeft > 0 || state.runWorldId === "skarn") return;
+  if (!state.running || state.paused) return;
+  if (state.runWorldId === "skarn") {
+    startSkarnAim();
+    return;
+  }
+  if (state.attackCooldownLeft > 0) return;
   state.attackLeft = GAME.attackDurationSec;
   state.attackCooldownLeft = GAME.attackCooldownSec;
+}
+
+function startSkarnAim() {
+  if (state.skarnShotCooldownLeft > 0 || !state.player || state.skarnAimActive) return;
+  state.skarnAimActive = true;
+}
+
+function fireSkarnGun() {
+  if (!state.player || state.skarnShotCooldownLeft > 0) return;
+  state.skarnShotCooldownLeft = 0.2;
+  const target = getSkarnGoldenfaceHitbox();
+  const aimY = getSkarnAimY();
+  const onTarget = aimY >= target.y - 6 && aimY <= target.y + target.height + 6;
+
+  if (onTarget) {
+    state.skarnGoldenfaceHits += 1;
+    state.score += 180;
+    state.style += 80;
+    state.screenShake = Math.max(state.screenShake, 0.16);
+    addFloatingText(`HIT ${state.skarnGoldenfaceHits}/5`, target.x - 8, target.y - 10, "#ffe79a");
+    addHitParticles(target.x + target.width * 0.5, target.y + target.height * 0.45, "#ffd78a");
+    if (state.skarnGoldenfaceHits >= 5) {
+      endRun("goldenface_down");
+      return;
+    }
+  } else {
+    const gun = getSkarnPlayerGunPose();
+    addFloatingText("MISS!", gun.muzzleX + 10, aimY - 8, "#ffb2a5");
+  }
 }
 
 function stumbleFail() {
@@ -2128,18 +2287,25 @@ function intersects(a, b) {
 function handleObstacleCollision(obstacle) {
   if (obstacle.hit) return;
   obstacle.hit = true;
+  if (obstacle.type === "hockey_puck") {
+    addFloatingText("PUCK BLAST!", obstacle.x - 6, obstacle.y - 14, "#ffc89a");
+    for (let i = 0; i < 14; i += 1) {
+      state.particles.push({
+        x: obstacle.x + obstacle.width * 0.5,
+        y: obstacle.y + obstacle.height * 0.5,
+        vx: -140 + Math.random() * 280,
+        vy: -220 + Math.random() * 260,
+        color: i % 3 === 0 ? "#ffd18e" : i % 2 === 0 ? "#ff8f7d" : "#b3d7ff",
+        age: 0,
+        ttl: 0.26 + Math.random() * 0.22,
+      });
+    }
+  }
 
   if (state.cheatInvincible) {
     state.style += 8;
     addFloatingText("NOPE", state.player.x + 8, state.player.y - 28, "#a5ffcf");
     addHitParticles(obstacle.x + obstacle.width * 0.5, obstacle.y + obstacle.height * 0.5, "#9ef7cf");
-    return;
-  }
-
-  if (obstacle.type === "shelf" && state.player.preset.canBreakWeakFloorboard) {
-    state.score += 85;
-    addFloatingText("Shortcut!", state.player.x + 14, state.player.y - 34, "#9cd67a");
-    addHitParticles(obstacle.x + obstacle.width * 0.5, obstacle.y + obstacle.height * 0.5, "#bfaa75");
     return;
   }
 
@@ -2215,7 +2381,7 @@ function updateRun(dt) {
   state.elapsedSec += dt;
   state.worldTimeSec += dt;
 
-  const runHasTimer = state.runWorldId !== "pursuit";
+  const runHasTimer = state.runWorldId !== "pursuit" && state.runWorldId !== "skarn";
   if (runHasTimer && state.worldTimeSec >= GAME.runTimeSec) {
     endRun("time");
     return;
@@ -2254,6 +2420,8 @@ function updateRun(dt) {
   state.stumbleLeft = Math.max(0, state.stumbleLeft - dt);
   state.attackLeft = Math.max(0, state.attackLeft - dt);
   state.attackCooldownLeft = Math.max(0, state.attackCooldownLeft - dt);
+  state.skarnShotCooldownLeft = Math.max(0, state.skarnShotCooldownLeft - dt);
+  if (state.runWorldId === "skarn" && state.skarnAimActive) state.skarnAimPhase += dt * 5.1;
   state.screenShake = Math.max(0, state.screenShake - dt);
 
   if (state.spaceHeld) {
@@ -2859,6 +3027,63 @@ function drawRunBackground() {
       ctx.fillRect(x - 4, 292, 16, 8);
       ctx.fillStyle = "#6a84aa";
     }
+  } else if (state.theme === "skarn") {
+    const arenaGrad = ctx.createLinearGradient(0, 0, 0, GAME.floorTop);
+    arenaGrad.addColorStop(0, "#111f44");
+    arenaGrad.addColorStop(1, "#2e4f8f");
+    ctx.fillStyle = arenaGrad;
+    ctx.fillRect(0, 0, canvas.width, GAME.floorTop);
+
+    // Arena beams and lights.
+    ctx.fillStyle = "#1a2f60";
+    ctx.fillRect(0, 18, canvas.width, 8);
+    ctx.fillRect(0, 52, canvas.width, 6);
+    for (let i = 0; i < 16; i += 1) {
+      const lx = i * 64 - ((xShift * 0.16) % 64);
+      ctx.fillStyle = "rgba(224, 238, 255, 0.78)";
+      ctx.fillRect(lx + 10, 24, 11, 3);
+      ctx.fillRect(lx + 10, 56, 10, 2);
+    }
+
+    // Crowd stands and rink wall.
+    ctx.fillStyle = "#1b2f5d";
+    ctx.fillRect(0, 86, canvas.width, 98);
+    for (let i = 0; i < 160; i += 1) {
+      const px = (i * 11 + Math.floor(i / 2) * 9) % canvas.width;
+      const py = 92 + ((i * 7) % 86);
+      ctx.fillStyle = i % 5 === 0 ? "#7aa3df" : i % 3 === 0 ? "#4a6ea8" : "#2b4779";
+      ctx.fillRect(px, py, 2, 2);
+    }
+    ctx.fillStyle = "#d4ecff";
+    ctx.fillRect(0, 206, canvas.width, 4);
+    ctx.fillStyle = "#9ec6e8";
+    ctx.fillRect(0, 210, canvas.width, 12);
+    for (let i = 0; i < 13; i += 1) {
+      const sx = i * 78 - ((xShift * 0.66) % 78);
+      ctx.fillStyle = "rgba(184, 214, 242, 0.68)";
+      ctx.fillRect(sx + 9, 210, 2, 32);
+    }
+
+    // Rink ads so it reads as indoor hockey arena.
+    for (let i = 0; i < 6; i += 1) {
+      const ax = i * 170 - ((xShift * 0.5) % 170);
+      ctx.fillStyle = "#e8f2ff";
+      ctx.fillRect(ax + 16, 214, 78, 14);
+      ctx.fillStyle = i % 2 === 0 ? "#ca4653" : "#2d5a93";
+      ctx.fillRect(ax + 20, 218, 70, 6);
+    }
+    // Upper-deck hanging banners.
+    for (let i = 0; i < 6; i += 1) {
+      const bx = 70 + i * 145 - ((xShift * 0.22) % 24);
+      const hueA = i % 2 === 0 ? "#d74f5f" : "#4f78c7";
+      const hueB = i % 2 === 0 ? "#f5b3bb" : "#b8cbf5";
+      ctx.fillStyle = hueA;
+      ctx.fillRect(bx, 62, 20, 32);
+      ctx.fillStyle = hueB;
+      ctx.fillRect(bx + 4, 68, 12, 18);
+      ctx.fillStyle = "#152744";
+      ctx.fillRect(bx + 8, 64, 4, 2);
+    }
   } else {
     const skyGrad = ctx.createLinearGradient(0, 0, 0, GAME.floorTop);
     skyGrad.addColorStop(0, "#263f8f");
@@ -3040,28 +3265,22 @@ function drawRunBackground() {
       ctx.fillRect(x + 28, 310, 10, 4);
     }
   } else if (state.theme === "skarn") {
-    ctx.fillStyle = "#322447";
-    ctx.fillRect(0, GAME.floorTop, canvas.width, canvas.height - GAME.floorTop);
-    ctx.fillStyle = "#21172f";
-    for (let i = 0; i < 22; i += 1) {
-      const x = i * 56 - ((xShift * 1.02) % 56);
-      ctx.fillRect(x, GAME.floorTop + 8, 30, canvas.height - GAME.floorTop - 8);
+    // Ice surface + lane marks for a rink vibe.
+    const iceGrad = ctx.createLinearGradient(0, SKARN_RINK_TOP - 8, 0, canvas.height);
+    iceGrad.addColorStop(0, "#f7fcff");
+    iceGrad.addColorStop(1, "#e8f3ff");
+    ctx.fillStyle = iceGrad;
+    ctx.fillRect(0, SKARN_RINK_TOP, canvas.width, canvas.height - SKARN_RINK_TOP);
+    ctx.fillStyle = "rgba(152,186,221,0.34)";
+    for (let i = 0; i < 18; i += 1) {
+      const x = i * 64 - ((xShift * 1.02) % 64);
+      ctx.fillRect(x + 10, SKARN_RINK_TOP + 24, 38, 2);
+      ctx.fillRect(x + 2, SKARN_RINK_TOP + 54, 26, 2);
     }
-    ctx.fillStyle = "#ffd8f0";
-    for (let i = 0; i < 14; i += 1) {
-      const x = i * 82 - ((xShift * 1.2) % 82);
-      ctx.fillRect(x + 10, GAME.floorTop + 30, 40, 5);
-    }
-    // Spotlight beams for stage energy.
-    ctx.fillStyle = "rgba(255, 210, 235, 0.18)";
-    for (let i = 0; i < 4; i += 1) {
-      const sx = 120 + i * 210;
-      ctx.beginPath();
-      ctx.moveTo(sx, 0);
-      ctx.lineTo(sx + 70, GAME.floorTop);
-      ctx.lineTo(sx - 70, GAME.floorTop);
-      ctx.closePath();
-      ctx.fill();
+    ctx.fillStyle = "#c6495b";
+    for (let i = 0; i < 10; i += 1) {
+      const x = i * 112 - ((xShift * 1.18) % 112);
+      ctx.fillRect(x + 14, SKARN_RINK_TOP + 38, 46, 3);
     }
   } else {
     const floorColor = state.theme === "streets" ? "#4f5668" : "#d7ddd8";
@@ -3081,38 +3300,17 @@ function drawRunBackground() {
       ctx.fillRect(x + 6, GAME.floorTop + 2 + (i % 3), 22, 2);
     }
   } else if (state.theme === "skarn") {
-    const skyGrad = ctx.createLinearGradient(0, 0, 0, GAME.floorTop);
-    skyGrad.addColorStop(0, "#ffb1d5");
-    skyGrad.addColorStop(1, "#f27cc4");
-    ctx.fillStyle = skyGrad;
-    ctx.fillRect(0, 0, canvas.width, GAME.floorTop);
-
-    ctx.fillStyle = "rgba(255, 238, 247, 0.6)";
-    for (let i = 0; i < 6; i += 1) {
-      const x = i * 190 - ((xShift * 0.2) % 1140) - 90;
-      ctx.beginPath();
-      ctx.ellipse(x, 72 + (i % 2) * 24, 68, 20, 0, 0, Math.PI * 2);
-      ctx.fill();
+    // Painted center-ice accents and board scuffs.
+    ctx.fillStyle = "rgba(74,124,186,0.34)";
+    for (let i = 0; i < 14; i += 1) {
+      const x = i * 74 - ((xShift * 0.84) % 74);
+      ctx.fillRect(x + 8, SKARN_RINK_TOP + 10, 20, 1);
+      ctx.fillRect(x + 30, SKARN_RINK_TOP + 34, 14, 1);
     }
-
-    for (let i = 0; i < 9; i += 1) {
-      const x = i * 126 - ((xShift * 0.55) % 126);
-      const h = 108 + (i % 3) * 24;
-      const baseY = 300 - h;
-      ctx.fillStyle = "#582a52";
-      ctx.fillRect(x + 4, baseY, 104, h);
-      ctx.fillStyle = "#ffdd8a";
-      ctx.fillRect(x + 14, baseY + 18, 14, 6);
-      ctx.fillRect(x + 34, baseY + 18, 14, 6);
-      ctx.fillRect(x + 54, baseY + 18, 14, 6);
-      ctx.fillRect(x + 74, baseY + 18, 14, 6);
-      // Stage-world building detail (posters, balcony ledges).
-      ctx.fillStyle = "rgba(255, 230, 190, 0.55)";
-      ctx.fillRect(x + 12, baseY + 40, 20, 10);
-      ctx.fillRect(x + 40, baseY + 52, 18, 8);
-      ctx.fillStyle = "rgba(30, 20, 40, 0.4)";
-      ctx.fillRect(x + 10, baseY + 38, 60, 2);
-      ctx.fillRect(x + 10, baseY + 64, 60, 2);
+    ctx.fillStyle = "rgba(255,255,255,0.54)";
+    for (let i = 0; i < 10; i += 1) {
+      const x = i * 110 - ((xShift * 0.6) % 110);
+      ctx.fillRect(x + 20, SKARN_RINK_TOP + 4, 58, 1);
     }
   } else {
     ctx.fillStyle = "rgba(0,0,0,0.12)";
@@ -3206,24 +3404,36 @@ function drawRunBackground() {
       ctx.fillRect(x + 18, 288, 10, 4);
     }
   } else if (state.theme === "skarn") {
-    // 80s stage vibes: neon grid + speaker towers.
-    ctx.strokeStyle = "rgba(255,176,230,0.35)";
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 10; i += 1) {
-      const x = i * 110 - ((xShift * 0.35) % 110);
-      ctx.beginPath();
-      ctx.moveTo(x, GAME.floorTop + 6);
-      ctx.lineTo(x + 80, canvas.height - 2);
-      ctx.stroke();
+    // Goldenface: full humanoid sprite with aiming/recoil animation.
+    const pose = getSkarnGoldenfacePose();
+    const gfBaseX = pose.baseX;
+    const gfBaseY = pose.baseY;
+    const gfBob = pose.bob;
+    drawHeroPortraitSprite(gfBaseX, gfBaseY + gfBob, 1.08, {
+      label: "Michael",
+      outfitId: "goldenface",
+      shadow: true,
+    });
+
+    const firing = pose.firing;
+    const recoil = pose.recoil;
+    const armY = pose.armY;
+    ctx.fillStyle = "#121316";
+    ctx.fillRect(gfBaseX + 6 + recoil, armY, 14, 4); // upper arm extension (left-facing)
+    ctx.fillRect(gfBaseX - 2 + recoil, armY + 1, 9, 3); // forearm
+    ctx.fillStyle = "#e4ba53";
+    ctx.fillRect(gfBaseX - 5 + recoil, armY + 1, 3, 3); // hand
+    ctx.fillStyle = "#2b3b55";
+    ctx.fillRect(gfBaseX - 12 + recoil, armY + 1, 7, 2); // pistol body
+    ctx.fillRect(gfBaseX - 14 + recoil, armY, 2, 1); // pistol sight
+    if (firing) {
+      ctx.fillStyle = "rgba(255, 232, 170, 0.95)";
+      ctx.fillRect(gfBaseX - 16 + recoil, armY + 1, 3, 2);
+      ctx.fillStyle = "rgba(255, 184, 118, 0.8)";
+      ctx.fillRect(gfBaseX - 18 + recoil, armY + 1, 2, 2);
     }
-    for (let i = 0; i < 3; i += 1) {
-      const sx = 30 + i * 300;
-      ctx.fillStyle = "#1d1630";
-      ctx.fillRect(sx, 320, 28, 80);
-      ctx.fillStyle = "#4d3a6d";
-      ctx.fillRect(sx + 6, 330, 16, 16);
-      ctx.fillRect(sx + 6, 352, 16, 16);
-    }
+
+    // No decorative mini bullets here; real pucks are gameplay obstacles.
   }
 
   // Soft scanline pass to keep the crunchy 8-bit feel.
@@ -3235,9 +3445,10 @@ function drawRunBackground() {
 
 function drawPlayer() {
   const player = state.player;
-  const runnerId = getOutfitRunnerId();
-  const outfitId = getEquippedOutfitId(runnerId);
-  const label = player.preset.label;
+  const forceScarnLook = state.scene === "run" && state.runWorldId === "skarn";
+  const runnerId = forceScarnLook ? "michael" : getOutfitRunnerId();
+  const outfitId = forceScarnLook ? null : getEquippedOutfitId(runnerId);
+  const label = forceScarnLook ? "Michael" : player.preset.label;
   const x = player.x;
   const slideHeight = state.slideActive ? 22 : 0;
   const visualHeight = player.height - slideHeight;
@@ -3249,7 +3460,8 @@ function drawPlayer() {
   const footY = yTop + 65 + bob;
   const slidePose = state.slideActive ? Math.max(0, Math.min(1, state.slideSpeed / Math.max(1, GAME.slideInitialSpeed))) : 0;
 
-  let shirtColor = player.preset.color;
+  const effectiveTieColor = forceScarnLook ? CHARACTER_PRESETS.michael.tieColor : player.preset.tieColor || "#2f4f7a";
+  let shirtColor = forceScarnLook ? CHARACTER_PRESETS.michael.color : player.preset.color;
   if (outfitId === "cornell_fit") shirtColor = "#8a2432";
   else if (outfitId === "goldenface") shirtColor = "#121316";
   else if (outfitId === "date_mike") shirtColor = "#1e2f4e";
@@ -3271,6 +3483,9 @@ function drawPlayer() {
   if (outfitId === "goldenface") {
     skinBase = "#e4ba53";
     hairBase = "#1f1d1b";
+  } else if (outfitId === "strangler_hood") {
+    skinBase = "#1a1d24";
+    hairBase = "#131722";
   }
 
   if (state.slideActive) {
@@ -3298,10 +3513,16 @@ function drawPlayer() {
     ctx.fillRect(x + 7, hipY - 16, 14, 10);
     ctx.fillStyle = hairBase;
     ctx.fillRect(x + 6, hipY - 18, 15, 3);
-    ctx.fillStyle = "#1b2230";
-    ctx.fillRect(x + 11, hipY - 13, 2, 1);
-    ctx.fillRect(x + 15, hipY - 13, 2, 1);
-    ctx.fillRect(x + 12, hipY - 11, 4, 1);
+    if (outfitId === "strangler_hood") {
+      ctx.fillStyle = "#c3d2ee";
+      ctx.fillRect(x + 12, hipY - 13, 1, 1);
+      ctx.fillRect(x + 16, hipY - 13, 1, 1);
+    } else {
+      ctx.fillStyle = "#1b2230";
+      ctx.fillRect(x + 11, hipY - 13, 2, 1);
+      ctx.fillRect(x + 15, hipY - 13, 2, 1);
+      ctx.fillRect(x + 12, hipY - 11, 4, 1);
+    }
 
     // Rear arm first so it sits behind the torso and below the head.
     ctx.fillStyle = shirtColor;
@@ -3327,7 +3548,7 @@ function drawPlayer() {
     ctx.fillStyle = "rgba(255,255,255,0.14)";
     ctx.fillRect(x + 30, hipY - 12, 5, 8);
     if (outfitId !== "three_hole_gym" && outfitId !== "strangler_hood") {
-      let tie = player.preset.tieColor || "#2f4f7a";
+      let tie = effectiveTieColor;
       if (outfitId === "cornell_fit") tie = "#f4d76b";
       else if (outfitId === "goldenface") tie = "#d6b255";
       else if (outfitId === "date_mike") tie = "#9a1f2f";
@@ -3346,11 +3567,13 @@ function drawPlayer() {
     ctx.fillRect(x + 42, hipY - 9, 4, 3);
 
     if (outfitId === "strangler_hood") {
-      // Hood shape in slide pose.
-      ctx.fillStyle = "#141824";
-      ctx.fillRect(x + 5, hipY - 19, 18, 3);
-      ctx.fillRect(x + 5, hipY - 16, 3, 8);
-      ctx.fillRect(x + 20, hipY - 16, 3, 8);
+      // Distinct, slimmer hood in slide pose.
+      ctx.fillStyle = "#1a2235";
+      ctx.fillRect(x + 6, hipY - 20, 16, 4);
+      ctx.fillRect(x + 6, hipY - 16, 3, 9);
+      ctx.fillRect(x + 19, hipY - 16, 3, 9);
+      ctx.fillStyle = "#293654";
+      ctx.fillRect(x + 10, hipY - 18, 8, 1);
     }
 
     // Legs: directly connected to torso edge (no middle piece at all).
@@ -3382,7 +3605,7 @@ function drawPlayer() {
     ctx.ellipse(x + sway + 20, groundedFootY + 8, 20, 7, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    drawHeroPortraitSprite(x + sway, footY, 1, { label: player.preset.label, outfitId, noArms: true, noLegs: true, shadow: false });
+    drawHeroPortraitSprite(x + sway, footY, 1, { label, outfitId, noArms: true, noLegs: true, shadow: false });
     // Real run animation pass: connected swinging limbs.
     const armYLeft = yTop + 24 + runCycle * 3;
     const armYRight = yTop + 24 + runCycleOpp * 3;
@@ -3400,6 +3623,46 @@ function drawPlayer() {
     ctx.fillStyle = "#111722";
     ctx.fillRect(x + sway + 9, footY + 2 - legLiftL, 8, 3);
     ctx.fillRect(x + sway + 20, footY + 2 - legLiftR, 8, 3);
+  }
+
+  if (state.runWorldId === "skarn" && !state.slideActive) {
+    // Michael Scarn: extended forearm + hand gripping gun handle.
+    const gun = getSkarnPlayerGunPose();
+    const forearmLen = gun.handX - gun.shoulderX;
+
+    // Shoulder cuff.
+    ctx.fillStyle = "#0f1520";
+    ctx.fillRect(gun.shoulderX - 1, gun.shoulderY - 2, 3, 4);
+
+    // Forearm.
+    ctx.fillStyle = shirtColor;
+    ctx.fillRect(gun.shoulderX + 1, gun.shoulderY - 1, forearmLen, 4);
+
+    // Wrist cuff + hand (hand centered on grip).
+    ctx.fillStyle = "#0f1520";
+    ctx.fillRect(gun.handX - 1, gun.handY - 2, 3, 5);
+    ctx.fillStyle = skinBase;
+    ctx.fillRect(gun.handX, gun.handY - 1, 5, 4);
+
+    // Gun handle in hand.
+    ctx.fillStyle = "#2b3b55";
+    ctx.fillRect(gun.handX + 2, gun.handY + 1, 2, 6);
+
+    // Barrel from grip top to muzzle (keeps gun attached during aim oscillation).
+    const barrelSegs = 7;
+    for (let i = 0; i <= barrelSegs; i += 1) {
+      const t = i / barrelSegs;
+      const bx = Math.round(gun.handX + 5 + (gun.muzzleX - (gun.handX + 5)) * t);
+      const by = Math.round(gun.handY + (gun.muzzleY - gun.handY) * t);
+      ctx.fillRect(bx, by, 3, 1);
+    }
+    // Muzzle tip + tiny highlight.
+    ctx.fillRect(gun.muzzleX, gun.muzzleY - 1, 3, 2);
+    if (gun.aiming) {
+      ctx.fillStyle = "rgba(255,255,255,0.2)";
+      ctx.fillRect(gun.handX + 6, gun.handY - 1, 1, 1);
+      ctx.fillRect(gun.muzzleX + 1, gun.muzzleY - 1, 1, 1);
+    }
   }
 
   if (state.attackLeft > 0 && !state.slideActive) {
@@ -3423,7 +3686,7 @@ function drawObstacleSprite(obs) {
     ctx.fillRect(obs.x + 24, footY, 10, 3);
     ctx.fillRect(obs.x + obs.width - 34, footY, 10, 3);
     ctx.fillRect(obs.x + obs.width - 20, footY, 12, 3);
-  } else {
+  } else if (obs.type !== "hockey_puck") {
     ctx.fillStyle = "rgba(0,0,0,0.2)";
     ctx.beginPath();
     ctx.ellipse(obs.x + obs.width * 0.5, GAME.groundY + 4, obs.width * 0.48, 6, 0, 0, Math.PI * 2);
@@ -3983,6 +4246,23 @@ function drawCollectibles() {
   }
 }
 
+function drawSkarnAimGuide() {
+  if (state.runWorldId !== "skarn" || !state.skarnAimActive || !state.player) return;
+  const gun = getSkarnPlayerGunPose();
+  const aimY = getSkarnAimY();
+  const target = getSkarnGoldenfaceHitbox();
+  const endX = target.x + target.width * 0.5;
+
+  for (let x = gun.muzzleX + 3; x < endX; x += 10) {
+    const t = (x - gun.muzzleX) / Math.max(1, endX - gun.muzzleX);
+    const y = gun.muzzleY + (aimY - gun.muzzleY) * t;
+    ctx.fillStyle = "rgba(0, 0, 0, 0.95)";
+    ctx.fillRect(x, y, 5, 2);
+  }
+  ctx.fillStyle = "rgba(0, 0, 0, 0.9)";
+  ctx.fillRect(target.x - 2, aimY - 1, target.width + 4, 2);
+}
+
 function drawCurrencyIcon(type, x, y, scale = 1) {
   if (type === "schrute_buck") {
     ctx.fillStyle = "#c9d8d4";
@@ -4152,6 +4432,7 @@ function drawHud() {
   const difficulty = LEVEL_DIFFICULTY[state.runWorldId] || LEVEL_DIFFICULTY.bullpen;
   ctx.fillStyle = "#d4e6ff";
   if (state.runWorldId === "pursuit") ctx.fillText("Time: -- (Chase Mode)", 210, 78);
+  else if (state.runWorldId === "skarn") ctx.fillText("Time: -- (Showdown)", 210, 78);
   else ctx.fillText(`Time: ${timeLeft.toFixed(1)}s`, 210, 78);
   ctx.fillText(`World: ${THEME_LABELS[state.theme] || state.theme}`, 210, 100);
   // Keep difficulty on its own row so it never collides with wallet text.
@@ -4161,8 +4442,9 @@ function drawHud() {
     ctx.fillText(`Find Pam: ${state.pamSpottedCount}/${state.pamRequiredCount} (Press P when she appears)`, 500, 100);
   }
   ctx.fillStyle = "#d4e6ff";
-  if (state.runWorldId === "skarn") ctx.fillText(`Parkour: J  Hit: LOCKED  Pause: Enter`, 500, 122);
-  else if (state.runWorldId !== "pursuit") ctx.fillText(`Parkour: J  Hit: K  Pause: Enter`, 500, 122);
+  if (state.runWorldId !== "pursuit" && state.runWorldId !== "skarn") {
+    ctx.fillText(`Parkour: J  Hit: K  Pause: Enter`, 500, 122);
+  }
 
   if (state.slideActive) {
     ctx.fillStyle = "#8fdcff";
@@ -4182,6 +4464,14 @@ function drawHud() {
     ctx.fillText(`with the car and jump on it`, 480, 120);
     ctx.fillStyle = "#d4e6ff";
     ctx.fillText(`Parkour: J  Hit: K  Pause: Enter`, 500, 146);
+  } else if (state.runWorldId === "skarn") {
+    ctx.fillStyle = "#ffe38f";
+    ctx.fillText(`Goldenface Hits: ${state.skarnGoldenfaceHits}/5`, 480, 78);
+    ctx.fillText(`Goal: Hold K to aim, release K to shoot`, 480, 100);
+    ctx.fillStyle = "#d4e6ff";
+    ctx.fillText(`Line up the dotted guide on Goldenface`, 480, 124);
+    ctx.fillText(`Avoid flying pucks from his gun`, 480, 146);
+    ctx.fillText(`Parkour: J  Shoot: K  Pause: Enter`, 480, 168);
   }
   if (state.cheatInvincible) {
     ctx.fillStyle = "#9dffd0";
@@ -4505,7 +4795,14 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
   const isKelly = label === "Kelly";
   const isAndy = label === "Andy";
   const isDavid = label === "David Wallace" || style === "david";
+  const isStranglerHood = outfitId === "strangler_hood";
   const hasSleeves = !isDwight && !isKelly;
+  let renderSkinBase = skinBase;
+  let renderSkinShade = skinShade;
+  if (isStranglerHood) {
+    renderSkinBase = "#0b0f18";
+    renderSkinShade = "#0b0f18";
+  }
 
   if (opts.shadow !== false) {
     ctx.fillStyle = "rgba(0,0,0,0.24)";
@@ -4515,11 +4812,13 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
   }
 
   // Base head first.
-  ctx.fillStyle = skinBase;
+  ctx.fillStyle = renderSkinBase;
   ctx.fillRect((isPam ? x + 10 * scale : x + 8 * scale), y - 58 * scale, 16 * scale, 12 * scale);
 
   // Hair shell.
-  if (isPam) {
+  if (isStranglerHood) {
+    // Hood is rendered in outfit pass; skip default hair shell entirely.
+  } else if (isPam) {
     // Similar silhouette to Jim, with longer side hair and no floating blocks.
     ctx.fillStyle = hairBase;
     ctx.fillRect(x + 8 * scale, y - 64 * scale, 20 * scale, 7 * scale);
@@ -4557,49 +4856,51 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
   }
 
   // Face details.
-  ctx.fillStyle = "#1e2431";
-  if (isDwight || isDavid) {
-    if (isDwight) {
-      // Pixel-aligned silver glasses and centered eyes.
-      ctx.fillStyle = "#9ba9ba";
-      ctx.fillRect(x + 10 * scale, y - 56 * scale, 5 * scale, 1 * scale);
-      ctx.fillRect(x + 10 * scale, y - 52 * scale, 5 * scale, 1 * scale);
-      ctx.fillRect(x + 10 * scale, y - 55 * scale, 1 * scale, 3 * scale);
-      ctx.fillRect(x + 14 * scale, y - 55 * scale, 1 * scale, 3 * scale);
-      ctx.fillRect(x + 17 * scale, y - 56 * scale, 5 * scale, 1 * scale);
-      ctx.fillRect(x + 17 * scale, y - 52 * scale, 5 * scale, 1 * scale);
-      ctx.fillRect(x + 17 * scale, y - 55 * scale, 1 * scale, 3 * scale);
-      ctx.fillRect(x + 21 * scale, y - 55 * scale, 1 * scale, 3 * scale);
-      ctx.fillRect(x + 15 * scale, y - 54 * scale, 2 * scale, 1 * scale);
-      ctx.fillStyle = "#1e2431";
-      ctx.fillRect(x + 12 * scale, y - 54 * scale, 1 * scale, 1 * scale);
-      ctx.fillRect(x + 19 * scale, y - 54 * scale, 1 * scale, 1 * scale);
+  if (!isStranglerHood) {
+    ctx.fillStyle = "#1e2431";
+    if (isDwight || isDavid) {
+      if (isDwight) {
+        // Pixel-aligned silver glasses and centered eyes.
+        ctx.fillStyle = "#9ba9ba";
+        ctx.fillRect(x + 10 * scale, y - 56 * scale, 5 * scale, 1 * scale);
+        ctx.fillRect(x + 10 * scale, y - 52 * scale, 5 * scale, 1 * scale);
+        ctx.fillRect(x + 10 * scale, y - 55 * scale, 1 * scale, 3 * scale);
+        ctx.fillRect(x + 14 * scale, y - 55 * scale, 1 * scale, 3 * scale);
+        ctx.fillRect(x + 17 * scale, y - 56 * scale, 5 * scale, 1 * scale);
+        ctx.fillRect(x + 17 * scale, y - 52 * scale, 5 * scale, 1 * scale);
+        ctx.fillRect(x + 17 * scale, y - 55 * scale, 1 * scale, 3 * scale);
+        ctx.fillRect(x + 21 * scale, y - 55 * scale, 1 * scale, 3 * scale);
+        ctx.fillRect(x + 15 * scale, y - 54 * scale, 2 * scale, 1 * scale);
+        ctx.fillStyle = "#1e2431";
+        ctx.fillRect(x + 12 * scale, y - 54 * scale, 1 * scale, 1 * scale);
+        ctx.fillRect(x + 19 * scale, y - 54 * scale, 1 * scale, 1 * scale);
+      } else {
+        const g = "#8fa3bd";
+        ctx.strokeStyle = g;
+        ctx.lineWidth = Math.max(1, scale * 0.45);
+        ctx.strokeRect(x + 11.5 * scale, y - 54.5 * scale, 3.2 * scale, 2.6 * scale);
+        ctx.strokeRect(x + 17.3 * scale, y - 54.5 * scale, 3.2 * scale, 2.6 * scale);
+        ctx.beginPath();
+        ctx.moveTo(x + 14.7 * scale, y - 53.2 * scale);
+        ctx.lineTo(x + 17.3 * scale, y - 53.2 * scale);
+        ctx.stroke();
+        ctx.fillRect(x + 13 * scale, y - 53.2 * scale, 1 * scale, 1 * scale);
+        ctx.fillRect(x + 19 * scale, y - 53.2 * scale, 1 * scale, 1 * scale);
+      }
     } else {
-      const g = "#8fa3bd";
-      ctx.strokeStyle = g;
-      ctx.lineWidth = Math.max(1, scale * 0.45);
-      ctx.strokeRect(x + 11.5 * scale, y - 54.5 * scale, 3.2 * scale, 2.6 * scale);
-      ctx.strokeRect(x + 17.3 * scale, y - 54.5 * scale, 3.2 * scale, 2.6 * scale);
-      ctx.beginPath();
-      ctx.moveTo(x + 14.7 * scale, y - 53.2 * scale);
-      ctx.lineTo(x + 17.3 * scale, y - 53.2 * scale);
-      ctx.stroke();
-      ctx.fillRect(x + 13 * scale, y - 53.2 * scale, 1 * scale, 1 * scale);
-      ctx.fillRect(x + 19 * scale, y - 53.2 * scale, 1 * scale, 1 * scale);
+      const eyeY = isPam ? -53 : -54;
+      ctx.fillRect(x + 12 * scale, y + eyeY * scale, 2 * scale, 2 * scale);
+      ctx.fillRect(x + 18 * scale, y + eyeY * scale, 2 * scale, 2 * scale);
     }
-  } else {
-    const eyeY = isPam ? -53 : -54;
-    ctx.fillRect(x + 12 * scale, y + eyeY * scale, 2 * scale, 2 * scale);
-    ctx.fillRect(x + 18 * scale, y + eyeY * scale, 2 * scale, 2 * scale);
-  }
-  ctx.fillStyle = skinShade;
-  ctx.fillRect(x + 15 * scale, y + (isPam ? -50 : -50) * scale, 1 * scale, 2 * scale);
-  ctx.fillStyle = "#2f3b4e";
-  ctx.fillRect(x + 13 * scale, y + (isPam ? -48 : -50) * scale, 6 * scale, 1 * scale);
-  if (isKelly) {
-    // Kelly smile (filled so it reads clearly at pixel scale).
-    ctx.fillRect(x + 13 * scale, y - 49 * scale, 6 * scale, 1 * scale);
-    ctx.fillRect(x + 14 * scale, y - 48 * scale, 4 * scale, 1 * scale);
+    ctx.fillStyle = renderSkinShade;
+    ctx.fillRect(x + 15 * scale, y + (isPam ? -50 : -50) * scale, 1 * scale, 2 * scale);
+    ctx.fillStyle = "#2f3b4e";
+    ctx.fillRect(x + 13 * scale, y + (isPam ? -48 : -50) * scale, 6 * scale, 1 * scale);
+    if (isKelly) {
+      // Kelly smile (filled so it reads clearly at pixel scale).
+      ctx.fillRect(x + 13 * scale, y - 49 * scale, 6 * scale, 1 * scale);
+      ctx.fillRect(x + 14 * scale, y - 48 * scale, 4 * scale, 1 * scale);
+    }
   }
 
   // Outfit-specific face overlays (restore detail).
@@ -4632,14 +4933,22 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     ctx.fillRect(x + 15 * scale, y - 58 * scale, 2 * scale, 2 * scale);
   }
   if (outfitId === "strangler_hood") {
-    // Hood silhouette framing the face.
-    ctx.fillStyle = "#141824";
-    ctx.fillRect(x + 6 * scale, y - 63 * scale, 20 * scale, 4 * scale);
-    ctx.fillRect(x + 5 * scale, y - 59 * scale, 4 * scale, 15 * scale);
-    ctx.fillRect(x + 23 * scale, y - 59 * scale, 4 * scale, 15 * scale);
-    ctx.fillStyle = "#0f121a";
-    ctx.fillRect(x + 9 * scale, y - 58 * scale, 2 * scale, 10 * scale);
-    ctx.fillRect(x + 21 * scale, y - 58 * scale, 2 * scale, 10 * scale);
+    // Single-piece hood shape so no seams show in previews/in-run sprites.
+    ctx.fillStyle = "#1a2235";
+    ctx.fillRect(x + 8 * scale, y - 64 * scale, 16 * scale, 20 * scale); // full hood shell
+    ctx.fillStyle = "#121a2a";
+    ctx.fillRect(x + 8 * scale, y - 64 * scale, 2 * scale, 20 * scale); // left edge
+    ctx.fillRect(x + 22 * scale, y - 64 * scale, 2 * scale, 20 * scale); // right edge
+    ctx.fillStyle = "#24314c";
+    ctx.fillRect(x + 10 * scale, y - 63 * scale, 12 * scale, 2 * scale); // top rim accent
+    ctx.fillStyle = "#0d111c";
+    ctx.fillRect(x + 10 * scale, y - 58 * scale, 12 * scale, 11 * scale); // face cavity
+    ctx.fillStyle = "#060910";
+    ctx.fillRect(x + 11 * scale, y - 56 * scale, 10 * scale, 8 * scale); // dark mask
+    // Tiny eye slits.
+    ctx.fillStyle = "#c3d2ee";
+    ctx.fillRect(x + 13 * scale, y - 53 * scale, 1 * scale, 1 * scale);
+    ctx.fillRect(x + 18 * scale, y - 53 * scale, 1 * scale, 1 * scale);
   }
 
   // Torso.
@@ -4688,6 +4997,15 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(x + 14 * scale, y - 43 * scale, 8 * scale, 24 * scale);
   }
+  if (outfitId === "strangler_hood") {
+    // Robe-style body: dark front with lighter right strip.
+    ctx.fillStyle = "#1a2235";
+    ctx.fillRect(x + 6 * scale, y - 46 * scale, 24 * scale, 30 * scale);
+    ctx.fillStyle = "#11192a";
+    ctx.fillRect(x + 6 * scale, y - 46 * scale, 16 * scale, 30 * scale);
+    ctx.fillStyle = "#3c4353";
+    ctx.fillRect(x + 22 * scale, y - 46 * scale, 8 * scale, 30 * scale);
+  }
 
   if (!hideTie && !isPam) {
     ctx.fillStyle = tieColor;
@@ -4707,13 +5025,22 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     const armH = isPam ? 11 * scale : 12 * scale;
     const leftArmX = isPam ? x + 5 * scale : x + 2 * scale;
     const rightArmX = isPam ? x + 28 * scale : x + 30 * scale;
-    ctx.fillStyle = skinBase;
-    ctx.fillRect(leftArmX, armTopY, 3 * scale, armH);
-    ctx.fillRect(rightArmX, armTopY, 3 * scale, armH);
-    if (hasSleeves || isPam) {
-      ctx.fillStyle = shirtColor;
+    if (outfitId === "strangler_hood") {
+      ctx.fillStyle = "#080c14";
+      ctx.fillRect(leftArmX, armTopY, 3 * scale, armH);
+      ctx.fillRect(rightArmX, armTopY, 3 * scale, armH);
+      ctx.fillStyle = "#151d2e";
       ctx.fillRect(leftArmX, armTopY, 3 * scale, 5 * scale);
       ctx.fillRect(rightArmX, armTopY, 3 * scale, 5 * scale);
+    } else {
+      ctx.fillStyle = skinBase;
+      ctx.fillRect(leftArmX, armTopY, 3 * scale, armH);
+      ctx.fillRect(rightArmX, armTopY, 3 * scale, armH);
+      if (hasSleeves || isPam) {
+        ctx.fillStyle = shirtColor;
+        ctx.fillRect(leftArmX, armTopY, 3 * scale, 5 * scale);
+        ctx.fillRect(rightArmX, armTopY, 3 * scale, 5 * scale);
+      }
     }
   }
 
@@ -5687,78 +6014,94 @@ function drawMissionsScene() {
   const savePam = state.saveData.missions.savePam;
   const capture = state.saveData.missions.captureStrangler;
   const tlm = state.saveData.missions.threatLevelMidnight;
-  // Mission rows with status indicator badges.
-  const missionRows = [
-    { y: 136, done: savePam.completed, color: "#7ee0a2" },
-    { y: 266, done: capture.completed, color: "#9dc9ff" },
-    { y: 366, done: tlm.completed, color: "#f4cc7a" },
-  ];
-  for (const row of missionRows) {
-    ctx.fillStyle = "rgba(255,255,255,0.06)";
-    ctx.fillRect(88, row.y, 784, 94);
-    ctx.fillStyle = row.done ? row.color : "#3e4b64";
-    ctx.fillRect(96, row.y + 12, 14, 14);
-    if (row.done) {
-      ctx.fillStyle = "#122334";
-      ctx.fillRect(100, row.y + 18, 3, 3);
-      ctx.fillRect(103, row.y + 21, 3, 3);
-      ctx.fillRect(106, row.y + 18, 4, 3);
+  const visibleMissions = [];
+  if (savePam.added || savePam.completed) {
+    let detail = "";
+    if (!savePam.warehouseCleared && !savePam.completed) {
+      detail = "Finish Warehouse once to trigger Pam search mode.";
+    } else if (!savePam.completed) {
+      detail = `Replay Warehouse: press P whenever Pam appears. Best in one run: ${savePam.sightingsBest || 0}/5.`;
+    } else {
+      detail = "Pam rescued. Talk to her in the shop for your next mission.";
     }
+    visibleMissions.push({
+      title: "Save Pam",
+      detail,
+      status: savePam.completed ? "Completed" : "Active",
+      done: savePam.completed,
+      color: "#7ee0a2",
+    });
   }
-  ctx.fillStyle = "#f5ead6";
-  ctx.font = "bold 22px Trebuchet MS";
-  ctx.fillText("Save Pam", 106, 158);
-  ctx.font = "18px Trebuchet MS";
-  if (!savePam.added) {
-    ctx.fillText("Talk to Jim in the shop to unlock this mission.", 106, 188);
-  } else if (!savePam.warehouseCleared) {
-    ctx.fillText("Finish Warehouse once to trigger Pam search mode.", 106, 188);
-  } else if (!savePam.completed) {
-    ctx.fillText("Replay Warehouse: press P whenever Pam appears in the background.", 106, 188);
-    ctx.fillText(`Best sightings in one run: ${savePam.sightingsBest || 0}/5`, 106, 218);
-  } else {
-    ctx.fillText("Pam rescued. Talk to her in the shop for your next mission.", 106, 188);
+  if (capture.added || capture.completed) {
+    let detail = "";
+    if (!capture.completed) {
+      detail = "Beat Final Pursuit by hitting x10 HARDCORE, then jump on the Strangler's car.";
+    } else if (!state.saveData.unlocks.jimDeskKey) {
+      detail = "Return to Pam in the shop to claim Jim's Desk Key.";
+    } else {
+      detail = "Captured. Key claimed from Pam.";
+    }
+    visibleMissions.push({
+      title: "Capture The Strangler",
+      detail,
+      status: capture.completed ? (state.saveData.unlocks.jimDeskKey ? "Completed" : "Complete - Reward Unclaimed") : "Active",
+      done: capture.completed,
+      color: "#9dc9ff",
+    });
   }
-  ctx.fillText(`Status: ${savePam.completed ? "Completed" : savePam.added ? "Active" : "Not Added"}`, 106, 248);
+  if (tlm.added || tlm.completed) {
+    const detail = tlm.completed
+      ? "Secret warp protocol armed. Michael Scarn mode is ready."
+      : "Press D to open Jim's Desk, equip Goldenface from the drawer, then click Michael's mug in the Conference Room.";
+    visibleMissions.push({
+      title: "Threat Level Midnight",
+      detail,
+      status: tlm.completed ? "Completed" : "Active",
+      done: tlm.completed,
+      color: "#f4cc7a",
+    });
+  }
 
-  ctx.font = "bold 22px Trebuchet MS";
-  ctx.fillText("Capture The Strangler", 106, 288);
-  ctx.font = "18px Trebuchet MS";
-  if (!capture.added) {
-    ctx.fillText("Talk to Pam in the shop to unlock this mission.", 106, 318);
-  } else if (!capture.completed) {
-    ctx.fillText("Beat Final Pursuit by hitting x10 HARDCORE.", 106, 318);
-  } else if (!state.saveData.unlocks.jimDeskKey) {
-    ctx.fillText("Return to Pam in the shop to claim Jim's Desk Key.", 106, 318);
-  } else {
-    ctx.fillText("Captured. Key claimed from Pam. Top-row machine unlocked.", 106, 318);
-  }
-  ctx.fillText(
-    `Status: ${
-      capture.completed ? (state.saveData.unlocks.jimDeskKey ? "Completed" : "Complete - Reward Unclaimed") : capture.added ? "Active" : "Not Added"
-    }`,
-    106,
-    346
-  );
+  const baseY = 136;
+  const rowStep = 122;
+  for (let i = 0; i < visibleMissions.length; i += 1) {
+    const mission = visibleMissions[i];
+    const y = baseY + i * rowStep;
+    ctx.fillStyle = "rgba(255,255,255,0.06)";
+    ctx.fillRect(88, y, 784, 102);
+    ctx.fillStyle = mission.done ? mission.color : "#3e4b64";
+    ctx.fillRect(96, y + 12, 14, 14);
+    if (mission.done) {
+      ctx.fillStyle = "#122334";
+      ctx.fillRect(100, y + 18, 3, 3);
+      ctx.fillRect(103, y + 21, 3, 3);
+      ctx.fillRect(106, y + 18, 4, 3);
+    }
 
-  ctx.font = "bold 22px Trebuchet MS";
-  ctx.fillText("Threat Level Midnight", 106, 388);
-  ctx.font = "18px Trebuchet MS";
-  if (!tlm.added) {
-    ctx.fillText("Unlock Jim's Desk Key first.", 106, 418);
-  } else if (!tlm.completed) {
+    ctx.fillStyle = "#f5ead6";
+    ctx.font = "bold 22px Trebuchet MS";
+    ctx.fillText(mission.title, 124, y + 24);
+    ctx.font = "18px Trebuchet MS";
     drawWrappedText(
-      "Press D to open Jim's Desk, equip Goldenface from the drawer, then click Michael's mug in the Conference Room.",
-      106,
-      418,
+      mission.detail,
+      124,
+      y + 52,
       740,
       22,
       2
     );
-  } else {
-    ctx.fillText("Secret warp protocol armed. Michael Scarn mode is ready.", 106, 418);
+    ctx.fillStyle = "#d5ecff";
+    ctx.fillText(`Status: ${mission.status}`, 124, y + 92);
   }
-  ctx.fillText(`Status: ${tlm.completed ? "Completed" : tlm.added ? "Active" : "Not Added"}`, 106, 468);
+
+  if (visibleMissions.length === 0) {
+    ctx.fillStyle = "#f5ead6";
+    ctx.font = "bold 24px Trebuchet MS";
+    ctx.fillText("No active missions yet.", 106, 190);
+    ctx.font = "18px Trebuchet MS";
+    ctx.fillStyle = "#d5ecff";
+    ctx.fillText("Talk to Jim in the shop to kick off your first mission.", 106, 224);
+  }
 
   ctx.fillStyle = "#c9ddff";
   ctx.font = "17px Trebuchet MS";
@@ -6312,6 +6655,50 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
   const baseX = x;
   const baseY = y;
 
+  if (outfitId === "strangler_hood") {
+    const hx = Math.round(baseX);
+    const hy = Math.round(baseY);
+    // Explicit custom sample so the card is unmistakably the hood outfit.
+    ctx.fillStyle = "rgba(0,0,0,0.24)";
+    ctx.beginPath();
+    ctx.ellipse(hx + 14, hy + 44, 14, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Solid hood shape first, then carve opening to avoid any seams/gaps.
+    ctx.fillStyle = "#1a2235";
+    ctx.fillRect(hx + 6, hy + 1, 16, 18); // full hood body
+    ctx.fillStyle = "#24314c";
+    ctx.fillRect(hx + 7, hy + 2, 14, 3); // top rim accent
+    ctx.fillStyle = "#121a2a";
+    ctx.fillRect(hx + 6, hy + 1, 2, 18); // left outer edge
+    ctx.fillRect(hx + 20, hy + 1, 2, 18); // right outer edge
+    ctx.fillStyle = "#0d111c";
+    ctx.fillRect(hx + 10, hy + 6, 8, 8); // square opening
+    ctx.fillStyle = "#060910";
+    ctx.fillRect(hx + 10, hy + 7, 8, 6); // dark mask
+    ctx.fillStyle = "#c3d2ee";
+    ctx.fillRect(hx + 12, hy + 9, 1, 1); // eye slit
+    ctx.fillRect(hx + 16, hy + 9, 1, 1); // eye slit
+
+    ctx.fillStyle = "#1a2235";
+    ctx.fillRect(hx + 6, hy + 14, 16, 14); // robe torso
+    ctx.fillStyle = "#11192a";
+    ctx.fillRect(hx + 6, hy + 14, 10, 14);
+    ctx.fillStyle = "#3c4353";
+    ctx.fillRect(hx + 16, hy + 14, 6, 14);
+    // Dark sleeves.
+    ctx.fillStyle = "#080c14";
+    ctx.fillRect(hx + 3, hy + 14, 3, 11);
+    ctx.fillRect(hx + 22, hy + 14, 3, 11);
+    ctx.fillStyle = "#202a39";
+    ctx.fillRect(hx + 9, hy + 28, 4, 12);
+    ctx.fillRect(hx + 15, hy + 28, 4, 12);
+    ctx.fillStyle = "#141a25";
+    ctx.fillRect(hx + 8, hy + 40, 5, 2);
+    ctx.fillRect(hx + 15, hy + 40, 5, 2);
+    return;
+  }
+
   let shirtColor = "#4b6da0";
   let tieColor = "#9a1f2f";
   if (outfitId === "cornell_fit") {
@@ -6454,6 +6841,7 @@ function drawRunScene() {
   drawObstacles();
   drawCollectibles();
   drawPlayer();
+  drawSkarnAimGuide();
   drawParticles();
   drawFloatingText();
   drawHud();
@@ -6994,12 +7382,7 @@ function handlePress(ev) {
           playThemeSwitchCue();
         }
       }
-      if (isWorldUnlocked(state.selectedWorldId)) {
-        resetRunState(state.selectedWorldId);
-        summaryPanel.hidden = true;
-      } else {
-        switchScene("menu");
-      }
+      switchScene("menu");
       return;
     }
     if (state.scene === "cutscene") {
@@ -7077,7 +7460,8 @@ function handlePress(ev) {
   }
   if (ev.code === "KeyK") {
     ev.preventDefault();
-    attack();
+    if (state.runWorldId === "skarn") startSkarnAim();
+    else attack();
   }
   if (ev.code === "KeyP") {
     ev.preventDefault();
@@ -7087,13 +7471,22 @@ function handlePress(ev) {
 
 window.addEventListener("keydown", handlePress);
 window.addEventListener("keyup", (ev) => {
-  if (ev.code !== "Space") return;
-  state.spaceHeld = false;
-  if (state.pendingSpaceTapJump && !state.slideActive && state.spaceHoldSec < GAME.slideHoldThresholdSec) {
-    jump();
+  if (ev.code === "Space") {
+    state.spaceHeld = false;
+    if (state.pendingSpaceTapJump && !state.slideActive && state.spaceHoldSec < GAME.slideHoldThresholdSec) {
+      jump();
+    }
+    state.pendingSpaceTapJump = false;
+    state.spaceHoldSec = 0;
+    return;
   }
-  state.pendingSpaceTapJump = false;
-  state.spaceHoldSec = 0;
+  if (ev.code === "KeyK" && state.scene === "run" && state.runWorldId === "skarn") {
+    ev.preventDefault();
+    if (state.skarnAimActive) {
+      state.skarnAimActive = false;
+      fireSkarnGun();
+    }
+  }
 });
 
 canvas.addEventListener("pointerdown", (ev) => {
@@ -7206,6 +7599,6 @@ syncDundieOutfitRewards();
 syncPostKeyMissionRewards();
 persistSave();
 setMenuDialogue();
-updateUiForScene();
+switchScene("characters");
 summaryPanel.hidden = true;
 requestAnimationFrame(loop);
