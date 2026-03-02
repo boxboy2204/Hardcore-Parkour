@@ -176,7 +176,7 @@ const SHOP_ITEMS = [
   {
     id: "mifflin_tape",
     name: "Mifflin Tape",
-    description: "Style gain +10% each second.",
+    description: "Each run: 50/50 chance for +2 HP or -2 HP.",
     currency: "stanleyNickels",
     cost: 26,
     row: "top",
@@ -1950,7 +1950,7 @@ function startRunStateNow(worldId = state.selectedWorldId) {
   const characterHpBonus = preset.hpBonus || 0;
   const speedBonus = ownsUpgrade("parkour_shoes") ? 18 : 0;
   const stumbleTuning = ownsUpgrade("chili_guard") ? 0.72 : 1;
-  const styleTuning = ownsUpgrade("mifflin_tape") ? 1.1 : 1;
+  const tapeHpSwing = ownsUpgrade("mifflin_tape") ? (Math.random() < 0.5 ? 2 : -2) : 0;
   const boostTuning = (ownsUpgrade("energy_mug") ? 1.2 : 1) * (preset.boostMul || 1);
   const keycardLootTuning = ownsUpgrade("desk_keycard") ? 1.2 : 1;
   const keycardSpawnTuning = ownsUpgrade("desk_keycard") ? 0.82 : 1;
@@ -1964,17 +1964,21 @@ function startRunStateNow(worldId = state.selectedWorldId) {
     vy: 0,
     grounded: true,
     jumpsUsed: 0,
-    hp: 4 + hpBonus + characterHpBonus,
+    hp: Math.max(1, 4 + hpBonus + characterHpBonus + tapeHpSwing),
   };
   state.player.runtimeSpeedBonus = speedBonus;
   state.player.runtimeStumbleMul = stumbleTuning;
-  state.player.runtimeStyleMul = styleTuning;
+  state.player.runtimeStyleMul = 1;
   state.player.runtimeBoostMul = boostTuning;
   state.player.runtimeHardcoreInvincible = Boolean(preset.hardcoreInvincible);
   state.player.runtimeMaxJumps = preset.maxJumps || 1;
   state.player.runtimeLootValueMul = keycardLootTuning;
   state.player.runtimeCollectibleSpawnMul = keycardSpawnTuning;
   state.collectibleSpawnTimerSec *= keycardSpawnTuning;
+  if (tapeHpSwing !== 0) {
+    if (tapeHpSwing > 0) addFloatingText("Mifflin Tape: +2 HP!", state.player.x - 8, state.player.y - 52, "#bfffcf");
+    else addFloatingText("Mifflin Tape: -2 HP!", state.player.x - 8, state.player.y - 52, "#ffb2a5");
+  }
 
   state.saveData.stats.lifetimeRuns += 1;
   persistSave();
@@ -2443,6 +2447,12 @@ function stumbleFail() {
   addFloatingText("OOF", state.player.x + 10, state.player.y - 24, "#ffffff");
 }
 
+function applyInjuryStumble(baseSec = 0.6, pursuitMinSec = 1.25, lostPursuitChain = false) {
+  const stumbleMul = state.player?.runtimeStumbleMul || 1;
+  state.stumbleLeft = baseSec * stumbleMul;
+  if (lostPursuitChain) state.stumbleLeft = Math.max(state.stumbleLeft, pursuitMinSec);
+}
+
 function jump() {
   if (!state.running || state.paused) return;
   if (state.slideActive) return;
@@ -2525,10 +2535,9 @@ function handleObstacleCollision(obstacle) {
   state.multiplier = 1;
   state.score = Math.max(0, state.score - 80);
   state.speedBoostLeft = 0;
-  state.stumbleLeft = 0.6;
+  applyInjuryStumble(0.6, 1.25, lostPursuitChain);
   if (lostPursuitChain) {
     state.player.x = 66;
-    state.stumbleLeft = Math.max(state.stumbleLeft, 1.25);
     addFloatingText("LOST GROUND!", state.player.x - 14, state.player.y - 44, "#ffbe7a");
   }
   state.screenShake = 0.22;
@@ -2786,10 +2795,9 @@ function updateRun(dt) {
         state.multiplier = 1;
         state.score = Math.max(0, state.score - 80);
         state.speedBoostLeft = 0;
-        state.stumbleLeft = 0.6;
+        applyInjuryStumble(0.6, 1.25, lostPursuitChain);
         if (lostPursuitChain) {
           state.player.x = 66;
-          state.stumbleLeft = Math.max(state.stumbleLeft, 1.25);
           addFloatingText("LOST GROUND!", state.player.x - 14, state.player.y - 44, "#ffbe7a");
         }
         state.screenShake = Math.max(state.screenShake, 0.22);
@@ -2818,10 +2826,9 @@ function updateRun(dt) {
         state.multiplier = 1;
         state.score = Math.max(0, state.score - 80);
         state.speedBoostLeft = 0;
-        state.stumbleLeft = 0.6;
+        applyInjuryStumble(0.6, 1.25, lostPursuitChain);
         if (lostPursuitChain) {
           state.player.x = 66;
-          state.stumbleLeft = Math.max(state.stumbleLeft, 1.25);
           addFloatingText("LOST GROUND!", state.player.x - 14, state.player.y - 44, "#ffbe7a");
         }
         state.screenShake = Math.max(state.screenShake, 0.22);
