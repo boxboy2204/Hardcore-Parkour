@@ -4692,28 +4692,27 @@ function drawHud() {
     ctx.fillText("Invincible", rightX, row5Y);
   }
 
-  // Keep core controls inside the HUD panel so they are always visible and never overlap scene text.
+  // Keep controls and world-specific instructions inside the HUD panel.
   ctx.fillStyle = "#d4e6ff";
+  ctx.font = "14px Trebuchet MS";
   if (state.runWorldId === "skarn") {
     ctx.fillText("Jump: J  Hold K: Aim  Release K: Shoot", leftX, row6Y);
-    ctx.fillText("Slide: Hold Space  Pause: Enter", leftX, row7Y);
+    ctx.fillText("Skarn: Line up guide on Goldenface, then release K.", leftX, row7Y);
+  } else if (state.runWorldId === "pursuit") {
+    ctx.fillText("Jump: J  Hit: K  Slide: Hold Space  Pause: Enter", leftX, row6Y);
+    ctx.fillText("Pursuit: Build multiplier, catch up to the car, then jump on.", leftX, row7Y);
   } else {
     ctx.fillText("Jump: J  Hit: K  Slide: Hold Space", leftX, row6Y);
     ctx.fillText("Pause: Enter", leftX, row7Y);
   }
+  ctx.font = "16px Trebuchet MS";
 
   if (state.runWorldId === "pursuit") {
     ctx.fillStyle = "#ffe38f";
     ctx.fillText(`Catch Strangler: ${Math.ceil(state.tobyDistance)}m`, 480, 78);
-    ctx.fillText(`Goal: Get a high multiplier to catch up`, 480, 100);
-    ctx.fillText(`with the car and jump on it`, 480, 120);
   } else if (state.runWorldId === "skarn") {
     ctx.fillStyle = "#ffe38f";
     ctx.fillText(`Goldenface Hits: ${state.skarnGoldenfaceHits}/10`, 480, 78);
-    ctx.fillText(`Goal: Hit Goldenface 10 times`, 480, 100);
-    ctx.fillStyle = "#d4e6ff";
-    ctx.fillText(`Line up the dotted guide on Goldenface`, 480, 124);
-    ctx.fillText(`Avoid flying pucks from his gun`, 480, 146);
   }
   if (state.cheatInvincible) {
     ctx.fillStyle = "#9dffd0";
