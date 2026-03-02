@@ -16,10 +16,19 @@ const RESET_ONCE_KEY = "hardcore_parkour_reset_once_v1";
 const INVINCIBILITY_CHEAT_CODE = ["KeyB", "KeyE", "KeyE", "KeyT", "KeyS"];
 const PURSUIT_REVEAL_DURATION = 7.4;
 const PURSUIT_END_CARD_DURATION = 3.4;
+const PURSUIT_JAIL_EPILOGUE_DURATION = 4.6;
 const PURSUIT_END_TADA_PATH = "assets/freesound_community-tada-fanfare-a-6313.mp3";
+const PURSUIT_START_SIREN_PATH = "assets/11325622-police-siren-sound-effect-240674.mp3";
 const SHOP_CHACHING_PATH = "assets/chaching.mp3";
 const SAVE_PROFILE_VERSION = 2;
 const RUNNER_IDS = ["michael", "dwight", "andy"];
+const LOADING_SCENE_DURATION = 1.45;
+const PAUSE_QUOTES = [
+  '"I am running away from my responsibilities. And it feels good."',
+  '"Bears. Beets. Battlestar Galactica."',
+  '"I am not superstitious... but I am a little stitious."',
+  '"Sometimes I start a sentence and I do not know where it is going."',
+];
 
 const CHARACTER_PRESETS = {
   michael: {
@@ -316,10 +325,22 @@ const state = {
   pursuitEndPending: false,
   pursuitRevealLeft: 0,
   pursuitEndCardLeft: 0,
+  pursuitJailLeft: 0,
   pursuitEndCardCuePlayed: false,
   pursuitEndFade: 0,
   pursuitPost10Progress: 0,
   audioCtx: null,
+  pursuitSirenAudio: null,
+  bossMode: false,
+  wasPausedBeforeBoss: false,
+  loadingWorldId: null,
+  loadingLeft: 0,
+  loadingAnimSec: 0,
+  loadingChantTimer: 0,
+  loadingCalloutLeft: 0,
+  loadingCalloutText: "",
+  pauseMenuIndex: 0,
+  pauseQuote: PAUSE_QUOTES[0],
   player: null,
   obstacles: [],
   menuCards: [],
@@ -386,6 +407,7 @@ const state = {
   skarnGoldenfaceHits: 0,
   skarnAimActive: false,
   skarnAimPhase: 0,
+  skarnAimHoldSec: 0,
   cheatInvincible: false,
   cheatProgress: 0,
   reviewData: null,
@@ -626,6 +648,31 @@ function playThemeSwitchCue() {
   });
 }
 
+function playLoadingChantCue() {
+  const audioCtx = ensureAudioContext();
+  if (!audioCtx) return;
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  const now = audioCtx.currentTime;
+  const hits = [
+    { f: 220, t: 0.0, d: 0.08, v: 0.06 },
+    { f: 220, t: 0.12, d: 0.08, v: 0.06 },
+    { f: 293.66, t: 0.24, d: 0.14, v: 0.08 },
+  ];
+  hits.forEach((hit) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(hit.f, now + hit.t);
+    gain.gain.setValueAtTime(0.0001, now + hit.t);
+    gain.gain.exponentialRampToValueAtTime(hit.v, now + hit.t + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + hit.t + hit.d);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now + hit.t);
+    osc.stop(now + hit.t + hit.d + 0.01);
+  });
+}
+
 function playChaChingCue() {
   const fallbackSynth = () => {
     const audioCtx = ensureAudioContext();
@@ -660,6 +707,53 @@ function playChaChingCue() {
     audio.play().catch(() => fallbackSynth());
   } catch {
     fallbackSynth();
+  }
+}
+
+function openPauseMenu() {
+  state.paused = true;
+  state.pauseMenuIndex = 0;
+  state.pauseQuote = PAUSE_QUOTES[Math.floor(Math.random() * PAUSE_QUOTES.length)];
+}
+
+function toggleBossMode() {
+  state.bossMode = !state.bossMode;
+  if (state.bossMode) {
+    summaryPanel.hidden = true;
+    if (state.scene === "run" && !state.gameOver) {
+      state.wasPausedBeforeBoss = state.paused;
+      state.paused = true;
+    }
+    return;
+  }
+  if (state.scene === "run" && !state.gameOver) state.paused = state.wasPausedBeforeBoss;
+}
+
+function stopPursuitSirenLoop() {
+  if (!state.pursuitSirenAudio) return;
+  try {
+    state.pursuitSirenAudio.pause();
+    state.pursuitSirenAudio.currentTime = 0;
+  } catch {
+    // Ignore cleanup failures from browser audio backends.
+  }
+  state.pursuitSirenAudio = null;
+}
+
+function playPursuitStartSirenCue() {
+  stopPursuitSirenLoop();
+  try {
+    const audio = new Audio(PURSUIT_START_SIREN_PATH);
+    audio.volume = 0.15; // Quiet, distant siren bed.
+    audio.loop = true;
+    audio.currentTime = 0;
+    state.pursuitSirenAudio = audio;
+    audio.play().catch(() => {
+      if (state.pursuitSirenAudio === audio) state.pursuitSirenAudio = null;
+      playChaChingCue();
+    });
+  } catch {
+    playChaChingCue();
   }
 }
 
@@ -1634,6 +1728,7 @@ function tryBuyShopItem(itemId) {
 function switchScene(sceneId) {
   const leavingShop = state.scene === "shop" && sceneId !== "shop";
   const leavingCutscene = state.scene === "cutscene" && sceneId !== "cutscene";
+  const leavingRun = state.scene === "run" && sceneId !== "run";
   state.previousScene = state.scene;
   state.scene = sceneId;
   state.paused = false;
@@ -1664,6 +1759,7 @@ function switchScene(sceneId) {
   }
   if (sceneId === "annex") state.uiFocus.annexCard = 0;
   if (sceneId === "run") state.uiFocus.reviewButton = 0;
+  if (leavingRun) stopPursuitSirenLoop();
   if (leavingCutscene) {
     state.cutsceneFadeLeft = 0;
     state.cutsceneSongStep = 0;
@@ -1685,6 +1781,9 @@ function updateUiForScene() {
     retryBtn.hidden = true;
   } else if (state.scene === "missions") {
     startBtn.textContent = "Back";
+    retryBtn.hidden = true;
+  } else if (state.scene === "loading") {
+    startBtn.textContent = "Loading...";
     retryBtn.hidden = true;
   } else if (state.scene === "run") {
     startBtn.textContent = "Back To Menu";
@@ -1708,6 +1807,18 @@ function updateUiForScene() {
 }
 
 function resetRunState(worldId = state.selectedWorldId) {
+  stopPursuitSirenLoop();
+  state.scene = "loading";
+  state.loadingWorldId = worldId;
+  state.loadingLeft = LOADING_SCENE_DURATION;
+  state.loadingAnimSec = 0;
+  state.loadingChantTimer = 0.02;
+  state.loadingCalloutLeft = LOADING_SCENE_DURATION;
+  state.loadingCalloutText = "HUP! HUP! HARDCORE!";
+  updateUiForScene();
+}
+
+function startRunStateNow(worldId = state.selectedWorldId) {
   const selectedPreset = CHARACTER_PRESETS[characterSelect.value];
   const preset = worldId === "skarn" ? CHARACTER_PRESETS.michael : selectedPreset;
   const savePam = state.saveData.missions.savePam;
@@ -1771,6 +1882,7 @@ function resetRunState(worldId = state.selectedWorldId) {
   state.skarnGoldenfaceHits = 0;
   state.skarnAimActive = false;
   state.skarnAimPhase = 0;
+  state.skarnAimHoldSec = 0;
 
   if (pamQuestRun) state.worldBannerText = "Warehouse: Save Pam";
 
@@ -1802,6 +1914,8 @@ function resetRunState(worldId = state.selectedWorldId) {
   state.saveData.stats.lifetimeRuns += 1;
   persistSave();
   playThemeSwitchCue();
+  if (worldId === "pursuit") playPursuitStartSirenCue();
+  else stopPursuitSirenLoop();
   updateUiForScene();
 }
 
@@ -1863,10 +1977,10 @@ function getSkarnGoldenfacePose() {
 function getSkarnGoldenfaceHitbox() {
   const pose = getSkarnGoldenfacePose();
   return {
-    x: pose.baseX + 7,
-    y: pose.baseY - 58 + pose.bob,
-    width: 24,
-    height: 40,
+    x: pose.baseX + 2,
+    y: pose.baseY - 64 + pose.bob,
+    width: 36,
+    height: 54,
   };
 }
 
@@ -1882,18 +1996,14 @@ function getSkarnPlayerGunPose() {
   const shoulderX = player.x + sway + 27;
   const shoulderY = yTop + 30 + (player.grounded ? bob : 0);
   const aiming = state.skarnAimActive;
-  const elbowX = shoulderX + 9;
-  const elbowY = shoulderY;
-  const handX = shoulderX + 18;
-  const handY = shoulderY;
-  const barrelOffsetY = aiming ? Math.round(Math.sin(state.skarnAimPhase) * 16) : 0;
-  const muzzleX = handX + 14;
-  const muzzleY = handY + barrelOffsetY;
+  const aimY = getSkarnAimY();
+  const handX = shoulderX + 17;
+  const handY = aiming ? shoulderY + Math.round((aimY - shoulderY) * 0.24) : shoulderY + 11;
+  const muzzleX = handX + 13;
+  const muzzleY = aiming ? handY + Math.round((aimY - handY) * 0.58) : handY + 10;
   return {
     shoulderX,
     shoulderY,
-    elbowX,
-    elbowY,
     handX,
     handY,
     muzzleX,
@@ -1903,7 +2013,12 @@ function getSkarnPlayerGunPose() {
 }
 
 function getSkarnAimY() {
-  return getSkarnPlayerGunPose().muzzleY;
+  // Triangle sweep: ground -> ceiling -> ground (repeat).
+  const low = GAME.groundY + 8;
+  const high = 72;
+  const cycle = state.skarnAimPhase % 2;
+  const tri = cycle <= 1 ? cycle : 2 - cycle; // 0..1..0
+  return low - (low - high) * tri;
 }
 
 function triggerPursuitBoarding() {
@@ -2022,6 +2137,7 @@ function calculateStars() {
 }
 
 function endRun(reason = "time") {
+  stopPursuitSirenLoop();
   state.running = false;
   state.gameOver = true;
   // Clear pursuit reveal/fade state so summary never sits behind a black overlay.
@@ -2119,7 +2235,7 @@ function endRun(reason = "time") {
   if (reason === "toby_caught") {
     endingLine = "Finale unlocked: You caught Toby's car. The Scranton Strangler was Toby.";
   } else if (reason === "goldenface_down") {
-    endingLine = "Threat Level Midnight: You tagged Goldenface 5 times and shut down the rink showdown.";
+    endingLine = "Threat Level Midnight: You tagged Goldenface 10 times and shut down the rink showdown.";
   }
 
   state.reviewData = {
@@ -2206,23 +2322,33 @@ function attack() {
 function startSkarnAim() {
   if (state.skarnShotCooldownLeft > 0 || !state.player || state.skarnAimActive) return;
   state.skarnAimActive = true;
+  // Always start from ground so tap-spam cannot instantly line up.
+  state.skarnAimPhase = 0;
+  state.skarnAimHoldSec = 0;
 }
 
 function fireSkarnGun() {
   if (!state.player || state.skarnShotCooldownLeft > 0) return;
+  if (state.skarnAimHoldSec < 0.4) {
+    const gun = getSkarnPlayerGunPose();
+    state.skarnShotCooldownLeft = 0.16;
+    addFloatingText("TOO SOON", gun.muzzleX + 6, gun.muzzleY - 8, "#ffb9aa");
+    return;
+  }
   state.skarnShotCooldownLeft = 0.2;
   const target = getSkarnGoldenfaceHitbox();
   const aimY = getSkarnAimY();
-  const onTarget = aimY >= target.y - 6 && aimY <= target.y + target.height + 6;
+  // Count shots across the whole body hitbox (including legs), not just center mass.
+  const onTarget = aimY >= target.y - 8 && aimY <= target.y + target.height + 8;
 
   if (onTarget) {
     state.skarnGoldenfaceHits += 1;
     state.score += 180;
     state.style += 80;
     state.screenShake = Math.max(state.screenShake, 0.16);
-    addFloatingText(`HIT ${state.skarnGoldenfaceHits}/5`, target.x - 8, target.y - 10, "#ffe79a");
+    addFloatingText(`HIT ${state.skarnGoldenfaceHits}/10`, target.x - 8, target.y - 10, "#ffe79a");
     addHitParticles(target.x + target.width * 0.5, target.y + target.height * 0.45, "#ffd78a");
-    if (state.skarnGoldenfaceHits >= 5) {
+    if (state.skarnGoldenfaceHits >= 10) {
       endRun("goldenface_down");
       return;
     }
@@ -2421,7 +2547,10 @@ function updateRun(dt) {
   state.attackLeft = Math.max(0, state.attackLeft - dt);
   state.attackCooldownLeft = Math.max(0, state.attackCooldownLeft - dt);
   state.skarnShotCooldownLeft = Math.max(0, state.skarnShotCooldownLeft - dt);
-  if (state.runWorldId === "skarn" && state.skarnAimActive) state.skarnAimPhase += dt * 5.1;
+  if (state.runWorldId === "skarn" && state.skarnAimActive) {
+    state.skarnAimPhase += dt * 0.8;
+    state.skarnAimHoldSec += dt;
+  }
   state.screenShake = Math.max(0, state.screenShake - dt);
 
   if (state.spaceHeld) {
@@ -3626,42 +3755,31 @@ function drawPlayer() {
   }
 
   if (state.runWorldId === "skarn" && !state.slideActive) {
-    // Michael Scarn: extended forearm + hand gripping gun handle.
+    // Ultra-simple readable gun silhouette: one horizontal + one vertical line.
     const gun = getSkarnPlayerGunPose();
-    const forearmLen = gun.handX - gun.shoulderX;
-
-    // Shoulder cuff.
-    ctx.fillStyle = "#0f1520";
-    ctx.fillRect(gun.shoulderX - 1, gun.shoulderY - 2, 3, 4);
-
-    // Forearm.
-    ctx.fillStyle = shirtColor;
-    ctx.fillRect(gun.shoulderX + 1, gun.shoulderY - 1, forearmLen, 4);
-
-    // Wrist cuff + hand (hand centered on grip).
-    ctx.fillStyle = "#0f1520";
-    ctx.fillRect(gun.handX - 1, gun.handY - 2, 3, 5);
-    ctx.fillStyle = skinBase;
-    ctx.fillRect(gun.handX, gun.handY - 1, 5, 4);
-
-    // Gun handle in hand.
-    ctx.fillStyle = "#2b3b55";
-    ctx.fillRect(gun.handX + 2, gun.handY + 1, 2, 6);
-
-    // Barrel from grip top to muzzle (keeps gun attached during aim oscillation).
-    const barrelSegs = 7;
-    for (let i = 0; i <= barrelSegs; i += 1) {
-      const t = i / barrelSegs;
-      const bx = Math.round(gun.handX + 5 + (gun.muzzleX - (gun.handX + 5)) * t);
-      const by = Math.round(gun.handY + (gun.muzzleY - gun.handY) * t);
-      ctx.fillRect(bx, by, 3, 1);
-    }
-    // Muzzle tip + tiny highlight.
-    ctx.fillRect(gun.muzzleX, gun.muzzleY - 1, 3, 2);
+    const shoulderX = gun.shoulderX;
+    const shoulderY = gun.shoulderY;
+    const handX = gun.aiming ? gun.handX : shoulderX + 6;
+    const handY = gun.aiming ? gun.handY : shoulderY + 10;
+    // Clean arm silhouette without stepped stray pixels.
     if (gun.aiming) {
-      ctx.fillStyle = "rgba(255,255,255,0.2)";
-      ctx.fillRect(gun.handX + 6, gun.handY - 1, 1, 1);
-      ctx.fillRect(gun.muzzleX + 1, gun.muzzleY - 1, 1, 1);
+      ctx.fillStyle = shirtColor;
+      ctx.fillRect(shoulderX - 1, shoulderY - 1, 3, 3); // sleeve
+    }
+    // Hand block (always present so gun is clearly held).
+    ctx.fillStyle = skinBase;
+    if (gun.aiming) ctx.fillRect(handX, handY, 2, 3);
+    else ctx.fillRect(handX, handY - 1, 2, 3);
+
+    // Gun: horizontal body + vertical grip (always anchored at hand).
+    ctx.fillStyle = "#000000";
+    if (gun.aiming) {
+      ctx.fillRect(handX + 2, handY - 1, 14, 3); // barrel/body (bigger)
+      ctx.fillRect(handX + 5, handY + 1, 3, 8); // grip (bigger)
+    } else {
+      // Slightly lowered idle angle.
+      ctx.fillRect(handX + 1, handY + 2, 11, 3); // barrel/body (bigger)
+      ctx.fillRect(handX + 4, handY + 4, 3, 7); // grip (bigger)
     }
   }
 
@@ -4466,8 +4584,8 @@ function drawHud() {
     ctx.fillText(`Parkour: J  Hit: K  Pause: Enter`, 500, 146);
   } else if (state.runWorldId === "skarn") {
     ctx.fillStyle = "#ffe38f";
-    ctx.fillText(`Goldenface Hits: ${state.skarnGoldenfaceHits}/5`, 480, 78);
-    ctx.fillText(`Goal: Hold K to aim, release K to shoot`, 480, 100);
+    ctx.fillText(`Goldenface Hits: ${state.skarnGoldenfaceHits}/10`, 480, 78);
+    ctx.fillText(`Goal: Hit Goldenface 10 times`, 480, 100);
     ctx.fillStyle = "#d4e6ff";
     ctx.fillText(`Line up the dotted guide on Goldenface`, 480, 124);
     ctx.fillText(`Avoid flying pucks from his gun`, 480, 146);
@@ -6829,6 +6947,106 @@ function selectAnnexByCanvasPoint(x, y) {
   }
 }
 
+function drawLoadingScene() {
+  const g = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  g.addColorStop(0, "#0e203f");
+  g.addColorStop(1, "#08142d");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  drawPixelPanel(130, 88, 740, 380, "rgba(12,20,36,0.9)", "rgba(9,15,30,0.92)", "#7ecfff", "rgba(218,236,255,0.6)");
+  ctx.fillStyle = "#ffd86f";
+  ctx.font = "bold 42px Trebuchet MS";
+  ctx.fillText("MEETING ADJOURNED", 240, 150);
+  ctx.fillStyle = "#d8e9ff";
+  ctx.font = "bold 22px Trebuchet MS";
+  ctx.fillText("Loading level chaos...", 352, 188);
+
+  const progress = Math.max(0, Math.min(1, 1 - state.loadingLeft / LOADING_SCENE_DURATION));
+  const barX = 205;
+  const barY = 402;
+  const barW = 590;
+  const barH = 26;
+  ctx.fillStyle = "rgba(6,12,22,0.9)";
+  ctx.fillRect(barX, barY, barW, barH);
+  ctx.fillStyle = "#e6c85f";
+  ctx.fillRect(barX + 3, barY + 3, (barW - 6) * progress, barH - 6);
+  ctx.strokeStyle = "#a9dcff";
+  ctx.strokeRect(barX, barY, barW, barH);
+
+  // Dwight/Andy leapfrog loop in the bottom-right.
+  const baseX = 620;
+  const baseY = 340;
+  const phase = state.loadingAnimSec * 2.6;
+  const andyHop = Math.max(0, Math.sin(phase)) * 26;
+  const dwightHop = Math.max(0, Math.sin(phase + Math.PI)) * 26;
+  drawHeroPortraitSprite(baseX + 120, baseY - andyHop, 1.15, { label: "Andy", shadow: true });
+  drawHeroPortraitSprite(baseX + 54, baseY - dwightHop, 1.15, { label: "Dwight", shadow: true });
+
+  if (state.loadingCalloutLeft > 0) {
+    const pulse = 0.65 + Math.abs(Math.sin(state.loadingAnimSec * 10)) * 0.35;
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = "#ffe59f";
+    ctx.font = "bold 20px Trebuchet MS";
+    ctx.fillText(state.loadingCalloutText, 332, 364);
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawBossKeyScene() {
+  ctx.fillStyle = "#10151a";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#e9eef2";
+  ctx.fillRect(26, 26, canvas.width - 52, canvas.height - 52);
+  ctx.fillStyle = "#2f5d89";
+  ctx.fillRect(26, 26, canvas.width - 52, 34);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 18px Trebuchet MS";
+  ctx.fillText("Paper Distribution Q1.xlsx", 44, 49);
+
+  const tableX = 54;
+  const tableY = 86;
+  const cols = [120, 190, 130, 120, 120, 130];
+  const rows = 16;
+  let x = tableX;
+  ctx.fillStyle = "#d5e3ef";
+  for (const w of cols) {
+    ctx.fillRect(x, tableY, w, 28);
+    x += w;
+  }
+  ctx.fillStyle = "#223748";
+  ctx.font = "bold 14px Trebuchet MS";
+  const headers = ["Region", "Client", "Reams", "Cost", "Ship", "Status"];
+  x = tableX + 8;
+  for (let i = 0; i < cols.length; i += 1) {
+    ctx.fillText(headers[i], x, tableY + 19);
+    x += cols[i];
+  }
+
+  for (let r = 0; r < rows; r += 1) {
+    const y = tableY + 28 + r * 24;
+    ctx.fillStyle = r % 2 === 0 ? "#fbfdff" : "#f3f8fc";
+    ctx.fillRect(tableX, y, cols.reduce((a, b) => a + b, 0), 24);
+    ctx.strokeStyle = "#d3dbe3";
+    ctx.strokeRect(tableX, y, cols.reduce((a, b) => a + b, 0), 24);
+    ctx.fillStyle = "#2a3745";
+    ctx.font = "13px Trebuchet MS";
+    ctx.fillText(`Scranton-${r + 1}`, tableX + 8, y + 16);
+    ctx.fillText(`Acct ${3100 + r}`, tableX + 128, y + 16);
+    ctx.fillText(`${14 + ((r * 3) % 39)}`, tableX + 320, y + 16);
+    ctx.fillText(`$${(230 + r * 11).toFixed(0)}`, tableX + 450, y + 16);
+    ctx.fillText(`${2 + (r % 5)}d`, tableX + 570, y + 16);
+    ctx.fillText(r % 4 === 0 ? "REVIEW" : "OK", tableX + 686, y + 16);
+  }
+
+  ctx.strokeStyle = "#2d8bff";
+  const blink = Math.floor(state.elapsedSec * 2) % 2 === 0;
+  if (blink) ctx.strokeRect(tableX + 318, tableY + 52, cols[2], 24);
+  ctx.fillStyle = "#233547";
+  ctx.font = "bold 14px Trebuchet MS";
+  ctx.fillText("F12: Boss Mode", tableX, canvas.height - 26);
+}
+
 function drawRunScene() {
   const shakeX = state.screenShake > 0 ? (Math.random() - 0.5) * 10 * state.screenShake : 0;
   const shakeY = state.screenShake > 0 ? (Math.random() - 0.5) * 8 * state.screenShake : 0;
@@ -6848,13 +7066,33 @@ function drawRunScene() {
   ctx.restore();
 
   if (state.paused && !state.gameOver) {
-    ctx.fillStyle = "rgba(15,20,30,0.58)";
+    ctx.fillStyle = "rgba(10,14,24,0.7)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "#f5ead6";
-    ctx.font = "bold 40px Trebuchet MS";
-    ctx.fillText("PAUSED", 405, 250);
-    ctx.font = "20px Trebuchet MS";
-    ctx.fillText("Press Enter to resume", 386, 288);
+    drawPixelPanel(286, 132, 428, 248, "rgba(10,20,40,0.92)", "rgba(8,16,34,0.94)", "#86ccff", "rgba(200,230,255,0.65)");
+    ctx.fillStyle = "#ffe07f";
+    ctx.font = "bold 44px Trebuchet MS";
+    ctx.fillText("PAUSED", 390, 184);
+
+    const options = ["CONTINUE", "QUIT"];
+    for (let i = 0; i < options.length; i += 1) {
+      const selected = state.pauseMenuIndex === i;
+      const ox = 348 + i * 180;
+      const oy = 220;
+      ctx.fillStyle = selected ? "#2f66d6" : "#233247";
+      ctx.fillRect(ox, oy, 150, 42);
+      ctx.strokeStyle = selected ? "#9dd7ff" : "#5d7ca1";
+      ctx.strokeRect(ox, oy, 150, 42);
+      ctx.fillStyle = selected ? "#f6fcff" : "#cddbef";
+      ctx.font = "bold 24px Trebuchet MS";
+      ctx.fillText(options[i], ox + 18, oy + 29);
+    }
+
+    ctx.fillStyle = "#f1e6bf";
+    ctx.font = "bold 18px Trebuchet MS";
+    drawWrappedText(state.pauseQuote, 320, 304, 360, 22, 3);
+    ctx.fillStyle = "#bed8f6";
+    ctx.font = "16px Trebuchet MS";
+    ctx.fillText("Arrows: choose   Enter: confirm", 352, 356);
   }
 
   if (state.worldBannerLeft > 0 && !state.gameOver) {
@@ -7014,9 +7252,38 @@ function drawRunScene() {
     ctx.fillText("Strangler caught. Scranton can exhale.", 286, 316);
   }
 
+  if (
+    state.runWorldId === "pursuit" &&
+    state.pursuitEndPending &&
+    state.pursuitRevealLeft <= 0 &&
+    state.pursuitEndCardLeft <= 0 &&
+    state.pursuitJailLeft > 0
+  ) {
+    const t = 1 - state.pursuitJailLeft / PURSUIT_JAIL_EPILOGUE_DURATION;
+    ctx.fillStyle = "rgba(6,10,18,0.88)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#213142";
+    for (let x = 180; x < canvas.width - 140; x += 64) ctx.fillRect(x, 60, 12, canvas.height - 120);
+    ctx.fillStyle = "#101d2d";
+    ctx.fillRect(194, 86, canvas.width - 324, canvas.height - 172);
+    ctx.strokeStyle = "#5d7393";
+    ctx.strokeRect(194, 86, canvas.width - 324, canvas.height - 172);
+
+    ctx.fillStyle = "#f0d6a2";
+    ctx.font = "bold 38px Trebuchet MS";
+    ctx.fillText("EPILOGUE", 428, 146);
+    ctx.fillStyle = "#d7e6fb";
+    ctx.font = "bold 20px Trebuchet MS";
+    drawWrappedText('Intercom: "Toby Flenderson, report to the principal\'s office."', 242, 214, 556, 30, 2);
+    if (t > 0.45) {
+      ctx.fillStyle = "#ffcf8a";
+      drawWrappedText('"Your mother called... you wet the bed again."', 266, 270, 520, 30, 2);
+    }
+  }
+
   if (state.runWorldId === "pursuit" && state.pursuitEndPending) {
     const alpha =
-      state.pursuitRevealLeft > 0 || state.pursuitEndCardLeft > 0
+      state.pursuitRevealLeft > 0 || state.pursuitEndCardLeft > 0 || state.pursuitJailLeft > 0
         ? 0
         : Math.max(0, Math.min(1, 1 - state.pursuitEndFade / 0.75));
     ctx.fillStyle = `rgba(0,0,0,${alpha})`;
@@ -7075,10 +7342,30 @@ function render() {
 }
 
 function update(dt) {
+  if (state.bossMode) {
+    state.elapsedSec += dt;
+    return;
+  }
   state.elapsedSec += dt;
   syncDundieOutfitRewards();
   syncPostKeyMissionRewards();
   updateCornerTv(dt);
+  if (state.scene === "loading") {
+    state.loadingAnimSec += dt;
+    state.loadingLeft = Math.max(0, state.loadingLeft - dt);
+    state.loadingCalloutLeft = Math.max(0, state.loadingCalloutLeft - dt);
+    state.loadingChantTimer -= dt;
+    if (state.loadingChantTimer <= 0) {
+      playLoadingChantCue();
+      state.loadingChantTimer = 0.62;
+    }
+    if (state.loadingLeft <= 0 && state.loadingWorldId) {
+      const worldId = state.loadingWorldId;
+      state.loadingWorldId = null;
+      startRunStateNow(worldId);
+    }
+    return;
+  }
   if (state.scene === "run") updateRun(dt);
   if (state.scene === "run" && state.gameOver && state.reviewData) {
     state.reviewAnimSec = Math.min(state.reviewAnimDuration, state.reviewAnimSec + dt);
