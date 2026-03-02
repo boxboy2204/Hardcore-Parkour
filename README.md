@@ -12,7 +12,7 @@ If you find a bug, please report it here:
 - Issues: https://github.com/boxboy2204/Hardcore-Parkour/issues
 
 ## Current UI
-![Hardcore Parkour current UI](./assets/ui-screenshot.png?v=2)
+![Hardcore Parkour current UI](./assets/ui-screenshot.png?v=3)
 
 ## Run
 Because this is a browser game using modules, serve the folder with a local web server:
