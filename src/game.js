@@ -16,7 +16,6 @@ const RESET_ONCE_KEY = "hardcore_parkour_reset_once_v1";
 const INVINCIBILITY_CHEAT_CODE = ["KeyB", "KeyE", "KeyE", "KeyT", "KeyS"];
 const PURSUIT_REVEAL_DURATION = 7.4;
 const PURSUIT_END_CARD_DURATION = 3.4;
-const PURSUIT_JAIL_EPILOGUE_DURATION = 4.6;
 const PURSUIT_END_TADA_PATH = "assets/freesound_community-tada-fanfare-a-6313.mp3";
 const PURSUIT_START_SIREN_PATH = "assets/11325622-police-siren-sound-effect-240674.mp3";
 const SHOP_CHACHING_PATH = "assets/chaching.mp3";
@@ -325,7 +324,6 @@ const state = {
   pursuitEndPending: false,
   pursuitRevealLeft: 0,
   pursuitEndCardLeft: 0,
-  pursuitJailLeft: 0,
   pursuitEndCardCuePlayed: false,
   pursuitEndFade: 0,
   pursuitPost10Progress: 0,
@@ -716,9 +714,28 @@ function openPauseMenu() {
   state.pauseQuote = PAUSE_QUOTES[Math.floor(Math.random() * PAUSE_QUOTES.length)];
 }
 
+function requestBossFullscreen() {
+  try {
+    if (document.fullscreenElement) return;
+    const el = document.documentElement;
+    if (el?.requestFullscreen) el.requestFullscreen().catch(() => {});
+  } catch {
+    // Ignore fullscreen failures.
+  }
+}
+
+function exitBossFullscreen() {
+  try {
+    if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+  } catch {
+    // Ignore fullscreen failures.
+  }
+}
+
 function toggleBossMode() {
   state.bossMode = !state.bossMode;
   if (state.bossMode) {
+    requestBossFullscreen();
     summaryPanel.hidden = true;
     if (state.scene === "run" && !state.gameOver) {
       state.wasPausedBeforeBoss = state.paused;
@@ -726,6 +743,7 @@ function toggleBossMode() {
     }
     return;
   }
+  exitBossFullscreen();
   if (state.scene === "run" && !state.gameOver) state.paused = state.wasPausedBeforeBoss;
 }
 
@@ -3176,21 +3194,57 @@ function drawRunBackground() {
 
     // Crowd stands and rink wall.
     ctx.fillStyle = "#1b2f5d";
-    ctx.fillRect(0, 86, canvas.width, 98);
+    ctx.fillRect(0, 80, canvas.width, 110);
+    // Stronger tier breaks so this clearly reads as seating sections.
+    ctx.fillStyle = "#0f2245";
+    ctx.fillRect(0, 102, canvas.width, 8);
+    ctx.fillRect(0, 132, canvas.width, 8);
+    ctx.fillRect(0, 162, canvas.width, 8);
+    ctx.fillStyle = "rgba(16,24,46,0.9)";
+    ctx.fillRect(0, 124, canvas.width, 6);
+    ctx.fillRect(0, 164, canvas.width, 6);
     for (let i = 0; i < 160; i += 1) {
       const px = (i * 11 + Math.floor(i / 2) * 9) % canvas.width;
       const py = 92 + ((i * 7) % 86);
       ctx.fillStyle = i % 5 === 0 ? "#7aa3df" : i % 3 === 0 ? "#4a6ea8" : "#2b4779";
       ctx.fillRect(px, py, 2, 2);
     }
+    // Upper deck seating rows: visible "bench" blocks + railings.
+    for (let row = 0; row < 4; row += 1) {
+      const y = 84 + row * 20;
+      ctx.fillStyle = "#1a2e56";
+      ctx.fillRect(0, y + 10, canvas.width, 5); // bench slab
+      ctx.fillStyle = "#33598f";
+      for (let i = 0; i < 28; i += 1) {
+        const sx = i * 46 - ((xShift * (0.08 + row * 0.04)) % 46);
+        ctx.fillRect(sx + 4, y + 2, 30, 7); // seat block
+        ctx.fillStyle = "#223b65";
+        ctx.fillRect(sx + 6, y + 4, 26, 2); // seat back shadow
+        ctx.fillStyle = "#33598f";
+      }
+      ctx.fillStyle = "#89a9d4";
+      ctx.fillRect(0, y + 1, canvas.width, 1); // row highlight
+    }
+    // Vertical aisle dividers.
+    ctx.fillStyle = "rgba(145,176,219,0.42)";
+    for (let i = 0; i < 7; i += 1) {
+      const ax = i * 170 - ((xShift * 0.06) % 170) + 24;
+      ctx.fillRect(ax, 82, 3, 88);
+    }
     ctx.fillStyle = "#d4ecff";
     ctx.fillRect(0, 206, canvas.width, 4);
     ctx.fillStyle = "#9ec6e8";
     ctx.fillRect(0, 210, canvas.width, 12);
-    for (let i = 0; i < 13; i += 1) {
-      const sx = i * 78 - ((xShift * 0.66) % 78);
-      ctx.fillStyle = "rgba(184, 214, 242, 0.68)";
-      ctx.fillRect(sx + 9, 210, 2, 32);
+    // Glass wall panes and supports (more obvious "arena glass").
+    ctx.fillStyle = "rgba(168, 214, 248, 0.42)";
+    for (let i = 0; i < 14; i += 1) {
+      const sx = i * 74 - ((xShift * 0.66) % 74);
+      ctx.fillRect(sx + 8, 210, 2, 36); // vertical divider
+      ctx.fillRect(sx + 10, 212, 56, 2); // top frame
+      ctx.fillRect(sx + 10, 244, 56, 1); // bottom edge
+      ctx.fillStyle = "rgba(210,236,255,0.18)";
+      ctx.fillRect(sx + 16, 216, 8, 24);
+      ctx.fillStyle = "rgba(168, 214, 248, 0.42)";
     }
 
     // Rink ads so it reads as indoor hockey arena.
@@ -3400,17 +3454,6 @@ function drawRunBackground() {
     iceGrad.addColorStop(1, "#e8f3ff");
     ctx.fillStyle = iceGrad;
     ctx.fillRect(0, SKARN_RINK_TOP, canvas.width, canvas.height - SKARN_RINK_TOP);
-    ctx.fillStyle = "rgba(152,186,221,0.34)";
-    for (let i = 0; i < 18; i += 1) {
-      const x = i * 64 - ((xShift * 1.02) % 64);
-      ctx.fillRect(x + 10, SKARN_RINK_TOP + 24, 38, 2);
-      ctx.fillRect(x + 2, SKARN_RINK_TOP + 54, 26, 2);
-    }
-    ctx.fillStyle = "#c6495b";
-    for (let i = 0; i < 10; i += 1) {
-      const x = i * 112 - ((xShift * 1.18) % 112);
-      ctx.fillRect(x + 14, SKARN_RINK_TOP + 38, 46, 3);
-    }
   } else {
     const floorColor = state.theme === "streets" ? "#4f5668" : "#d7ddd8";
     ctx.fillStyle = floorColor;
@@ -3429,18 +3472,18 @@ function drawRunBackground() {
       ctx.fillRect(x + 6, GAME.floorTop + 2 + (i % 3), 22, 2);
     }
   } else if (state.theme === "skarn") {
-    // Painted center-ice accents and board scuffs.
-    ctx.fillStyle = "rgba(74,124,186,0.34)";
-    for (let i = 0; i < 14; i += 1) {
-      const x = i * 74 - ((xShift * 0.84) % 74);
-      ctx.fillRect(x + 8, SKARN_RINK_TOP + 10, 20, 1);
-      ctx.fillRect(x + 30, SKARN_RINK_TOP + 34, 14, 1);
-    }
-    ctx.fillStyle = "rgba(255,255,255,0.54)";
-    for (let i = 0; i < 10; i += 1) {
-      const x = i * 110 - ((xShift * 0.6) % 110);
-      ctx.fillRect(x + 20, SKARN_RINK_TOP + 4, 58, 1);
-    }
+    // Faceoff circles + blue lines so it clearly reads as a rink.
+    ctx.strokeStyle = "rgba(199,63,86,0.5)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(300 - ((xShift * 0.75) % 600), SKARN_RINK_TOP + 72, 26, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(900 - ((xShift * 0.75) % 600), SKARN_RINK_TOP + 72, 26, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(92,142,208,0.45)";
+    ctx.fillRect(0, SKARN_RINK_TOP + 20, canvas.width, 2);
+    ctx.fillRect(0, SKARN_RINK_TOP + 112, canvas.width, 2);
   } else {
     ctx.fillStyle = "rgba(0,0,0,0.12)";
     for (let i = 0; i < 24; i += 1) {
@@ -3538,28 +3581,52 @@ function drawRunBackground() {
     const gfBaseX = pose.baseX;
     const gfBaseY = pose.baseY;
     const gfBob = pose.bob;
-    drawHeroPortraitSprite(gfBaseX, gfBaseY + gfBob, 1.08, {
+    const skatePhase = state.worldTimeSec * 7.2;
+    const legKickA = Math.sin(skatePhase) * 2.6;
+    const legKickB = Math.sin(skatePhase + Math.PI) * 2.6;
+    const glide = Math.sin(state.worldTimeSec * 2.2) * 3.2;
+    drawHeroPortraitSprite(gfBaseX + glide, gfBaseY + gfBob, 1.08, {
       label: "Michael",
       outfitId: "goldenface",
-      shadow: true,
+      noLegs: true,
+      shadow: false,
     });
+    // Skating shadow.
+    ctx.fillStyle = "rgba(0,0,0,0.22)";
+    ctx.beginPath();
+    ctx.ellipse(gfBaseX + 20 + glide, gfBaseY + 8, 20, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Backwards-skating legs (toes point opposite gun direction).
+    ctx.fillStyle = "#172033";
+    ctx.fillRect(gfBaseX + 10 + glide, gfBaseY - 16 - legKickA * 0.35, 6, 18);
+    ctx.fillRect(gfBaseX + 21 + glide, gfBaseY - 16 - legKickB * 0.35, 6, 18);
+    ctx.fillStyle = "#0f1422";
+    ctx.fillRect(gfBaseX + 9 + glide, gfBaseY + 2 - legKickA * 0.2, 8, 3);
+    ctx.fillRect(gfBaseX + 20 + glide, gfBaseY + 2 - legKickB * 0.2, 8, 3);
+    // Ice skates.
+    ctx.fillStyle = "#c3d5e8";
+    ctx.fillRect(gfBaseX + 8 + glide, gfBaseY + 5 - legKickA * 0.2, 12, 1);
+    ctx.fillRect(gfBaseX + 19 + glide, gfBaseY + 5 - legKickB * 0.2, 12, 1);
+    ctx.fillStyle = "#8aa1b9";
+    ctx.fillRect(gfBaseX + 9 + glide, gfBaseY + 6 - legKickA * 0.2, 10, 1);
+    ctx.fillRect(gfBaseX + 20 + glide, gfBaseY + 6 - legKickB * 0.2, 10, 1);
 
     const firing = pose.firing;
     const recoil = pose.recoil;
     const armY = pose.armY;
     ctx.fillStyle = "#121316";
-    ctx.fillRect(gfBaseX + 6 + recoil, armY, 14, 4); // upper arm extension (left-facing)
-    ctx.fillRect(gfBaseX - 2 + recoil, armY + 1, 9, 3); // forearm
+    ctx.fillRect(gfBaseX + 6 + recoil + glide, armY, 14, 4); // upper arm extension (left-facing)
+    ctx.fillRect(gfBaseX - 2 + recoil + glide, armY + 1, 9, 3); // forearm
     ctx.fillStyle = "#e4ba53";
-    ctx.fillRect(gfBaseX - 5 + recoil, armY + 1, 3, 3); // hand
+    ctx.fillRect(gfBaseX - 5 + recoil + glide, armY + 1, 3, 3); // hand
     ctx.fillStyle = "#2b3b55";
-    ctx.fillRect(gfBaseX - 12 + recoil, armY + 1, 7, 2); // pistol body
-    ctx.fillRect(gfBaseX - 14 + recoil, armY, 2, 1); // pistol sight
+    ctx.fillRect(gfBaseX - 12 + recoil + glide, armY + 1, 7, 2); // pistol body
+    ctx.fillRect(gfBaseX - 14 + recoil + glide, armY, 2, 1); // pistol sight
     if (firing) {
       ctx.fillStyle = "rgba(255, 232, 170, 0.95)";
-      ctx.fillRect(gfBaseX - 16 + recoil, armY + 1, 3, 2);
+      ctx.fillRect(gfBaseX - 16 + recoil + glide, armY + 1, 3, 2);
       ctx.fillStyle = "rgba(255, 184, 118, 0.8)";
-      ctx.fillRect(gfBaseX - 18 + recoil, armY + 1, 2, 2);
+      ctx.fillRect(gfBaseX - 18 + recoil + glide, armY + 1, 2, 2);
     }
 
     // No decorative mini bullets here; real pucks are gameplay obstacles.
@@ -3781,6 +3848,20 @@ function drawPlayer() {
       ctx.fillRect(handX + 1, handY + 2, 11, 3); // barrel/body (bigger)
       ctx.fillRect(handX + 4, handY + 4, 3, 7); // grip (bigger)
     }
+  }
+
+  if (state.runWorldId === "skarn") {
+    // Ice skates for Michael Scarn in Threat Level Midnight.
+    const skateY = footY + 5;
+    const leftX = x + sway + (state.slideActive ? 32 : 8);
+    const rightX = x + sway + (state.slideActive ? 44 : 20);
+    const bladeW = state.slideActive ? 16 : 12;
+    ctx.fillStyle = "#c6d9ed";
+    ctx.fillRect(leftX, skateY, bladeW, 1);
+    ctx.fillRect(rightX, skateY, bladeW, 1);
+    ctx.fillStyle = "#8fa8c1";
+    ctx.fillRect(leftX + 1, skateY + 1, bladeW - 2, 1);
+    ctx.fillRect(rightX + 1, skateY + 1, bladeW - 2, 1);
   }
 
   if (state.attackLeft > 0 && !state.slideActive) {
@@ -4465,58 +4546,21 @@ function drawWrappedTextWithCurrencyIcons(text, x, y, maxWidth, lineHeight, maxL
 function drawPamQuestBackgroundSprite() {
   if (!state.pamQuestRun || !state.pamVisible) return;
 
-  const s = 1.55;
+  const s = 1.72;
   const x = state.pamX;
   const y = state.pamY;
+  const bob = Math.sin(state.worldTimeSec * 4.2) * 1.4;
 
-  ctx.fillStyle = "rgba(0,0,0,0.18)";
-  ctx.beginPath();
-  ctx.ellipse(x + 18 * s, y + 56 * s, 18 * s, 5 * s, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Hair silhouette with side volume.
-  ctx.fillStyle = "#7e5139";
-  ctx.fillRect(x + 5 * s, y + 2 * s, 25 * s, 10 * s);
-  ctx.fillRect(x + 4 * s, y + 8 * s, 7 * s, 7 * s);
-  ctx.fillRect(x + 24 * s, y + 8 * s, 7 * s, 7 * s);
-  ctx.fillRect(x + 10 * s, y + 12 * s, 15 * s, 4 * s);
-
-  // Face.
-  ctx.fillStyle = "#f1cfb3";
-  ctx.fillRect(x + 8 * s, y + 10 * s, 19 * s, 14 * s);
-  ctx.fillStyle = "#1d2532";
-  ctx.fillRect(x + 13 * s, y + 15 * s, 2 * s, 2 * s);
-  ctx.fillRect(x + 20 * s, y + 15 * s, 2 * s, 2 * s);
-  ctx.fillRect(x + 14 * s, y + 20 * s, 8 * s, 1 * s);
-
-  // Blouse + cardigan layers.
-  ctx.fillStyle = "#d9eef9";
-  ctx.fillRect(x + 7 * s, y + 24 * s, 22 * s, 20 * s);
-  ctx.fillStyle = "#7f96bf";
-  ctx.fillRect(x + 7 * s, y + 24 * s, 5 * s, 20 * s);
-  ctx.fillRect(x + 24 * s, y + 24 * s, 5 * s, 20 * s);
-  ctx.fillStyle = "#5f78a7";
-  ctx.fillRect(x + 16 * s, y + 24 * s, 4 * s, 15 * s);
-
-  // Arms + folder prop for visibility.
-  ctx.fillStyle = "#f1cfb3";
-  ctx.fillRect(x + 3 * s, y + 28 * s, 4 * s, 12 * s);
-  ctx.fillRect(x + 29 * s, y + 28 * s, 4 * s, 12 * s);
-  ctx.fillStyle = "#f5dca6";
-  ctx.fillRect(x + 30 * s, y + 31 * s, 9 * s, 10 * s);
-  ctx.fillStyle = "#dabf7d";
-  ctx.fillRect(x + 31 * s, y + 30 * s, 4 * s, 2 * s);
-
-  // Skirt + shoes.
-  ctx.fillStyle = "#514a73";
-  ctx.fillRect(x + 12 * s, y + 44 * s, 12 * s, 9 * s);
-  ctx.fillStyle = "#1a2231";
-  ctx.fillRect(x + 12 * s, y + 53 * s, 4 * s, 5 * s);
-  ctx.fillRect(x + 20 * s, y + 53 * s, 4 * s, 5 * s);
+  drawHeroPortraitSprite(x, y + 58 + bob, s, { label: "Pam", style: "pam", hideTie: true, shadow: true });
+  // Clipboard detail so she pops in the warehouse background.
+  ctx.fillStyle = "#f6ddb0";
+  ctx.fillRect(x + 32 * s, y + 25 * s + bob, 8 * s, 10 * s);
+  ctx.fillStyle = "#ddc28a";
+  ctx.fillRect(x + 33 * s, y + 24 * s + bob, 4 * s, 2 * s);
 
   ctx.fillStyle = "#ffe7b1";
   ctx.font = "bold 14px Trebuchet MS";
-  ctx.fillText("P!", x + 14 * s, y - 6);
+  ctx.fillText("P!", x + 14 * s, y - 6 + bob);
 }
 
 function drawHud() {
@@ -6994,20 +7038,22 @@ function drawLoadingScene() {
 }
 
 function drawBossKeyScene() {
-  ctx.fillStyle = "#10151a";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const chromeH = 34;
+  const tableX = 8;
+  const tableY = chromeH + 8;
+  const tableW = canvas.width - 16;
+  const tableH = canvas.height - tableY - 30;
+  const cols = [0.15, 0.23, 0.16, 0.14, 0.14, 0.18].map((f) => Math.floor(tableW * f));
+  const rows = Math.max(10, Math.floor((tableH - 30) / 24));
+
   ctx.fillStyle = "#e9eef2";
-  ctx.fillRect(26, 26, canvas.width - 52, canvas.height - 52);
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = "#2f5d89";
-  ctx.fillRect(26, 26, canvas.width - 52, 34);
+  ctx.fillRect(0, 0, canvas.width, chromeH);
   ctx.fillStyle = "#ffffff";
   ctx.font = "bold 18px Trebuchet MS";
-  ctx.fillText("Paper Distribution Q1.xlsx", 44, 49);
+  ctx.fillText("Paper Distribution Q1.xlsx", 14, 24);
 
-  const tableX = 54;
-  const tableY = 86;
-  const cols = [120, 190, 130, 120, 120, 130];
-  const rows = 16;
   let x = tableX;
   ctx.fillStyle = "#d5e3ef";
   for (const w of cols) {
@@ -7041,10 +7087,10 @@ function drawBossKeyScene() {
 
   ctx.strokeStyle = "#2d8bff";
   const blink = Math.floor(state.elapsedSec * 2) % 2 === 0;
-  if (blink) ctx.strokeRect(tableX + 318, tableY + 52, cols[2], 24);
+  if (blink) ctx.strokeRect(tableX + cols[0] + cols[1], tableY + 52, cols[2], 24);
   ctx.fillStyle = "#233547";
   ctx.font = "bold 14px Trebuchet MS";
-  ctx.fillText("F12: Boss Mode", tableX, canvas.height - 26);
+  ctx.fillText("F12 (or Alt+Shift+B): Boss Mode", 10, canvas.height - 10);
 }
 
 function drawRunScene() {
@@ -7252,38 +7298,9 @@ function drawRunScene() {
     ctx.fillText("Strangler caught. Scranton can exhale.", 286, 316);
   }
 
-  if (
-    state.runWorldId === "pursuit" &&
-    state.pursuitEndPending &&
-    state.pursuitRevealLeft <= 0 &&
-    state.pursuitEndCardLeft <= 0 &&
-    state.pursuitJailLeft > 0
-  ) {
-    const t = 1 - state.pursuitJailLeft / PURSUIT_JAIL_EPILOGUE_DURATION;
-    ctx.fillStyle = "rgba(6,10,18,0.88)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "#213142";
-    for (let x = 180; x < canvas.width - 140; x += 64) ctx.fillRect(x, 60, 12, canvas.height - 120);
-    ctx.fillStyle = "#101d2d";
-    ctx.fillRect(194, 86, canvas.width - 324, canvas.height - 172);
-    ctx.strokeStyle = "#5d7393";
-    ctx.strokeRect(194, 86, canvas.width - 324, canvas.height - 172);
-
-    ctx.fillStyle = "#f0d6a2";
-    ctx.font = "bold 38px Trebuchet MS";
-    ctx.fillText("EPILOGUE", 428, 146);
-    ctx.fillStyle = "#d7e6fb";
-    ctx.font = "bold 20px Trebuchet MS";
-    drawWrappedText('Intercom: "Toby Flenderson, report to the principal\'s office."', 242, 214, 556, 30, 2);
-    if (t > 0.45) {
-      ctx.fillStyle = "#ffcf8a";
-      drawWrappedText('"Your mother called... you wet the bed again."', 266, 270, 520, 30, 2);
-    }
-  }
-
   if (state.runWorldId === "pursuit" && state.pursuitEndPending) {
     const alpha =
-      state.pursuitRevealLeft > 0 || state.pursuitEndCardLeft > 0 || state.pursuitJailLeft > 0
+      state.pursuitRevealLeft > 0 || state.pursuitEndCardLeft > 0
         ? 0
         : Math.max(0, Math.min(1, 1 - state.pursuitEndFade / 0.75));
     ctx.fillStyle = `rgba(0,0,0,${alpha})`;
@@ -7298,8 +7315,13 @@ function drawRunScene() {
 }
 
 function render() {
+  if (state.bossMode) {
+    drawBossKeyScene();
+    return;
+  }
   if (state.scene === "menu") drawMenuScene();
   else if (state.scene === "characters") drawCharacterSelectScene();
+  else if (state.scene === "loading") drawLoadingScene();
   else if (state.scene === "run") drawRunScene();
   else if (state.scene === "shop") drawShopScene();
   else if (state.scene === "desk") drawDeskScene();
@@ -7554,6 +7576,21 @@ function loop(ts) {
 }
 
 function handlePress(ev) {
+  const isBossHotkey =
+    ev.code === "F12" ||
+    ev.key === "F12" ||
+    ev.keyCode === 123 ||
+    (ev.altKey && ev.shiftKey && ev.code === "KeyB");
+  if (isBossHotkey) {
+    ev.preventDefault();
+    toggleBossMode();
+    return;
+  }
+  if (state.bossMode) {
+    ev.preventDefault();
+    return;
+  }
+
   ensureAudioContext();
   if (ev.code.startsWith("Key")) advanceCheatCode(ev.code);
   const isArrow = ev.code === "ArrowLeft" || ev.code === "ArrowRight" || ev.code === "ArrowUp" || ev.code === "ArrowDown";
@@ -7603,7 +7640,12 @@ function handlePress(ev) {
       return;
     }
     if (state.scene === "run" && !state.gameOver) {
-      state.paused = !state.paused;
+      if (state.paused) {
+        if (state.pauseMenuIndex === 0) state.paused = false;
+        else switchScene("menu");
+      } else {
+        openPauseMenu();
+      }
       return;
     }
     if (state.scene === "shop") {
@@ -7713,7 +7755,22 @@ function handlePress(ev) {
     return;
   }
 
+  if (state.scene === "run" && state.paused && !state.gameOver) {
+    if (ev.code === "ArrowLeft" || ev.code === "ArrowUp") {
+      ev.preventDefault();
+      state.pauseMenuIndex = Math.max(0, state.pauseMenuIndex - 1);
+      return;
+    }
+    if (ev.code === "ArrowRight" || ev.code === "ArrowDown") {
+      ev.preventDefault();
+      state.pauseMenuIndex = Math.min(1, state.pauseMenuIndex + 1);
+      return;
+    }
+    return;
+  }
+
   if (state.scene !== "run") {
+    if (state.scene === "loading") return;
     if (ev.code === "KeyS") switchScene("shop");
     if (ev.code === "KeyA") switchScene("annex");
     if (ev.code === "KeyD") switchScene("desk");
@@ -7777,6 +7834,7 @@ window.addEventListener("keyup", (ev) => {
 });
 
 canvas.addEventListener("pointerdown", (ev) => {
+  if (state.bossMode || state.scene === "loading") return;
   const rect = canvas.getBoundingClientRect();
   const scaleX = canvas.width / rect.width;
   const scaleY = canvas.height / rect.height;
@@ -7812,6 +7870,7 @@ canvas.addEventListener("pointerdown", (ev) => {
 
 startBtn.addEventListener("click", () => {
   ensureAudioContext();
+  if (state.scene === "loading") return;
   if (state.scene === "missions") {
     switchScene(state.previousScene || "menu");
     return;
