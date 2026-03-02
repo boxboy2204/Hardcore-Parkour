@@ -155,12 +155,12 @@ const SHOP_ITEMS = [
     description: "Start each run with +1 HP.",
     currency: "stanleyNickels",
     cost: 22,
-    row: "top",
+    row: "bottom",
   },
   {
     id: "parkour_shoes",
     name: "Parkour Shoes",
-    description: "Small permanent speed boost.",
+    description: "Permanent +18 run speed.",
     currency: "stanleyNickels",
     cost: 36,
     row: "top",
@@ -168,23 +168,23 @@ const SHOP_ITEMS = [
   {
     id: "chili_guard",
     name: "Anti-Chili Pads",
-    description: "Less stumble time on failed shout.",
+    description: "Stumble duration reduced by 28%.",
     currency: "stanleyNickels",
     cost: 30,
-    row: "top",
+    row: "bottom",
   },
   {
     id: "mifflin_tape",
     name: "Mifflin Tape",
-    description: "Style gain +10%.",
+    description: "Style gain +10% each second.",
     currency: "stanleyNickels",
     cost: 26,
-    row: "bottom",
+    row: "top",
   },
   {
     id: "desk_keycard",
     name: "Desk Keycard",
-    description: "Unlocks one extra world on first buy.",
+    description: "Loot +20%. Pickups spawn faster.",
     currency: "stanleyNickels",
     cost: 16,
     row: "bottom",
@@ -192,10 +192,10 @@ const SHOP_ITEMS = [
   {
     id: "energy_mug",
     name: "World's Best Mug",
-    description: "Longer speed boost from HARDCORE.",
+    description: "Longer HARDCORE speed boost.",
     currency: "stanleyNickels",
     cost: 34,
-    row: "bottom",
+    row: "top",
   },
 ];
 
@@ -364,7 +364,9 @@ const state = {
   shopJimBounds: null,
   shopPamBounds: null,
   shopTalkBounds: [],
+  shopPromptBounds: [],
   shopConversation: null,
+  shopPurchasePrompt: null,
   deskBounds: null,
   deskDrawerBounds: null,
   deskGoldenfaceBounds: null,
@@ -416,6 +418,7 @@ const state = {
     characterCard: 0,
     shopCard: 0,
     shopTalk: 0,
+    shopPrompt: 0,
     annexCard: 0,
     reviewButton: 0,
   },
@@ -1216,7 +1219,7 @@ function renderReviewSummaryText() {
   const shownEarnedSn = Math.round(state.reviewData.earnedSn * ease);
   summaryText.textContent = `${state.reviewData.runner} finished ${state.reviewData.world} with ${
     state.reviewData.stars
-  }/5 stars. Score ${state.reviewData.score}, Style ${state.reviewData.style}, Best Hardcore chain ${
+  }/5 stars. Style ${state.reviewData.style}, Best Hardcore chain ${
     state.reviewData.bestChain
   }. Rewards: +${formatSchruteBucks(shownEarnedSb)}, +${formatStanleyNickels(
     shownEarnedSn
@@ -1515,6 +1518,7 @@ function toggleOutfit(outfitId) {
 
 function startJimConversation() {
   if (state.shopForeheadStare) return;
+  state.shopPurchasePrompt = null;
   const capture = state.saveData.missions.captureStrangler;
   if (capture.completed) {
     state.shopConversation = {
@@ -1598,6 +1602,7 @@ function handleJimConversationClick(choiceId) {
 
 function startPamConversation() {
   if (state.shopForeheadStare || !state.saveData?.missions?.savePam?.completed) return;
+  state.shopPurchasePrompt = null;
   const capture = state.saveData.missions.captureStrangler;
   const tlm = state.saveData.missions.threatLevelMidnight;
   if (tlm.completed) {
@@ -1704,14 +1709,15 @@ function handlePamConversationClick(choiceId) {
 function tryBuyShopItem(itemId) {
   const item = SHOP_ITEMS.find((i) => i.id === itemId);
   if (!item) return;
+  const topRowUnlocked = Boolean(state.saveData?.missions?.savePam?.completed);
 
   if (state.shopForeheadStare) {
     showShopMessage("Jim is still staring at your forehead. Leave the shop to break it.", "#ffb4a7");
     return;
   }
 
-  if (item.row === "top" && !state.saveData.unlocks.jimDeskKey) {
-    showShopMessage("Jim: top row stays in Jell-O until Pam gives you my key.", "#ffb4a7");
+  if (item.row === "top" && !topRowUnlocked) {
+    showShopMessage("Jim: top row stays in Jell-O until you find Pam.", "#ffb4a7");
     return;
   }
 
@@ -1743,6 +1749,38 @@ function tryBuyShopItem(itemId) {
   showShopMessage(`Purchased ${item.name}. Jim finally de-gels it.`, "#d3ffbf");
 }
 
+function openShopItemPrompt(itemId) {
+  const item = SHOP_ITEMS.find((i) => i.id === itemId);
+  if (!item) return;
+  const topRowUnlocked = Boolean(state.saveData?.missions?.savePam?.completed);
+  const owned = ownsUpgrade(item.id);
+  const lockedByKey = item.row === "top" && !topRowUnlocked;
+  const canAfford = state.saveData.currencies.stanleyNickels >= item.cost;
+  state.shopPurchasePrompt = {
+    itemId: item.id,
+    name: item.name,
+    description: item.description,
+    cost: item.cost,
+    owned,
+    lockedByKey,
+    canAfford: canAfford && !owned && !lockedByKey,
+  };
+  state.uiFocus.shopPrompt = 0;
+}
+
+function handleShopPromptClick(choiceId) {
+  const prompt = state.shopPurchasePrompt;
+  if (!prompt) return;
+  if (choiceId === "cancel") {
+    state.shopPurchasePrompt = null;
+    return;
+  }
+  if (choiceId === "buy" && prompt.canAfford) {
+    tryBuyShopItem(prompt.itemId);
+    state.shopPurchasePrompt = null;
+  }
+}
+
 function switchScene(sceneId) {
   const leavingShop = state.scene === "shop" && sceneId !== "shop";
   const leavingCutscene = state.scene === "cutscene" && sceneId !== "cutscene";
@@ -1753,7 +1791,10 @@ function switchScene(sceneId) {
   summaryPanel.hidden = true;
   nextLevelBtn.hidden = true;
   if (leavingShop) state.shopForeheadStare = false;
-  if (sceneId !== "shop") state.shopConversation = null;
+  if (sceneId !== "shop") {
+    state.shopConversation = null;
+    state.shopPurchasePrompt = null;
+  }
   if (sceneId === "desk") {
     state.deskDrawerOpen = false;
     state.deskPhotoViewerOpen = false;
@@ -1774,6 +1815,7 @@ function switchScene(sceneId) {
   if (sceneId === "shop") {
     state.uiFocus.shopCard = 0;
     state.uiFocus.shopTalk = 0;
+    state.uiFocus.shopPrompt = 0;
   }
   if (sceneId === "annex") state.uiFocus.annexCard = 0;
   if (sceneId === "run") state.uiFocus.reviewButton = 0;
@@ -1910,6 +1952,8 @@ function startRunStateNow(worldId = state.selectedWorldId) {
   const stumbleTuning = ownsUpgrade("chili_guard") ? 0.72 : 1;
   const styleTuning = ownsUpgrade("mifflin_tape") ? 1.1 : 1;
   const boostTuning = (ownsUpgrade("energy_mug") ? 1.2 : 1) * (preset.boostMul || 1);
+  const keycardLootTuning = ownsUpgrade("desk_keycard") ? 1.2 : 1;
+  const keycardSpawnTuning = ownsUpgrade("desk_keycard") ? 0.82 : 1;
 
   state.player = {
     preset,
@@ -1928,6 +1972,9 @@ function startRunStateNow(worldId = state.selectedWorldId) {
   state.player.runtimeBoostMul = boostTuning;
   state.player.runtimeHardcoreInvincible = Boolean(preset.hardcoreInvincible);
   state.player.runtimeMaxJumps = preset.maxJumps || 1;
+  state.player.runtimeLootValueMul = keycardLootTuning;
+  state.player.runtimeCollectibleSpawnMul = keycardSpawnTuning;
+  state.collectibleSpawnTimerSec *= keycardSpawnTuning;
 
   state.saveData.stats.lifetimeRuns += 1;
   persistSave();
@@ -1953,6 +2000,10 @@ function addHitParticles(x, y, color) {
       ttl: 0.35 + Math.random() * 0.2,
     });
   }
+}
+
+function syncStyleToScore() {
+  state.style = state.score;
 }
 
 function getPursuitCarPosition() {
@@ -2135,6 +2186,7 @@ function spawnCollectible() {
   const y = elevated ? GAME.groundY - 98 - Math.random() * 48 : GAME.groundY - 24;
   const difficulty = LEVEL_DIFFICULTY[state.runWorldId] || LEVEL_DIFFICULTY.bullpen;
   const distanceFactor = Math.min(1.75, 1 + state.worldTimeSec / 75) * difficulty.obstacleSpeedMul;
+  const lootScale = state.player?.runtimeLootValueMul || 1;
   state.collectibles.push({
     type,
     x: canvas.width + 24,
@@ -2142,11 +2194,12 @@ function spawnCollectible() {
     width: type === "schrute_buck" ? 32 : 26,
     height: type === "schrute_buck" ? 28 : 26,
     speedFactor: distanceFactor,
+    valueScale: lootScale,
   });
 }
 
 function calculateStars() {
-  const base = state.style + state.score * 0.4 + state.bestChain * 45;
+  const base = state.style + state.bestChain * 45;
   if (base < 1200) return 1;
   if (base < 2200) return 2;
   if (base < 3500) return 3;
@@ -2155,6 +2208,7 @@ function calculateStars() {
 }
 
 function endRun(reason = "time") {
+  syncStyleToScore();
   stopPursuitSirenLoop();
   state.running = false;
   state.gameOver = true;
@@ -2260,7 +2314,6 @@ function endRun(reason = "time") {
     runner: state.player.preset.label,
     world: THEME_LABELS[state.runWorldId],
     stars: state.stars,
-    score: Math.floor(state.score),
     style: Math.floor(state.style),
     bestChain: state.bestChain,
     earnedSb: state.earnedSchruteBucks,
@@ -2651,10 +2704,11 @@ function updateRun(dt) {
   state.collectibleSpawnTimerSec -= dt;
   if (state.collectibleSpawnTimerSec <= 0) {
     spawnCollectible();
+    const collectibleSpawnMul = state.player?.runtimeCollectibleSpawnMul || 1;
     const gap = COLLECTIBLE_SPAWN.baseGap + Math.random() * COLLECTIBLE_SPAWN.randGap;
     state.collectibleSpawnTimerSec = Math.max(
       COLLECTIBLE_SPAWN.minGap,
-      gap - state.worldTimeSec * 0.0025
+      (gap - state.worldTimeSec * 0.0025) * collectibleSpawnMul
     );
   }
 
@@ -2824,13 +2878,22 @@ function updateRun(dt) {
     const coinBox = { x: coin.x, y: coin.y, width: coin.width, height: coin.height };
     if (!intersects(playerBox, coinBox)) continue;
     coin.hit = true;
+    const mul = Math.max(1, coin.valueScale || 1);
+    const rollScaled = (base) => {
+      const scaled = base * mul;
+      const whole = Math.floor(scaled);
+      const frac = scaled - whole;
+      return whole + (Math.random() < frac ? 1 : 0);
+    };
     if (coin.type === "schrute_buck") {
-      state.runCollectedSchruteBucks += 5;
-      addFloatingText("+5", coin.x - 2, coin.y - 8, "#ffe07c");
+      const gain = rollScaled(5);
+      state.runCollectedSchruteBucks += gain;
+      addFloatingText(`+${gain}`, coin.x - 2, coin.y - 8, "#ffe07c");
       addHitParticles(coin.x + 10, coin.y + 10, "#ffd774");
     } else {
-      state.runCollectedStanleyNickels += 1;
-      addFloatingText("+1", coin.x - 2, coin.y - 8, "#cfe8ff");
+      const gain = Math.max(1, rollScaled(1));
+      state.runCollectedStanleyNickels += gain;
+      addFloatingText(`+${gain}`, coin.x - 2, coin.y - 8, "#cfe8ff");
       addHitParticles(coin.x + 10, coin.y + 10, "#c6e2ff");
     }
   }
@@ -2850,6 +2913,7 @@ function updateRun(dt) {
   }
   state.particles = state.particles.filter((p) => p.age < p.ttl);
   state.worldBannerLeft = Math.max(0, state.worldBannerLeft - dt);
+  syncStyleToScore();
 }
 
 function drawRunBackground() {
@@ -4570,22 +4634,21 @@ function drawHud() {
   ctx.font = "16px Trebuchet MS";
   ctx.fillText(`Runner: ${state.player.preset.label}`, 20, 34);
   ctx.fillText(`HP: ${state.player.hp}`, 20, 56);
-  ctx.fillText(`Score: ${Math.floor(state.score)}`, 20, 78);
-  ctx.fillText(`Style: ${Math.floor(state.style)}`, 20, 100);
-  ctx.fillText("Wallet:", 20, 122);
+  ctx.fillText(`Style: ${Math.floor(state.style)}`, 20, 78);
+  ctx.fillText("Wallet:", 20, 100);
   const walletY = 109;
   const sbIconW = drawCurrencyIcon("schrute_buck", 86, walletY, 1.05);
   ctx.fillStyle = "#f5f8ff";
-  ctx.fillText(`${state.saveData.currencies.schruteBucks}`, 86 + sbIconW + 6, 122);
+  ctx.fillText(`${state.saveData.currencies.schruteBucks}`, 86 + sbIconW + 6, 100);
   const snIconW = drawCurrencyIcon("stanley_nickel", 166, walletY + 1, 1.05);
-  ctx.fillText(`${state.saveData.currencies.stanleyNickels}`, 166 + snIconW + 6, 122);
+  ctx.fillText(`${state.saveData.currencies.stanleyNickels}`, 166 + snIconW + 6, 100);
   ctx.fillStyle = "#ffdfa6";
-  ctx.fillText("Run Loot:", 20, 146);
+  ctx.fillText("Run Loot:", 20, 124);
   const runY = 133;
   const runSbIconW = drawCurrencyIcon("schrute_buck", 98, runY, 1.0);
-  ctx.fillText(`+${state.runCollectedSchruteBucks}`, 98 + runSbIconW + 6, 146);
+  ctx.fillText(`+${state.runCollectedSchruteBucks}`, 98 + runSbIconW + 6, 124);
   const runSnIconW = drawCurrencyIcon("stanley_nickel", 176, runY + 1, 1.0);
-  ctx.fillText(`+${state.runCollectedStanleyNickels}`, 176 + runSnIconW + 6, 146);
+  ctx.fillText(`+${state.runCollectedStanleyNickels}`, 176 + runSnIconW + 6, 124);
 
   ctx.fillStyle = "#ffd54d";
   ctx.fillText(`x${state.multiplier} Hardcore`, 210, 56);
@@ -4683,9 +4746,8 @@ function drawPerformanceReviewOverlay() {
 
   ctx.font = "20px Trebuchet MS";
   ctx.fillStyle = "#f2f6ff";
-  ctx.fillText(`Score: ${state.reviewData.score}`, panel.x + 24, panel.y + 156);
-  ctx.fillText(`Style: ${state.reviewData.style}`, panel.x + 24, panel.y + 184);
-  ctx.fillText(`Best Hardcore Chain: ${state.reviewData.bestChain}`, panel.x + 24, panel.y + 212);
+  ctx.fillText(`Style: ${state.reviewData.style}`, panel.x + 24, panel.y + 166);
+  ctx.fillText(`Best Hardcore Chain: ${state.reviewData.bestChain}`, panel.x + 24, panel.y + 194);
 
   ctx.fillStyle = "#ffd87d";
   ctx.font = "bold 26px Trebuchet MS";
@@ -4847,6 +4909,7 @@ function drawWrappedText(text, x, y, maxWidth, lineHeight, maxLines = 3) {
   for (let i = 0; i < lines.length; i += 1) {
     ctx.fillText(lines[i], x, y + i * lineHeight);
   }
+  return lines.length;
 }
 
 function drawPixelTexture(x, y, w, h, tint = "rgba(8,14,24,0.12)", light = "rgba(255,255,255,0.08)") {
@@ -5472,19 +5535,36 @@ function drawShopScene() {
 
   // Full-screen room presentation (no inset "window inside window").
 
-  drawTitleText("Break Room Shop", 320, 128, "bold 34px Trebuchet MS", "#ffd480");
+  drawPixelPanel(300, 82, 360, 58, "rgba(18,32,56,0.88)", "rgba(10,22,42,0.9)", "#8fd3ff", "rgba(228,245,255,0.7)");
+  drawTitleText("Break Room Shop", 328, 123, "bold 40px Trebuchet MS", "#ffd98a");
 
-  ctx.fillStyle = "#f4ead7";
-  ctx.font = "18px Trebuchet MS";
-  ctx.fillText("Wallet:", 58, 226);
-  const shopSbW = drawCurrencyIcon("schrute_buck", 132, 214, 1.12);
-  ctx.fillText(`${state.saveData.currencies.schruteBucks}`, 132 + shopSbW + 8, 226);
-  const shopSnW = drawCurrencyIcon("stanley_nickel", 206, 214, 1.12);
-  ctx.fillText(`${state.saveData.currencies.stanleyNickels}`, 206 + shopSnW + 8, 226);
+  const walletPanelX = 44;
+  const walletPanelY = 180;
+  const walletPanelW = 246;
+  drawPixelPanel(
+    walletPanelX,
+    walletPanelY,
+    walletPanelW,
+    68,
+    "rgba(14,26,46,0.86)",
+    "rgba(9,18,34,0.9)",
+    "#84cbff",
+    "rgba(217,238,255,0.65)"
+  );
+  ctx.fillStyle = "#f4eddc";
+  ctx.font = "bold 18px Trebuchet MS";
+  ctx.fillText("Wallet:", walletPanelX + 14, walletPanelY + 24);
+  ctx.font = "bold 16px Trebuchet MS";
+  const sbLineY = walletPanelY + 42;
+  const snLineY = walletPanelY + 58;
+  const shopSbW = drawCurrencyIcon("schrute_buck", walletPanelX + 118, sbLineY - 12, 0.95);
+  ctx.fillText(`${state.saveData.currencies.schruteBucks}`, walletPanelX + 118 + shopSbW + 6, sbLineY);
+  const shopSnW = drawCurrencyIcon("stanley_nickel", walletPanelX + 118, snLineY - 12, 0.95);
+  ctx.fillText(`${state.saveData.currencies.stanleyNickels}`, walletPanelX + 118 + shopSnW + 6, snLineY);
 
-  const vmX = 316;
+  const vmX = 300;
   const vmY = 150;
-  const vmW = 404;
+  const vmW = 430;
   const vmH = 262;
   drawPixelPanel(vmX, vmY, vmW, vmH, "#3a4762", "#2f3b53", "#9fd7ff", "rgba(217,240,255,0.64)");
   // Vending glass reflections + product strips.
@@ -5501,13 +5581,15 @@ function drawShopScene() {
       ctx.fillRect(px + 4, py + 1, 30, 1);
     }
   }
+  const machineSideW = 64;
+  const machineSideX = vmX + vmW - machineSideW - 14;
   ctx.fillStyle = "#9aa5b7";
-  ctx.fillRect(vmX + vmW - 78, vmY + 22, 58, vmH - 44);
+  ctx.fillRect(machineSideX, vmY + 22, machineSideW, vmH - 44);
   ctx.fillStyle = "#252b38";
-  ctx.fillRect(vmX + vmW - 68, vmY + 34, 38, 26);
-  ctx.fillRect(vmX + vmW - 68, vmY + 68, 38, 18);
-  ctx.fillRect(vmX + vmW - 68, vmY + 96, 38, 18);
-  ctx.fillRect(vmX + vmW - 68, vmY + vmH - 64, 38, 34);
+  ctx.fillRect(machineSideX + 10, vmY + 34, 38, 26);
+  ctx.fillRect(machineSideX + 10, vmY + 68, 38, 18);
+  ctx.fillRect(machineSideX + 10, vmY + 96, 38, 18);
+  ctx.fillRect(machineSideX + 10, vmY + vmH - 64, 38, 34);
 
   // Jim leaning against the vending machine.
   const jimX = vmX + vmW + 10;
@@ -5571,16 +5653,17 @@ function drawShopScene() {
   state.shopTalkBounds.push({ id: "talk", x: talkX, y: talkY, w: 66, h: 30 });
 
   state.shopCards = [];
-  const colWidth = 98;
-  const cardW = 110;
-  const cardH = 92;
+  state.shopPromptBounds = [];
+  const colWidth = 108;
+  const cardW = 104;
+  const cardH = 100;
   for (let i = 0; i < SHOP_ITEMS.length; i += 1) {
     const item = SHOP_ITEMS[i];
     const col = i % 3;
     const row = item.row === "top" ? 0 : 1;
     const x = vmX + 16 + col * colWidth;
     const y = vmY + 30 + row * 116;
-    const lockedByKey = row === 0 && !state.saveData.unlocks.jimDeskKey;
+    const lockedByKey = row === 0 && !state.saveData.missions.savePam.completed;
     const owned = ownsUpgrade(item.id);
 
     ctx.fillStyle = owned ? "#2f5032" : lockedByKey ? "#46403b" : "#234767";
@@ -5590,20 +5673,108 @@ function drawShopScene() {
     ctx.strokeRect(x, y, cardW, cardH);
 
     ctx.fillStyle = "#f5ead6";
-    ctx.font = "bold 13px Trebuchet MS";
-    drawWrappedText(item.name, x + 10, y + 20, cardW - 18, 14, 1);
-    ctx.font = "14px Trebuchet MS";
-    drawWrappedText(item.description, x + 10, y + 42, cardW - 18, 15, 2);
+    ctx.font = "bold 12px Trebuchet MS";
+    drawWrappedText(item.name, x + 8, y + 16, cardW - 16, 12, 2);
+    const iconX = x + Math.floor(cardW * 0.5) - 16;
+    const iconY = y + 34;
+    ctx.fillStyle = "rgba(0,0,0,0.2)";
+    ctx.beginPath();
+    ctx.ellipse(iconX + 16, iconY + 28, 14, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if (item.id === "gel_shield") {
+      // Jell-O block with inner glow and wobble ridges.
+      ctx.fillStyle = "#e5b843";
+      ctx.fillRect(iconX + 2, iconY + 1, 28, 20);
+      ctx.fillStyle = "#ffd96c";
+      ctx.fillRect(iconX + 4, iconY + 3, 24, 16);
+      ctx.fillStyle = "rgba(255,244,186,0.65)";
+      ctx.fillRect(iconX + 6, iconY + 5, 10, 12);
+      ctx.fillStyle = "#f2c95c";
+      ctx.fillRect(iconX + 4, iconY + 9, 24, 1);
+      ctx.fillRect(iconX + 4, iconY + 13, 24, 1);
+      ctx.fillStyle = "#8ecbff";
+      ctx.fillRect(iconX + 19, iconY + 8, 6, 6);
+      ctx.fillStyle = "#5a7da6";
+      ctx.fillRect(iconX + 20, iconY + 9, 4, 4);
+    } else if (item.id === "parkour_shoes") {
+      // Running shoe with layered sole and speed marks.
+      ctx.fillStyle = "#d7e5f7";
+      ctx.fillRect(iconX + 4, iconY + 11, 16, 8);
+      ctx.fillRect(iconX + 18, iconY + 13, 10, 6);
+      ctx.fillStyle = "#b9cde6";
+      ctx.fillRect(iconX + 6, iconY + 13, 10, 3);
+      ctx.fillStyle = "#7f96b5";
+      ctx.fillRect(iconX + 3, iconY + 19, 26, 2);
+      ctx.fillStyle = "#eaf2ff";
+      ctx.fillRect(iconX + 7, iconY + 10, 6, 1);
+      ctx.fillRect(iconX + 14, iconY + 10, 4, 1);
+      ctx.fillStyle = "#9ec5ff";
+      ctx.fillRect(iconX, iconY + 12, 2, 1);
+      ctx.fillRect(iconX - 2, iconY + 15, 3, 1);
+    } else if (item.id === "chili_guard") {
+      // Knee/elbow guard pair.
+      ctx.fillStyle = "#5b6070";
+      ctx.fillRect(iconX + 4, iconY + 5, 10, 14);
+      ctx.fillRect(iconX + 18, iconY + 5, 10, 14);
+      ctx.fillStyle = "#8a92a6";
+      ctx.fillRect(iconX + 5, iconY + 7, 8, 5);
+      ctx.fillRect(iconX + 19, iconY + 7, 8, 5);
+      ctx.fillStyle = "#2c3342";
+      ctx.fillRect(iconX + 7, iconY + 13, 4, 4);
+      ctx.fillRect(iconX + 21, iconY + 13, 4, 4);
+      ctx.fillStyle = "#a6afc2";
+      ctx.fillRect(iconX + 4, iconY + 4, 10, 1);
+      ctx.fillRect(iconX + 18, iconY + 4, 10, 1);
+    } else if (item.id === "mifflin_tape") {
+      // Tape roll + branded strip.
+      ctx.fillStyle = "#e9ddb4";
+      ctx.fillRect(iconX + 4, iconY + 6, 22, 14);
+      ctx.fillStyle = "#d4c590";
+      ctx.fillRect(iconX + 6, iconY + 8, 18, 10);
+      ctx.fillStyle = "#6f88a8";
+      ctx.fillRect(iconX + 11, iconY + 10, 8, 6);
+      ctx.fillStyle = "#e9ddb4";
+      ctx.fillRect(iconX + 13, iconY + 12, 4, 2);
+      ctx.fillStyle = "#b6a875";
+      ctx.fillRect(iconX + 4, iconY + 20, 22, 2);
+      ctx.fillStyle = "#2a405a";
+      ctx.fillRect(iconX + 6, iconY + 21, 12, 1);
+    } else if (item.id === "desk_keycard") {
+      // Keycard with magnetic stripe and tiny key notch.
+      ctx.fillStyle = "#e8d59d";
+      ctx.fillRect(iconX + 3, iconY + 5, 26, 15);
+      ctx.fillStyle = "#f5e8c1";
+      ctx.fillRect(iconX + 5, iconY + 7, 22, 11);
+      ctx.fillStyle = "#95a4bb";
+      ctx.fillRect(iconX + 21, iconY + 8, 6, 3);
+      ctx.fillStyle = "#2f435f";
+      ctx.fillRect(iconX + 8, iconY + 10, 8, 2);
+      ctx.fillRect(iconX + 8, iconY + 14, 12, 2);
+      ctx.fillStyle = "#6c5d35";
+      ctx.fillRect(iconX + 27, iconY + 14, 2, 4);
+    } else if (item.id === "energy_mug") {
+      // World's Best Mug with handle and label bands.
+      ctx.fillStyle = "#eef3fb";
+      ctx.fillRect(iconX + 7, iconY + 4, 16, 16);
+      ctx.fillRect(iconX + 23, iconY + 8, 4, 8);
+      ctx.fillStyle = "#dbe4f2";
+      ctx.fillRect(iconX + 9, iconY + 6, 12, 12);
+      ctx.fillStyle = "#23384f";
+      ctx.fillRect(iconX + 10, iconY + 9, 10, 2);
+      ctx.fillRect(iconX + 11, iconY + 13, 8, 2);
+      ctx.fillStyle = "#9db2cc";
+      ctx.fillRect(iconX + 7, iconY + 20, 16, 2);
+    }
 
     ctx.fillStyle = owned ? "#b7f2bb" : "#ffe4a8";
     ctx.font = "bold 14px Trebuchet MS";
     if (owned) {
-      ctx.fillText("OWNED", x + 10, y + 80);
+      ctx.fillText("OWNED", x + 8, y + 92);
     } else if (lockedByKey) {
-      ctx.fillText("LOCKED", x + 10, y + 80);
+      ctx.fillText("LOCKED", x + 8, y + 92);
     } else {
-      ctx.fillText(`BUY ${item.cost}`, x + 10, y + 80);
-      drawCurrencyIcon("stanley_nickel", x + 62, y + 67, 1.05);
+      ctx.fillText(`BUY ${item.cost}`, x + 8, y + 92);
+      drawCurrencyIcon("stanley_nickel", x + 60, y + 79, 1.0);
     }
 
     // Top row is visually encased in yellow Jell-O until each item is purchased.
@@ -5632,17 +5803,62 @@ function drawShopScene() {
     ctx.strokeRect(focused.x - 3, focused.y - 3, focused.w + 6, focused.h + 6);
   }
 
-  ctx.fillStyle = state.shopForeheadStare ? "#ff9ea5" : state.shopMessageColor || "#c5d9f2";
-  ctx.font = "17px Trebuchet MS";
-  drawPixelPanel(82, 436, 836, 36, "rgba(10,15,24,0.82)", "rgba(7,10,18,0.82)", "#8bc8ff", "rgba(216,236,255,0.62)");
-  drawWrappedTextWithCurrencyIcons(
-    state.shopMessage || "Jim says this machine is 90% Jell-O, 10% disappointment, and 100% policy.",
-    92,
-    457,
-    820,
-    20,
-    1
-  );
+  if (state.shopPurchasePrompt && !state.shopConversation) {
+    const p = state.shopPurchasePrompt;
+    const boxX = 82;
+    const boxY = 408;
+    const boxW = 836;
+    const boxH = 96;
+    drawPixelPanel(boxX, boxY, boxW, boxH, "rgba(12,20,36,0.93)", "rgba(8,14,26,0.95)", "#8bc8ff", "rgba(222,240,255,0.7)");
+    ctx.fillStyle = "#ffd88c";
+    ctx.font = "bold 20px Trebuchet MS";
+    ctx.fillText(p.name, boxX + 14, boxY + 28);
+    ctx.fillStyle = "#e8f0ff";
+    ctx.font = "bold 16px Trebuchet MS";
+    drawWrappedText(p.description, boxX + 14, boxY + 52, 560, 18, 2);
+
+    if (p.owned) {
+      ctx.fillStyle = "#b7f2bb";
+      ctx.font = "bold 18px Trebuchet MS";
+      ctx.fillText("OWNED", boxX + 620, boxY + 56);
+    } else if (p.lockedByKey) {
+      ctx.fillStyle = "#ffd7a1";
+      ctx.font = "bold 17px Trebuchet MS";
+      drawWrappedText("LOCKED: Complete Save Pam to unlock top row.", boxX + 600, boxY + 52, 220, 18, 2);
+    } else if (!p.canAfford) {
+      ctx.fillStyle = "#ffb8a6";
+      ctx.font = "bold 18px Trebuchet MS";
+      ctx.fillText("NOT ENOUGH MONEY", boxX + 596, boxY + 56);
+    } else {
+      const buyBtn = { id: "buy", x: boxX + 592, y: boxY + 18, w: 108, h: 34 };
+      const cancelBtn = { id: "cancel", x: boxX + 710, y: boxY + 18, w: 108, h: 34 };
+      state.shopPromptBounds = [buyBtn, cancelBtn];
+      for (const btn of state.shopPromptBounds) {
+        ctx.fillStyle = btn.id === "buy" ? "#2d6e3a" : "#2f4f7a";
+        ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
+        ctx.strokeStyle = "#9fd8ff";
+        ctx.strokeRect(btn.x, btn.y, btn.w, btn.h);
+        ctx.fillStyle = "#f5ead6";
+        ctx.font = "bold 16px Trebuchet MS";
+        ctx.fillText(btn.id === "buy" ? `BUY ${p.cost}` : "DON'T BUY", btn.x + (btn.id === "buy" ? 18 : 10), btn.y + 22);
+        if (btn.id === "buy") drawCurrencyIcon("stanley_nickel", btn.x + 74, btn.y + 10, 0.9);
+      }
+    }
+  }
+
+  if (!state.shopPurchasePrompt || state.shopConversation) {
+    ctx.fillStyle = state.shopForeheadStare ? "#ff9ea5" : state.shopMessageColor || "#c5d9f2";
+    ctx.font = "17px Trebuchet MS";
+    drawPixelPanel(82, 436, 836, 40, "rgba(10,15,24,0.88)", "rgba(7,10,18,0.88)", "#8bc8ff", "rgba(216,236,255,0.68)");
+    drawWrappedTextWithCurrencyIcons(
+      state.shopMessage || "Jim says this machine is 90% Jell-O, 10% disappointment, and 100% policy.",
+      92,
+      459,
+      820,
+      20,
+      1
+    );
+  }
   if (state.shopForeheadStare) {
     ctx.fillStyle = "rgba(12, 14, 22, 0.55)";
     ctx.fillRect(56, 72, 848, 402);
@@ -5767,6 +5983,13 @@ function drawShopScene() {
     const talkIdx = Math.max(0, Math.min(state.shopTalkBounds.length - 1, state.uiFocus.shopTalk || 0));
     state.uiFocus.shopTalk = talkIdx;
     const focused = state.shopTalkBounds[talkIdx];
+    ctx.strokeStyle = "rgba(255, 228, 136, 0.95)";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(focused.x - 2, focused.y - 2, focused.w + 4, focused.h + 4);
+  } else if (!state.shopConversation && state.shopPurchasePrompt && state.shopPromptBounds.length > 0) {
+    const promptIdx = Math.max(0, Math.min(state.shopPromptBounds.length - 1, state.uiFocus.shopPrompt || 0));
+    state.uiFocus.shopPrompt = promptIdx;
+    const focused = state.shopPromptBounds[promptIdx];
     ctx.strokeStyle = "rgba(255, 228, 136, 0.95)";
     ctx.lineWidth = 3;
     ctx.strokeRect(focused.x - 2, focused.y - 2, focused.w + 4, focused.h + 4);
@@ -6124,6 +6347,15 @@ function selectDeskByCanvasPoint(x, y) {
 }
 
 function selectShopByCanvasPoint(x, y) {
+  if (!state.shopConversation && state.shopPurchasePrompt && state.shopPromptBounds.length > 0) {
+    for (const btn of state.shopPromptBounds) {
+      if (x < btn.x || x > btn.x + btn.w || y < btn.y || y > btn.y + btn.h) continue;
+      state.uiFocus.shopPrompt = Math.max(0, state.shopPromptBounds.indexOf(btn));
+      handleShopPromptClick(btn.id);
+      return;
+    }
+  }
+
   if (state.shopTalkBounds.length > 0) {
     for (const target of state.shopTalkBounds) {
       if (x < target.x || x > target.x + target.w || y < target.y || y > target.y + target.h) continue;
@@ -6156,7 +6388,7 @@ function selectShopByCanvasPoint(x, y) {
   for (const card of state.shopCards) {
     if (x < card.x || x > card.x + card.w || y < card.y || y > card.y + card.h) continue;
     state.uiFocus.shopCard = Math.max(0, state.shopCards.indexOf(card));
-    tryBuyShopItem(card.itemId);
+    openShopItemPrompt(card.itemId);
     return;
   }
 }
@@ -7660,9 +7892,15 @@ function handlePress(ev) {
         }
         return;
       }
+      if (!state.shopConversation && state.shopPurchasePrompt && state.shopPromptBounds.length > 0) {
+        const idx = Math.max(0, Math.min(state.shopPromptBounds.length - 1, state.uiFocus.shopPrompt || 0));
+        const btn = state.shopPromptBounds[idx];
+        if (btn) handleShopPromptClick(btn.id);
+        return;
+      }
       if (state.shopCards.length > 0) {
         const idx = Math.max(0, Math.min(state.shopCards.length - 1, state.uiFocus.shopCard || 0));
-        tryBuyShopItem(state.shopCards[idx].itemId);
+        openShopItemPrompt(state.shopCards[idx].itemId);
         return;
       }
       switchScene("menu");
@@ -7743,6 +7981,8 @@ function handlePress(ev) {
     if (state.scene === "shop") {
       if (state.shopConversation && state.shopTalkBounds.length > 0) {
         state.uiFocus.shopTalk = moveGridFocus(arrowDir, state.uiFocus.shopTalk, state.shopTalkBounds.length, 2);
+      } else if (!state.shopConversation && state.shopPurchasePrompt && state.shopPromptBounds.length > 0) {
+        state.uiFocus.shopPrompt = moveGridFocus(arrowDir, state.uiFocus.shopPrompt, state.shopPromptBounds.length, 2);
       } else {
         state.uiFocus.shopCard = moveGridFocus(arrowDir, state.uiFocus.shopCard, state.shopCards.length, 3);
       }
