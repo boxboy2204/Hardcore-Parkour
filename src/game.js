@@ -10,6 +10,11 @@ const summaryPanel = document.getElementById("summaryPanel");
 const summaryText = document.getElementById("summaryText");
 const cornerTv = document.getElementById("cornerTv");
 const cornerLogo = document.getElementById("cornerLogo");
+const saveImportInput = document.createElement("input");
+saveImportInput.type = "file";
+saveImportInput.accept = "application/json";
+saveImportInput.style.display = "none";
+document.body.appendChild(saveImportInput);
 
 const SAVE_KEY = "hardcore_parkour_save_v1";
 const RESET_ONCE_KEY = "hardcore_parkour_reset_once_v1";
@@ -368,6 +373,7 @@ const state = {
   shopConversation: null,
   shopPurchasePrompt: null,
   inventoryCards: [],
+  settingsOptions: [],
   deskBounds: null,
   deskDrawerBounds: null,
   deskGoldenfaceBounds: null,
@@ -422,9 +428,17 @@ const state = {
     shopTalk: 0,
     shopPrompt: 0,
     inventoryCard: 0,
+    settingsOption: 0,
     annexCard: 0,
     reviewButton: 0,
   },
+  debugHitboxes: false,
+  tutorialMode: false,
+  tutorialStep: 0,
+  fps: 60,
+  fpsAvg: 60,
+  fpsWorst: 60,
+  fpsSamples: [],
   saveData: null,
   saveProfiles: null,
   activeRunnerId: "michael",
@@ -462,6 +476,16 @@ function createDefaultSave() {
     inventory: {
       items: {},
       loadout: [],
+    },
+    settings: {
+      musicVolume: 0.65,
+      sfxVolume: 0.85,
+      screenShake: true,
+      parkourAssist: false,
+      showFps: true,
+    },
+    flags: {
+      tutorialSeen: false,
     },
     achievements: {
       hottestInOffice: false,
@@ -541,6 +565,8 @@ function normalizeSave(parsedInput) {
           ? parsed.inventory.loadout.filter((id) => SHOP_ITEMS.some((item) => item.id === id))
           : [],
       },
+      settings: { ...defaults.settings, ...(parsed.settings || {}) },
+      flags: { ...defaults.flags, ...(parsed.flags || {}) },
       achievements: migratedAchievements,
       missions: {
         ...defaults.missions,
@@ -665,9 +691,23 @@ function ensureAudioContext() {
   return state.audioCtx;
 }
 
+function getSettings() {
+  return state.saveData?.settings || createDefaultSave().settings;
+}
+
+function getSfxVolume() {
+  return Math.max(0, Math.min(1, Number(getSettings().sfxVolume ?? 0.85)));
+}
+
+function getMusicVolume() {
+  return Math.max(0, Math.min(1, Number(getSettings().musicVolume ?? 0.65)));
+}
+
 function playThemeSwitchCue() {
   const audioCtx = ensureAudioContext();
   if (!audioCtx) return;
+  const sfx = getSfxVolume();
+  if (sfx <= 0) return;
   if (audioCtx.state === "suspended") audioCtx.resume();
 
   const now = audioCtx.currentTime;
@@ -678,7 +718,7 @@ function playThemeSwitchCue() {
     osc.type = "square";
     osc.frequency.setValueAtTime(frequency, now + idx * 0.09);
     gain.gain.setValueAtTime(0.0001, now + idx * 0.09);
-    gain.gain.exponentialRampToValueAtTime(0.11, now + idx * 0.09 + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.11 * sfx, now + idx * 0.09 + 0.015);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.09 + 0.11);
     osc.connect(gain);
     gain.connect(audioCtx.destination);
@@ -690,6 +730,8 @@ function playThemeSwitchCue() {
 function playLoadingChantCue() {
   const audioCtx = ensureAudioContext();
   if (!audioCtx) return;
+  const sfx = getSfxVolume();
+  if (sfx <= 0) return;
   if (audioCtx.state === "suspended") audioCtx.resume();
   const now = audioCtx.currentTime;
   const hits = [
@@ -703,7 +745,7 @@ function playLoadingChantCue() {
     osc.type = "square";
     osc.frequency.setValueAtTime(hit.f, now + hit.t);
     gain.gain.setValueAtTime(0.0001, now + hit.t);
-    gain.gain.exponentialRampToValueAtTime(hit.v, now + hit.t + 0.01);
+    gain.gain.exponentialRampToValueAtTime(hit.v * sfx, now + hit.t + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + hit.t + hit.d);
     osc.connect(gain);
     gain.connect(audioCtx.destination);
@@ -716,6 +758,8 @@ function playChaChingCue() {
   const fallbackSynth = () => {
     const audioCtx = ensureAudioContext();
     if (!audioCtx) return;
+    const sfx = getSfxVolume();
+    if (sfx <= 0) return;
     if (audioCtx.state === "suspended") audioCtx.resume();
 
     const now = audioCtx.currentTime;
@@ -730,7 +774,7 @@ function playChaChingCue() {
       osc.type = n.type;
       osc.frequency.setValueAtTime(n.f, now + n.t);
       gain.gain.setValueAtTime(0.0001, now + n.t);
-      gain.gain.exponentialRampToValueAtTime(n.level, now + n.t + 0.01);
+      gain.gain.exponentialRampToValueAtTime(n.level * sfx, now + n.t + 0.01);
       gain.gain.exponentialRampToValueAtTime(0.0001, now + n.t + n.d);
       osc.connect(gain);
       gain.connect(audioCtx.destination);
@@ -741,7 +785,7 @@ function playChaChingCue() {
 
   try {
     const audio = new Audio(SHOP_CHACHING_PATH);
-    audio.volume = 0.95;
+    audio.volume = 0.95 * getSfxVolume();
     audio.currentTime = 0;
     audio.play().catch(() => fallbackSynth());
   } catch {
@@ -803,7 +847,7 @@ function playPursuitStartSirenCue() {
   stopPursuitSirenLoop();
   try {
     const audio = new Audio(PURSUIT_START_SIREN_PATH);
-    audio.volume = 0.15; // Quiet, distant siren bed.
+    audio.volume = 0.15 * getMusicVolume(); // Quiet, distant siren bed.
     audio.loop = true;
     audio.currentTime = 0;
     state.pursuitSirenAudio = audio;
@@ -819,6 +863,8 @@ function playPursuitStartSirenCue() {
 function playStranglerRevealCue() {
   const audioCtx = ensureAudioContext();
   if (!audioCtx) return;
+  const sfx = getSfxVolume();
+  if (sfx <= 0) return;
   if (audioCtx.state === "suspended") audioCtx.resume();
 
   const now = audioCtx.currentTime;
@@ -829,7 +875,7 @@ function playStranglerRevealCue() {
     osc.type = "square";
     osc.frequency.setValueAtTime(frequency, now + idx * 0.08);
     gain.gain.setValueAtTime(0.0001, now + idx * 0.08);
-    gain.gain.exponentialRampToValueAtTime(0.1, now + idx * 0.08 + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.1 * sfx, now + idx * 0.08 + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.08 + 0.2);
     osc.connect(gain);
     gain.connect(audioCtx.destination);
@@ -842,6 +888,8 @@ function playPursuitEndBumBumCue() {
   const fallbackSynth = () => {
     const audioCtx = ensureAudioContext();
     if (!audioCtx) return;
+    const sfx = getSfxVolume();
+    if (sfx <= 0) return;
     if (audioCtx.state === "suspended") audioCtx.resume();
     const now = audioCtx.currentTime;
     const hits = [
@@ -856,7 +904,7 @@ function playPursuitEndBumBumCue() {
       osc.type = hit.type;
       osc.frequency.setValueAtTime(hit.f, now + hit.t);
       gain.gain.setValueAtTime(0.0001, now + hit.t);
-      gain.gain.exponentialRampToValueAtTime(hit.level, now + hit.t + 0.01);
+      gain.gain.exponentialRampToValueAtTime(hit.level * sfx, now + hit.t + 0.01);
       gain.gain.exponentialRampToValueAtTime(0.0001, now + hit.t + hit.d);
       osc.connect(gain);
       gain.connect(audioCtx.destination);
@@ -867,7 +915,7 @@ function playPursuitEndBumBumCue() {
 
   try {
     const audio = new Audio(PURSUIT_END_TADA_PATH);
-    audio.volume = 0.95;
+    audio.volume = 0.95 * getSfxVolume();
     audio.currentTime = 0;
     audio.play().catch(() => fallbackSynth());
   } catch {
@@ -878,6 +926,8 @@ function playPursuitEndBumBumCue() {
 function playCutsceneSingingNote(frequency, durationSec = 0.28) {
   const audioCtx = ensureAudioContext();
   if (!audioCtx) return;
+  const music = getMusicVolume();
+  if (music <= 0) return;
   if (audioCtx.state === "suspended") audioCtx.resume();
 
   const now = audioCtx.currentTime;
@@ -888,8 +938,8 @@ function playCutsceneSingingNote(frequency, durationSec = 0.28) {
   osc.type = "square";
   osc.frequency.setValueAtTime(frequency, now);
   gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.exponentialRampToValueAtTime(0.08, now + 0.02);
-  gain.gain.setValueAtTime(0.08, now + hold);
+  gain.gain.exponentialRampToValueAtTime(0.08 * music, now + 0.02);
+  gain.gain.setValueAtTime(0.08 * music, now + hold);
   gain.gain.exponentialRampToValueAtTime(0.0001, now + releaseEnd);
   osc.connect(gain);
   gain.connect(audioCtx.destination);
@@ -923,6 +973,8 @@ function updateCutsceneSong(dt) {
 function playSkarnRetroNote(frequency, durationSec = 0.18, type = "square", level = 0.05) {
   const audioCtx = ensureAudioContext();
   if (!audioCtx) return;
+  const music = getMusicVolume();
+  if (music <= 0) return;
   if (audioCtx.state === "suspended") audioCtx.resume();
   const now = audioCtx.currentTime;
 
@@ -931,7 +983,7 @@ function playSkarnRetroNote(frequency, durationSec = 0.18, type = "square", leve
   osc.type = type;
   osc.frequency.setValueAtTime(frequency, now);
   gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.exponentialRampToValueAtTime(level, now + 0.01);
+  gain.gain.exponentialRampToValueAtTime(level * music, now + 0.01);
   gain.gain.exponentialRampToValueAtTime(0.0001, now + Math.max(0.08, durationSec));
   osc.connect(gain);
   gain.connect(audioCtx.destination);
@@ -942,6 +994,8 @@ function playSkarnRetroNote(frequency, durationSec = 0.18, type = "square", leve
 function playLevelNote(frequency, durationSec, type, level) {
   const audioCtx = ensureAudioContext();
   if (!audioCtx) return;
+  const music = getMusicVolume();
+  if (music <= 0) return;
   if (audioCtx.state === "suspended") audioCtx.resume();
   const now = audioCtx.currentTime;
 
@@ -950,7 +1004,7 @@ function playLevelNote(frequency, durationSec, type, level) {
   osc.type = type;
   osc.frequency.setValueAtTime(frequency, now);
   gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.exponentialRampToValueAtTime(level, now + 0.01);
+  gain.gain.exponentialRampToValueAtTime(level * music, now + 0.01);
   gain.gain.exponentialRampToValueAtTime(0.0001, now + Math.max(0.08, durationSec));
   osc.connect(gain);
   gain.connect(audioCtx.destination);
@@ -1292,6 +1346,43 @@ function showShopMessage(text, color = "#ffe4a8") {
 function showMissionToast(text) {
   state.missionToastText = text;
   state.missionToastLeft = 2.6;
+}
+
+function clamp01(v) {
+  return Math.max(0, Math.min(1, v));
+}
+
+function adjustSettingByIndex(index, dir) {
+  const s = getSettings();
+  if (index === 0) s.musicVolume = clamp01((s.musicVolume || 0) + dir * 0.05);
+  else if (index === 1) s.sfxVolume = clamp01((s.sfxVolume || 0) + dir * 0.05);
+  else if (index === 2) s.screenShake = dir > 0 ? true : dir < 0 ? false : !s.screenShake;
+  else if (index === 3) s.parkourAssist = dir > 0 ? true : dir < 0 ? false : !s.parkourAssist;
+  else if (index === 4) s.showFps = dir > 0 ? true : dir < 0 ? false : !s.showFps;
+  persistSave();
+}
+
+function exportSaveToFile() {
+  if (!state.saveProfiles) return;
+  const payload = {
+    version: SAVE_PROFILE_VERSION,
+    currentRunner: state.activeRunnerId,
+    profiles: state.saveProfiles,
+    exportedAt: new Date().toISOString(),
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "hardcore-parkour-save.json";
+  a.click();
+  URL.revokeObjectURL(url);
+  showMissionToast("Save exported.");
+}
+
+function importSaveFromFile() {
+  saveImportInput.value = "";
+  saveImportInput.click();
 }
 
 function renderReviewSummaryText() {
@@ -1921,6 +2012,7 @@ function switchScene(sceneId) {
     state.uiFocus.shopPrompt = 0;
   }
   if (sceneId === "inventory") state.uiFocus.inventoryCard = 0;
+  if (sceneId === "settings") state.uiFocus.settingsOption = 0;
   if (sceneId === "annex") state.uiFocus.annexCard = 0;
   if (sceneId === "run") state.uiFocus.reviewButton = 0;
   if (leavingRun) stopPursuitSirenLoop();
@@ -1949,6 +2041,9 @@ function updateUiForScene() {
   } else if (state.scene === "loading") {
     startBtn.textContent = "Loading...";
     retryBtn.hidden = true;
+  } else if (state.scene === "tutorial") {
+    startBtn.textContent = "Start Tutorial";
+    retryBtn.hidden = true;
   } else if (state.scene === "run") {
     startBtn.textContent = "Back To Menu";
     retryBtn.textContent = "Run It Back";
@@ -1963,6 +2058,9 @@ function updateUiForScene() {
   } else if (state.scene === "inventory") {
     startBtn.textContent = "Back To Menu";
     retryBtn.hidden = true;
+  } else if (state.scene === "settings") {
+    startBtn.textContent = "Back To Menu";
+    retryBtn.hidden = true;
   } else if (state.scene === "desk") {
     startBtn.textContent = "Back To Menu";
     retryBtn.hidden = true;
@@ -1973,9 +2071,19 @@ function updateUiForScene() {
   }
 }
 
-function resetRunState(worldId = state.selectedWorldId) {
+function startTutorialRun() {
+  if (!state.saveData.flags) state.saveData.flags = {};
+  state.saveData.flags.tutorialSeen = true;
+  persistSave();
+  state.selectedWorldId = "bullpen";
+  resetRunState("bullpen", true);
+}
+
+function resetRunState(worldId = state.selectedWorldId, tutorial = false) {
   stopPursuitSirenLoop();
   state.runEquippedItems = [];
+  state.tutorialMode = tutorial;
+  state.tutorialStep = 0;
   state.scene = "loading";
   state.loadingWorldId = worldId;
   state.loadingLeft = LOADING_SCENE_DURATION;
@@ -2110,10 +2218,12 @@ function startRunStateNow(worldId = state.selectedWorldId) {
 }
 
 function addFloatingText(text, x, y, color) {
+  if (state.floatingText.length > 120) state.floatingText.splice(0, state.floatingText.length - 120);
   state.floatingText.push({ text, x, y, color, age: 0, ttl: 0.8 });
 }
 
 function addHitParticles(x, y, color) {
+  if (state.particles.length > 420) return;
   for (let i = 0; i < 7; i += 1) {
     state.particles.push({
       x,
@@ -2487,6 +2597,7 @@ function handlePamSpottingKey() {
 
 function doParkourShout() {
   if (!state.running || state.paused) return;
+  if (state.tutorialMode && state.tutorialStep < 2) state.tutorialStep = 2;
   if (state.cheatInvincible) {
     state.pendingLanding = false;
     state.landingWindowLeft = 0;
@@ -2497,6 +2608,7 @@ function doParkourShout() {
       addFloatingText("WHITEST!", state.player.x - 8, state.player.y - 46, "#fff4b2");
     }
     addFloatingText("HARDCORE!", state.player.x + 16, state.player.y - 28, "#ffd54d");
+    if (state.tutorialMode) state.tutorialStep = Math.max(state.tutorialStep, 3);
     return;
   }
   if (state.pendingLanding && state.landingWindowLeft > 0) {
@@ -2509,6 +2621,7 @@ function doParkourShout() {
       addFloatingText("WHITEST!", state.player.x - 8, state.player.y - 46, "#fff4b2");
     }
     addFloatingText("HARDCORE!", state.player.x + 16, state.player.y - 28, "#ffd54d");
+    if (state.tutorialMode) state.tutorialStep = Math.max(state.tutorialStep, 3);
     return;
   }
 
@@ -2594,6 +2707,7 @@ function jump() {
   state.player.vy = -state.player.preset.jumpPower;
   state.player.grounded = false;
   state.player.jumpsUsed += 1;
+  if (state.tutorialMode) state.tutorialStep = Math.max(state.tutorialStep, 1);
 }
 
 function startSlide() {
@@ -2603,11 +2717,13 @@ function startSlide() {
   state.slideSpeed = GAME.slideInitialSpeed;
   state.pendingSpaceTapJump = false;
   addFloatingText("SLIDE!", state.player.x + 10, state.player.y - 30, "#9ce3ff");
+  if (state.tutorialMode) state.tutorialStep = Math.max(state.tutorialStep, 2);
 }
 
 function onLanding() {
   state.pendingLanding = true;
-  state.landingWindowLeft = GAME.parkourWindowSec;
+  const assistMul = getSettings().parkourAssist ? 1.65 : 1;
+  state.landingWindowLeft = GAME.parkourWindowSec * assistMul;
 }
 
 function isDodgeOnlyObstacle(type) {
@@ -2622,6 +2738,61 @@ function isDodgeOnlyObstacle(type) {
 
 function intersects(a, b) {
   return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
+function getPlayerHitbox() {
+  if (!state.player) return null;
+  const player = state.player;
+  const hitboxW = player.width * player.preset.hitboxScale;
+  const hitboxHBase = player.height * player.preset.hitboxScale;
+  const hitboxH = state.slideActive ? hitboxHBase * 0.55 : hitboxHBase;
+  return {
+    x: player.x + (player.width - hitboxW) / 2,
+    y: player.y - hitboxH,
+    width: hitboxW,
+    height: hitboxH,
+  };
+}
+
+function drawDebugHitboxes() {
+  if (!state.debugHitboxes || state.scene !== "run" || !state.player) return;
+  const pbox = getPlayerHitbox();
+  if (!pbox) return;
+
+  ctx.save();
+  ctx.strokeStyle = "#7dff8a";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(pbox.x, pbox.y, pbox.width, pbox.height);
+
+  for (const obs of state.obstacles) {
+    if (obs.type === "ladder") {
+      const clearance = 24;
+      const blockBottom = obs.y + obs.height - clearance;
+      const ladderBlock = { x: obs.x, y: obs.y, width: obs.width, height: Math.max(1, blockBottom - obs.y) };
+      ctx.strokeStyle = "#ffd56a";
+      ctx.strokeRect(ladderBlock.x, ladderBlock.y, ladderBlock.width, ladderBlock.height);
+    } else {
+      ctx.strokeStyle = "#ff7f7f";
+      ctx.strokeRect(obs.x, obs.y, obs.width, obs.height);
+    }
+  }
+
+  if (state.runWorldId === "pursuit") {
+    const zone = getPursuitBoardZone();
+    ctx.strokeStyle = "#7ecfff";
+    ctx.strokeRect(zone.x, zone.y, zone.width, zone.height);
+  } else if (state.runWorldId === "skarn") {
+    const target = getSkarnGoldenfaceHitbox();
+    ctx.strokeStyle = "#ffb86f";
+    ctx.strokeRect(target.x, target.y, target.width, target.height);
+  }
+
+  ctx.fillStyle = "rgba(8,14,26,0.78)";
+  ctx.fillRect(10, canvas.height - 28, 340, 18);
+  ctx.fillStyle = "#d7f0ff";
+  ctx.font = "bold 12px Trebuchet MS";
+  ctx.fillText("DEBUG HITBOXES (H): green=player red=obstacle yellow=slide-zone", 14, canvas.height - 15);
+  ctx.restore();
 }
 
 function handleObstacleCollision(obstacle) {
@@ -2836,7 +3007,7 @@ function updateRun(dt) {
   }
 
   state.spawnTimerSec -= dt;
-  if (state.spawnTimerSec <= 0) {
+  if (state.spawnTimerSec <= 0 && (!state.tutorialMode || state.worldTimeSec > 6.5)) {
     const difficulty = LEVEL_DIFFICULTY[state.runWorldId] || LEVEL_DIFFICULTY.bullpen;
     spawnObstacle();
     const spawnGap = difficulty.spawnBase + Math.random() * difficulty.spawnRand;
@@ -2844,7 +3015,7 @@ function updateRun(dt) {
   }
 
   state.collectibleSpawnTimerSec -= dt;
-  if (state.collectibleSpawnTimerSec <= 0) {
+  if (state.collectibleSpawnTimerSec <= 0 && (!state.tutorialMode || state.worldTimeSec > 3.5)) {
     spawnCollectible();
     const collectibleSpawnMul = state.player?.runtimeCollectibleSpawnMul || 1;
     const gap = COLLECTIBLE_SPAWN.baseGap + Math.random() * COLLECTIBLE_SPAWN.randGap;
@@ -2854,15 +3025,7 @@ function updateRun(dt) {
     );
   }
 
-  const hitboxW = player.width * player.preset.hitboxScale;
-  const hitboxHBase = player.height * player.preset.hitboxScale;
-  const hitboxH = state.slideActive ? hitboxHBase * 0.55 : hitboxHBase;
-  const playerBox = {
-    x: player.x + (player.width - hitboxW) / 2,
-    y: player.y - hitboxH,
-    width: hitboxW,
-    height: hitboxH,
-  };
+  const playerBox = getPlayerHitbox();
 
   if (state.runWorldId === "pursuit" && state.multiplier >= 10 && !state.pursuitEndPending && canPromptPursuitJump()) {
     const zone = getPursuitBoardZone();
@@ -4700,34 +4863,106 @@ function drawCurrencyIcon(type, x, y, scale = 1) {
   return 15 * scale;
 }
 
-function drawWrappedTextWithCurrencyIcons(text, x, y, maxWidth, lineHeight, maxLines = 2) {
-  const tokens = String(text || "").split(" ");
+function splitTokenToFit(token, maxWidth, tokenWidthFn) {
+  if (!token || tokenWidthFn(token) <= maxWidth) return [token];
+  const parts = [];
+  let rest = token;
+  while (rest.length > 0) {
+    let cut = Math.max(1, rest.length);
+    while (cut > 1 && tokenWidthFn(rest.slice(0, cut)) > maxWidth) cut -= 1;
+    parts.push(rest.slice(0, cut));
+    rest = rest.slice(cut);
+  }
+  return parts;
+}
+
+function applyEllipsisToLine(tokens, maxWidth, tokenWidthFn, spaceWidth) {
+  if (!tokens.length) return ["..."];
+  const result = tokens.slice();
+  const ellipsisWidth = tokenWidthFn("...");
+  const lineWidth = (arr) => {
+    let width = 0;
+    for (let i = 0; i < arr.length; i += 1) {
+      width += tokenWidthFn(arr[i]);
+      if (i > 0) width += spaceWidth;
+    }
+    return width;
+  };
+
+  if (result[result.length - 1] === "[SB]" || result[result.length - 1] === "[SN]") result.push("...");
+  else {
+    let tail = result[result.length - 1] || "";
+    while (tail.length > 0 && tokenWidthFn(`${tail}...`) > maxWidth) tail = tail.slice(0, -1);
+    result[result.length - 1] = `${tail || ""}...`;
+  }
+
+  while (result.length > 1 && lineWidth(result) > maxWidth) result.splice(result.length - 2, 1);
+  if (lineWidth(result) > maxWidth) {
+    let dots = "...";
+    while (dots.length > 1 && tokenWidthFn(dots) > maxWidth) dots = dots.slice(0, -1);
+    return [dots];
+  }
+  if (!result.length) return ellipsisWidth <= maxWidth ? ["..."] : ["."]; // defensive fallback
+  return result;
+}
+
+function layoutWrappedTokens(rawTokens, maxWidth, maxLines, tokenWidthFn) {
+  const tokens = rawTokens.filter(Boolean);
   const spaceW = ctx.measureText(" ").width;
   const lines = [];
   let line = [];
   let lineW = 0;
+  let overflowed = false;
 
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i];
+    const parts =
+      token === "[SB]" || token === "[SN]" ? [token] : splitTokenToFit(token, maxWidth, tokenWidthFn);
+    for (let j = 0; j < parts.length; j += 1) {
+      const part = parts[j];
+      const w = tokenWidthFn(part);
+      const candidate = line.length ? lineW + spaceW + w : w;
+      if (candidate <= maxWidth || line.length === 0) {
+        line.push(part);
+        lineW = candidate;
+      } else {
+        lines.push(line);
+        if (lines.length >= maxLines) {
+          overflowed = true;
+          break;
+        }
+        line = [part];
+        lineW = w;
+      }
+    }
+    if (overflowed) break;
+  }
+  if (!overflowed && line.length > 0 && lines.length < maxLines) lines.push(line);
+  if (!lines.length) lines.push([""]);
+
+  const consumedTokens = lines.flat().filter(Boolean).length;
+  const rawTokenCount = tokens.length;
+  if (overflowed || consumedTokens < rawTokenCount) {
+    const idx = Math.max(0, Math.min(maxLines - 1, lines.length - 1));
+    lines[idx] = applyEllipsisToLine(lines[idx], maxWidth, tokenWidthFn, spaceW);
+  }
+  return lines;
+}
+
+function drawWrappedTextWithCurrencyIcons(text, x, y, maxWidth, lineHeight, maxLines = 2) {
+  const tokens = String(text || "").split(/\s+/).filter(Boolean);
   const tokenWidth = (token) => {
     if (token === "[SB]") return 18;
     if (token === "[SN]") return 16;
     return ctx.measureText(token).width;
   };
+  const lines = layoutWrappedTokens(tokens, maxWidth, maxLines, tokenWidth);
+  const spaceW = ctx.measureText(" ").width;
 
-  for (const token of tokens) {
-    const tW = tokenWidth(token);
-    const nextW = line.length === 0 ? tW : lineW + spaceW + tW;
-    if (nextW <= maxWidth || line.length === 0) {
-      line.push(token);
-      lineW = nextW;
-      continue;
-    }
-    lines.push(line);
-    if (lines.length >= maxLines) break;
-    line = [token];
-    lineW = tW;
-  }
-  if (line.length > 0 && lines.length < maxLines) lines.push(line);
-
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y - lineHeight + 2, maxWidth, lineHeight * maxLines + 4);
+  ctx.clip();
   for (let i = 0; i < lines.length; i += 1) {
     let cx = x;
     const baseline = y + i * lineHeight;
@@ -4735,16 +4970,16 @@ function drawWrappedTextWithCurrencyIcons(text, x, y, maxWidth, lineHeight, maxL
     for (let j = 0; j < row.length; j += 1) {
       const token = row[j];
       if (j > 0) cx += spaceW;
-      if (token === "[SB]") {
-        cx += drawCurrencyIcon("schrute_buck", cx, baseline - 12, 0.9);
-      } else if (token === "[SN]") {
-        cx += drawCurrencyIcon("stanley_nickel", cx, baseline - 11, 0.9);
-      } else {
+      if (token === "[SB]") cx += drawCurrencyIcon("schrute_buck", cx, baseline - 12, 0.9);
+      else if (token === "[SN]") cx += drawCurrencyIcon("stanley_nickel", cx, baseline - 11, 0.9);
+      else {
         ctx.fillText(token, cx, baseline);
         cx += ctx.measureText(token).width;
       }
     }
   }
+  ctx.restore();
+  return lines.length;
 }
 
 function drawPamQuestBackgroundSprite() {
@@ -5032,35 +5267,16 @@ function drawFloatingText() {
 }
 
 function drawWrappedText(text, x, y, maxWidth, lineHeight, maxLines = 3) {
-  const words = text.split(" ");
-  const lines = [];
-  let current = "";
+  const words = String(text || "").split(/\s+/).filter(Boolean);
+  const tokenWidth = (token) => ctx.measureText(token).width;
+  const lines = layoutWrappedTokens(words, maxWidth, maxLines, tokenWidth);
 
-  for (const word of words) {
-    const next = current ? `${current} ${word}` : word;
-    if (ctx.measureText(next).width <= maxWidth) {
-      current = next;
-      continue;
-    }
-
-    if (current) lines.push(current);
-    current = word;
-    if (lines.length >= maxLines - 1) break;
-  }
-
-  if (current && lines.length < maxLines) lines.push(current);
-
-  if (lines.length === maxLines && words.join(" ").length > lines.join(" ").length) {
-    let last = lines[maxLines - 1];
-    while (last.length > 0 && ctx.measureText(`${last}...`).width > maxWidth) {
-      last = last.slice(0, -1);
-    }
-    lines[maxLines - 1] = `${last}...`;
-  }
-
-  for (let i = 0; i < lines.length; i += 1) {
-    ctx.fillText(lines[i], x, y + i * lineHeight);
-  }
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y - lineHeight + 2, maxWidth, lineHeight * maxLines + 4);
+  ctx.clip();
+  for (let i = 0; i < lines.length; i += 1) ctx.fillText(lines[i].join(" "), x, y + i * lineHeight);
+  ctx.restore();
   return lines.length;
 }
 
@@ -5664,7 +5880,7 @@ function drawMenuScene() {
 
   ctx.fillStyle = "#fff3b4";
   ctx.font = "15px Trebuchet MS";
-  ctx.fillText("Enter: Launch Level   Click Sticky Notes   C: Characters   S: Shop   A: Annex   D: Jim's Desk   I: Inventory", 34, 523);
+  ctx.fillText("Enter: Launch Level   C: Characters   S: Shop   A: Annex   D: Jim's Desk   I: Inventory   O: Settings", 34, 523);
 }
 
 function drawShopScene() {
@@ -6665,6 +6881,31 @@ function drawMissionsScene() {
   ctx.fillText("Press M to close missions and get back to the chaos.", 106, 524);
 }
 
+function drawTutorialScene() {
+  const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  grad.addColorStop(0, "#213963");
+  grad.addColorStop(1, "#132443");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawPixelTexture(0, 0, canvas.width, canvas.height, "rgba(9,14,28,0.15)", "rgba(255,255,255,0.04)");
+
+  drawPixelPanel(84, 64, 792, 412, "rgba(12,22,42,0.9)", "rgba(8,16,32,0.92)", "#8acfff", "rgba(216,236,255,0.64)");
+  drawTitleText("Quick Tutorial", 332, 118, "bold 42px Trebuchet MS", "#ffd86f");
+  ctx.fillStyle = "#e7f1ff";
+  ctx.font = "bold 22px Trebuchet MS";
+  drawWrappedText("Welcome to Dunder Mifflin Parkour Orientation.", 132, 164, 700, 28, 2);
+  ctx.font = "bold 20px Trebuchet MS";
+  ctx.fillStyle = "#ffe8b0";
+  ctx.fillText("1. Tap Space to jump", 132, 220);
+  ctx.fillText("2. Hold Space to slide", 132, 254);
+  ctx.fillText("3. Press J right after landing for HARDCORE", 132, 288);
+  ctx.fillText("4. Press K to hit things", 132, 322);
+  ctx.fillStyle = "#cfe4ff";
+  ctx.font = "bold 18px Trebuchet MS";
+  ctx.fillText("Enter: Start tutorial run", 132, 382);
+  ctx.fillText("K: Skip tutorial", 132, 412);
+}
+
 function drawInventoryScene() {
   const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
   grad.addColorStop(0, "#2b3658");
@@ -6742,6 +6983,51 @@ function selectInventoryByCanvasPoint(x, y) {
     toggleInventoryEquip(card.itemId);
     return;
   }
+}
+
+function drawSettingsScene() {
+  const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  grad.addColorStop(0, "#1f2f4f");
+  grad.addColorStop(1, "#0f1d37");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawPixelTexture(0, 0, canvas.width, canvas.height, "rgba(7,13,26,0.14)", "rgba(255,255,255,0.04)");
+
+  drawPixelPanel(86, 62, 788, 420, "rgba(14,23,40,0.9)", "rgba(9,16,30,0.9)", "#8bc8ff", "rgba(217,236,255,0.68)");
+  drawTitleText("Settings", 408, 118, "bold 38px Trebuchet MS", "#ffe08f");
+
+  const s = getSettings();
+  const options = [
+    { label: "Music Volume", value: `${Math.round((s.musicVolume || 0) * 100)}%` },
+    { label: "SFX Volume", value: `${Math.round((s.sfxVolume || 0) * 100)}%` },
+    { label: "Screen Shake", value: s.screenShake ? "ON" : "OFF" },
+    { label: "Parkour Assist", value: s.parkourAssist ? "ON" : "OFF" },
+    { label: "Show FPS", value: s.showFps ? "ON" : "OFF" },
+    { label: "Export Save", value: "Press Enter" },
+    { label: "Import Save", value: "Press Enter" },
+  ];
+  state.settingsOptions = options;
+
+  for (let i = 0; i < options.length; i += 1) {
+    const y = 158 + i * 42;
+    const selected = i === (state.uiFocus.settingsOption || 0);
+    ctx.fillStyle = selected ? "rgba(255, 228, 136, 0.18)" : "rgba(255,255,255,0.05)";
+    ctx.fillRect(118, y - 24, 724, 34);
+    if (selected) {
+      ctx.strokeStyle = "#ffd56a";
+      ctx.strokeRect(118, y - 24, 724, 34);
+    }
+    ctx.fillStyle = "#f4ead9";
+    ctx.font = "bold 19px Trebuchet MS";
+    ctx.fillText(options[i].label, 136, y - 2);
+    ctx.fillStyle = "#bde7ff";
+    ctx.font = "bold 18px Trebuchet MS";
+    ctx.fillText(options[i].value, 670, y - 2);
+  }
+
+  ctx.fillStyle = "#d0e6ff";
+  ctx.font = "16px Trebuchet MS";
+  drawWrappedText("Left/Right: adjust values. Enter: toggle/select. Esc: back to conference room.", 120, 462, 740, 18, 2);
 }
 
 function drawCharacterSelectScene() {
@@ -7568,8 +7854,9 @@ function drawBossKeyScene() {
 }
 
 function drawRunScene() {
-  const shakeX = state.screenShake > 0 ? (Math.random() - 0.5) * 10 * state.screenShake : 0;
-  const shakeY = state.screenShake > 0 ? (Math.random() - 0.5) * 8 * state.screenShake : 0;
+  const allowShake = getSettings().screenShake;
+  const shakeX = allowShake && state.screenShake > 0 ? (Math.random() - 0.5) * 10 * state.screenShake : 0;
+  const shakeY = allowShake && state.screenShake > 0 ? (Math.random() - 0.5) * 8 * state.screenShake : 0;
 
   ctx.save();
   ctx.translate(shakeX, shakeY);
@@ -7583,7 +7870,22 @@ function drawRunScene() {
   drawParticles();
   drawFloatingText();
   drawHud();
+  drawDebugHitboxes();
   ctx.restore();
+
+  if (state.tutorialMode && state.running && !state.gameOver) {
+    const steps = [
+      "Tutorial: Tap Space to jump.",
+      "Tutorial: Hold Space to slide.",
+      "Tutorial: Land then press J for HARDCORE.",
+      "Tutorial complete! Press Enter to pause or keep running.",
+    ];
+    const msg = steps[Math.min(steps.length - 1, state.tutorialStep || 0)];
+    drawPixelPanel(212, 20, 536, 42, "rgba(11,18,33,0.9)", "rgba(8,14,26,0.92)", "#86ccff", "rgba(212,234,255,0.62)");
+    ctx.fillStyle = "#ffe8a6";
+    ctx.font = "bold 18px Trebuchet MS";
+    drawWrappedText(msg, 226, 47, 508, 18, 2);
+  }
 
   if (state.paused && !state.gameOver) {
     ctx.fillStyle = "rgba(10,14,24,0.7)";
@@ -7786,6 +8088,15 @@ function drawRunScene() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     drawPerformanceReviewOverlay();
   }
+
+  if (getSettings().showFps) {
+    drawPixelPanel(canvas.width - 178, 8, 168, 48, "rgba(10,18,34,0.9)", "rgba(8,14,28,0.9)", "#7ecfff", "rgba(212,234,255,0.6)");
+    ctx.fillStyle = "#d9edff";
+    ctx.font = "bold 13px Trebuchet MS";
+    ctx.fillText(`FPS ${state.fps.toFixed(0)} / avg ${state.fpsAvg.toFixed(0)}`, canvas.width - 168, 29);
+    ctx.fillStyle = "#ffd7a0";
+    ctx.fillText(`Worst ${state.fpsWorst.toFixed(0)}`, canvas.width - 168, 46);
+  }
 }
 
 function render() {
@@ -7795,10 +8106,12 @@ function render() {
   }
   if (state.scene === "menu") drawMenuScene();
   else if (state.scene === "characters") drawCharacterSelectScene();
+  else if (state.scene === "tutorial") drawTutorialScene();
   else if (state.scene === "loading") drawLoadingScene();
   else if (state.scene === "run") drawRunScene();
   else if (state.scene === "shop") drawShopScene();
   else if (state.scene === "inventory") drawInventoryScene();
+  else if (state.scene === "settings") drawSettingsScene();
   else if (state.scene === "desk") drawDeskScene();
   else if (state.scene === "missions") drawMissionsScene();
   else if (state.scene === "cutscene") drawFinalCutsceneScene();
@@ -7876,6 +8189,15 @@ function render() {
 }
 
 function update(dt) {
+  const instFps = 1 / Math.max(0.0001, dt);
+  state.fps = instFps;
+  state.fpsSamples.push(instFps);
+  if (state.fpsSamples.length > 60) state.fpsSamples.shift();
+  if (state.fpsSamples.length > 0) {
+    const sum = state.fpsSamples.reduce((a, b) => a + b, 0);
+    state.fpsAvg = sum / state.fpsSamples.length;
+    state.fpsWorst = Math.min(...state.fpsSamples);
+  }
   if (state.bossMode) {
     state.elapsedSec += dt;
     return;
@@ -8137,6 +8459,13 @@ function handlePress(ev) {
     return;
   }
 
+  if (ev.code === "KeyH") {
+    ev.preventDefault();
+    state.debugHitboxes = !state.debugHitboxes;
+    showMissionToast(state.debugHitboxes ? "Debug hitboxes ON" : "Debug hitboxes OFF");
+    return;
+  }
+
   if (ev.code === "KeyI") {
     ev.preventDefault();
     if (state.scene === "run" || state.scene === "loading" || state.scene === "cutscene") return;
@@ -8145,8 +8474,20 @@ function handlePress(ev) {
     return;
   }
 
+  if (ev.code === "KeyO") {
+    ev.preventDefault();
+    if (state.scene === "run" || state.scene === "loading" || state.scene === "cutscene") return;
+    if (state.scene === "settings") switchScene(state.previousScene || "menu");
+    else switchScene("settings");
+    return;
+  }
+
   if (ev.code === "Enter") {
     ev.preventDefault();
+    if (state.scene === "tutorial") {
+      startTutorialRun();
+      return;
+    }
     if (state.scene === "run" && state.gameOver && !summaryPanel.hidden) {
       if (!nextLevelBtn.hidden && state.uiFocus.reviewButton === 1) nextLevelBtn.click();
       else retryBtn.click();
@@ -8202,6 +8543,17 @@ function handlePress(ev) {
         return;
       }
       switchScene("menu");
+      return;
+    }
+    if (state.scene === "settings") {
+      const idx = state.uiFocus.settingsOption || 0;
+      if (idx <= 4) {
+        adjustSettingByIndex(idx, 0);
+      } else if (idx === 5) {
+        exportSaveToFile();
+      } else if (idx === 6) {
+        importSaveFromFile();
+      }
       return;
     }
     if (state.scene === "annex") {
@@ -8294,6 +8646,13 @@ function handlePress(ev) {
       state.uiFocus.inventoryCard = moveGridFocus(arrowDir, state.uiFocus.inventoryCard, state.inventoryCards.length, 3);
       return;
     }
+    if (state.scene === "settings") {
+      if (arrowDir === "up") state.uiFocus.settingsOption = Math.max(0, (state.uiFocus.settingsOption || 0) - 1);
+      else if (arrowDir === "down") state.uiFocus.settingsOption = Math.min(6, (state.uiFocus.settingsOption || 0) + 1);
+      else if (arrowDir === "left") adjustSettingByIndex(state.uiFocus.settingsOption || 0, -1);
+      else if (arrowDir === "right") adjustSettingByIndex(state.uiFocus.settingsOption || 0, 1);
+      return;
+    }
     return;
   }
 
@@ -8313,10 +8672,20 @@ function handlePress(ev) {
 
   if (state.scene !== "run") {
     if (state.scene === "loading") return;
+    if (state.scene === "tutorial") {
+      if (ev.code === "KeyK") {
+        if (!state.saveData.flags) state.saveData.flags = {};
+        state.saveData.flags.tutorialSeen = true;
+        persistSave();
+        switchScene("menu");
+      }
+      return;
+    }
     if (ev.code === "KeyS") switchScene("shop");
     if (ev.code === "KeyA") switchScene("annex");
     if (ev.code === "KeyD") switchScene("desk");
     if (ev.code === "KeyC") switchScene("characters");
+    if (ev.code === "KeyO") switchScene("settings");
     return;
   }
 
@@ -8396,6 +8765,14 @@ canvas.addEventListener("pointerdown", (ev) => {
     selectInventoryByCanvasPoint(x, y);
     return;
   }
+  if (state.scene === "settings") {
+    const idx = Math.floor((y - 134) / 42);
+    if (idx >= 0 && idx < 7) {
+      state.uiFocus.settingsOption = idx;
+      if (x > 610) adjustSettingByIndex(idx, 1);
+    }
+    return;
+  }
   if (state.scene === "annex") {
     selectAnnexByCanvasPoint(x, y);
     return;
@@ -8411,6 +8788,32 @@ canvas.addEventListener("pointerdown", (ev) => {
 
   if (state.scene === "run") {
     jump();
+  }
+});
+
+saveImportInput.addEventListener("change", async () => {
+  const file = saveImportInput.files && saveImportInput.files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    if (!parsed || !parsed.profiles) throw new Error("Invalid save shape");
+    const profiles = {
+      michael: normalizeSave(parsed.profiles.michael),
+      dwight: normalizeSave(parsed.profiles.dwight),
+      andy: normalizeSave(parsed.profiles.andy),
+    };
+    migrateLegacyUpgradesToInventory(profiles.michael);
+    migrateLegacyUpgradesToInventory(profiles.dwight);
+    migrateLegacyUpgradesToInventory(profiles.andy);
+    state.saveProfiles = profiles;
+    state.activeRunnerId = RUNNER_IDS.includes(parsed.currentRunner) ? parsed.currentRunner : "michael";
+    state.saveData = state.saveProfiles[state.activeRunnerId];
+    characterSelect.value = state.activeRunnerId;
+    persistSave();
+    showMissionToast("Save imported.");
+  } catch {
+    showMissionToast("Import failed: invalid save file.");
   }
 });
 
@@ -8493,6 +8896,7 @@ syncDundieOutfitRewards();
 syncPostKeyMissionRewards();
 persistSave();
 setMenuDialogue();
-switchScene("menu");
+if (!state.saveData.flags?.tutorialSeen) switchScene("tutorial");
+else switchScene("menu");
 summaryPanel.hidden = true;
 requestAnimationFrame(loop);

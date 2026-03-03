@@ -15,3 +15,12 @@
 - [x] Keyboard navigation between boxes/items, etc should be baked in everywhere. E.g. in the character switch screen, the conference room stickies, etc. arrow keys to nav between, enter to select, things like that. 
 - [x] When you buy something, it should make a "cha-ching" sound
 - [x] Make the rain look/act like the snow, but not "floaty", and I like how it looked like it was raining hard, so heavy blowing rain
+
+# Engineering Pass (Completed)
+- [x] Add hitbox debug overlay toggle in run scenes (`H`) for player/obstacle collision tuning.
+- [x] Add an in-game settings screen (`O`) with persisted options (music, SFX, shake, assist, FPS).
+- [x] Add first-run tutorial flow with skip and guided prompts for jump/slide/parkour timing.
+- [x] Add save export/import tools (JSON file) from settings.
+- [x] Add performance telemetry and optimizations (FPS tracking + particle/text caps).
+- [x] Add automated smoke checks (`node scripts/smoke-test.js`).
+- [x] Refactor text wrapping/clamping so UI text consistently stays inside containers.
