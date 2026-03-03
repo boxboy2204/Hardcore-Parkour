@@ -293,6 +293,60 @@ const ANNEX_OUTFITS = [
     kelly: "Kelly: Nard Cat is wildly committed and I support the chaos.",
   },
   {
+    id: "andy_plumber",
+    name: "Mafia Plumber",
+    cost: 800,
+    character: "andy",
+    requiredAchievement: null,
+    tagline: "Andy only. Red cap, gray work suit, and fake-union confidence.",
+    kelly: "Kelly: You look like you fix pipes and start rumors at the same time.",
+  },
+  {
+    id: "andy_construction",
+    name: "Builder Bernard",
+    cost: 800,
+    character: "andy",
+    requiredAchievement: null,
+    tagline: "Andy only. Yellow hard hat, plaid shirt, and pure safety theater.",
+    kelly: "Kelly: OSHA but make it preppy. This is deeply chaotic and I approve.",
+  },
+  {
+    id: "dwight_deputy",
+    name: "Volunteer Deputy",
+    cost: 800,
+    character: "dwight",
+    requiredAchievement: null,
+    tagline: "Dwight only. Black deputy uniform with badge and a ranger-style hat.",
+    kelly: "Kelly: This is giving mall security final boss, in a good way.",
+  },
+  {
+    id: "dwight_joker",
+    name: "Dwoker",
+    cost: 800,
+    character: "dwight",
+    requiredAchievement: null,
+    tagline: "Dwight only. Purple coat, green hair, and unsettling grin energy.",
+    kelly: "Kelly: Scary-clown couture. I hate it and love it equally.",
+  },
+  {
+    id: "prison_mike",
+    name: "Prison Mike",
+    cost: 800,
+    character: "michael",
+    requiredAchievement: null,
+    tagline: "Michael only. Purple bandana and hard-time motivational speaking.",
+    kelly: "Kelly: Prison-core. Intense. A lot. Definitely a choice.",
+  },
+  {
+    id: "scranton_penguins",
+    name: "Scranton Penguins",
+    cost: 800,
+    character: "michael",
+    requiredAchievement: null,
+    tagline: "From Dwight.",
+    kelly: "Kelly: Sports merch from Dwight is somehow both sweet and threatening.",
+  },
+  {
     id: "goldenface",
     name: "Goldenface Suit",
     cost: 0,
@@ -2728,7 +2782,11 @@ function applyInjuryStumble(baseSec = 0.6, pursuitMinSec = 1.25, lostPursuitChai
 
 function jump() {
   if (!state.running || state.paused) return;
-  if (state.slideActive) return;
+  if (state.slideActive) {
+    // Pop out of slide immediately when jump is requested.
+    state.slideActive = false;
+    state.slideSpeed = 0;
+  }
   const maxJumps = state.player.runtimeMaxJumps || state.player.preset.maxJumps || 1;
   if (state.player.jumpsUsed >= maxJumps) return;
   state.player.vy = -state.player.preset.jumpPower;
@@ -4060,6 +4118,12 @@ function drawPlayer() {
   else if (outfitId === "hay_king") shirtColor = "#6a4a2b";
   else if (outfitId === "two_headed_monster") shirtColor = "#202734";
   else if (outfitId === "cat_andy") shirtColor = "#8c6a3b";
+  else if (outfitId === "andy_plumber") shirtColor = "#8c96a8";
+  else if (outfitId === "andy_construction") shirtColor = "#b02b26";
+  else if (outfitId === "dwight_deputy") shirtColor = "#11161f";
+  else if (outfitId === "dwight_joker") shirtColor = "#5a2b7a";
+  else if (outfitId === "prison_mike") shirtColor = "#2f3442";
+  else if (outfitId === "scranton_penguins") shirtColor = "#13161d";
   else if (outfitId === "strangler_hood") shirtColor = "#171a23";
   else if (outfitId === "three_hole_gym") shirtColor = "#d9dde4";
   let skinBase = label === "Darryl" ? "#8b664b" : label === "Kelly" ? "#a47657" : label === "Pam" ? "#f1cfb3" : "#efcfab";
@@ -4073,6 +4137,7 @@ function drawPlayer() {
       : label === "Jim"
       ? "#2a1e16"
       : "#3a281d";
+  if (outfitId === "dwight_joker") hairBase = "#2f8f4e";
   if (outfitId === "goldenface") {
     skinBase = "#e4ba53";
     hairBase = "#1f1d1b";
@@ -4142,7 +4207,17 @@ function drawPlayer() {
     }
     ctx.fillStyle = "rgba(255,255,255,0.14)";
     ctx.fillRect(x + 30, hipY - 12, 5, 8);
-    if (outfitId !== "three_hole_gym" && outfitId !== "strangler_hood" && outfitId !== "cat_andy" && outfitId !== "wrong_fit") {
+    if (
+      outfitId !== "three_hole_gym" &&
+      outfitId !== "strangler_hood" &&
+      outfitId !== "cat_andy" &&
+      outfitId !== "wrong_fit" &&
+      outfitId !== "andy_plumber" &&
+      outfitId !== "andy_construction" &&
+      outfitId !== "dwight_deputy" &&
+      outfitId !== "dwight_joker" &&
+      outfitId !== "scranton_penguins"
+    ) {
       let tie = effectiveTieColor;
       if (outfitId === "cornell_fit") tie = "#f4d76b";
       else if (outfitId === "goldenface") tie = "#d6b255";
@@ -4204,6 +4279,48 @@ function drawPlayer() {
       ctx.fillRect(x + 10, hipY - 21, 7, 3);
       ctx.fillStyle = "#f6f4ef";
       ctx.fillRect(x + 16, hipY - 22, 2, 2); // pom
+    } else if (outfitId === "andy_plumber") {
+      ctx.fillStyle = "#b9c0cc";
+      ctx.fillRect(x + 18, hipY - 12, 18, 2);
+      ctx.fillRect(x + 18, hipY - 8, 18, 1);
+      ctx.fillRect(x + 18, hipY - 6, 18, 1);
+      ctx.fillStyle = "#b12b2b";
+      ctx.fillRect(x + 7, hipY - 20, 15, 3);
+      ctx.fillRect(x + 10, hipY - 23, 9, 3);
+    } else if (outfitId === "andy_construction") {
+      ctx.fillStyle = "#e4c862";
+      ctx.fillRect(x + 7, hipY - 20, 14, 3);
+      ctx.fillRect(x + 9, hipY - 22, 10, 2);
+      ctx.fillStyle = "#141517";
+      ctx.fillRect(x + 20, hipY - 12, 2, 8);
+      ctx.fillRect(x + 24, hipY - 12, 2, 8);
+      ctx.fillRect(x + 28, hipY - 12, 2, 8);
+    } else if (outfitId === "dwight_deputy") {
+      ctx.fillStyle = "#3a414f";
+      ctx.fillRect(x + 4, hipY - 22, 19, 2); // hat brim
+      ctx.fillRect(x + 9, hipY - 25, 9, 3); // crown
+      ctx.fillStyle = "#d5b46a";
+      ctx.fillRect(x + 16, hipY - 8, 2, 2); // badge
+    } else if (outfitId === "dwight_joker") {
+      ctx.fillStyle = "#2f8f4e";
+      ctx.fillRect(x + 6, hipY - 19, 15, 2);
+      ctx.fillRect(x + 5, hipY - 17, 17, 2);
+      ctx.fillStyle = "#b8253c";
+      ctx.fillRect(x + 12, hipY - 11, 5, 1); // grin
+    } else if (outfitId === "prison_mike") {
+      ctx.fillStyle = "#7d43be";
+      ctx.fillRect(x + 7, hipY - 20, 15, 3);
+      ctx.fillRect(x + 8, hipY - 22, 13, 2);
+      ctx.fillStyle = "#a977dd";
+      ctx.fillRect(x + 10, hipY - 21, 2, 1);
+      ctx.fillRect(x + 14, hipY - 21, 2, 1);
+      ctx.fillRect(x + 18, hipY - 21, 2, 1);
+    } else if (outfitId === "scranton_penguins") {
+      ctx.fillStyle = "#f5f7fb";
+      ctx.fillRect(x + 20, hipY - 10, 14, 1);
+      ctx.fillRect(x + 20, hipY - 7, 14, 1);
+      ctx.fillStyle = "#c63d3d";
+      ctx.fillRect(x + 26, hipY - 12, 2, 7);
     }
 
     // Front arm reaches forward.
@@ -5431,7 +5548,7 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
       : label === "David Wallace"
       ? "#c7a78b"
       : "#c9a682");
-  const hairBase =
+  let hairBase =
     opts.hairBase ||
     (label === "Dwight"
       ? "#34251a"
@@ -5476,6 +5593,29 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     shirtColor = "#8c6a3b";
     tieColor = "#8c6a3b";
     hideTie = true;
+  } else if (outfitId === "andy_plumber") {
+    shirtColor = "#8c96a8";
+    tieColor = "#8c96a8";
+    hideTie = true;
+  } else if (outfitId === "andy_construction") {
+    shirtColor = "#b02b26";
+    tieColor = "#b02b26";
+    hideTie = true;
+  } else if (outfitId === "dwight_deputy") {
+    shirtColor = "#11161f";
+    tieColor = "#11161f";
+    hideTie = true;
+  } else if (outfitId === "dwight_joker") {
+    shirtColor = "#5a2b7a";
+    tieColor = "#5a2b7a";
+    hideTie = true;
+  } else if (outfitId === "prison_mike") {
+    shirtColor = "#2f3442";
+    tieColor = "#444c5f";
+  } else if (outfitId === "scranton_penguins") {
+    shirtColor = "#13161d";
+    tieColor = "#13161d";
+    hideTie = true;
   } else if (outfitId === "strangler_hood") {
     shirtColor = "#171a23";
     tieColor = "#171a23";
@@ -5499,6 +5639,10 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
   if (isStranglerHood) {
     renderSkinBase = "#0b0f18";
     renderSkinShade = "#0b0f18";
+  }
+  if (outfitId === "dwight_joker") {
+    // Joker wig tint.
+    hairBase = "#2f8f4e";
   }
 
   if (opts.shadow !== false) {
@@ -5674,6 +5818,42 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     ctx.fillRect(x + 10 * scale, y - 63 * scale, 2 * scale, 2 * scale);
     ctx.fillRect(x + 22 * scale, y - 63 * scale, 2 * scale, 2 * scale);
   }
+  if (outfitId === "andy_plumber") {
+    ctx.fillStyle = "#bf2b2b";
+    ctx.fillRect(x + 7 * scale, y - 64 * scale, 18 * scale, 3 * scale); // cap brim
+    ctx.fillRect(x + 10 * scale, y - 68 * scale, 12 * scale, 4 * scale); // cap crown
+  }
+  if (outfitId === "andy_construction") {
+    ctx.fillStyle = "#e4c862";
+    ctx.fillRect(x + 7 * scale, y - 64 * scale, 18 * scale, 3 * scale); // hard hat brim
+    ctx.fillRect(x + 9 * scale, y - 68 * scale, 14 * scale, 4 * scale); // hard hat dome
+    ctx.fillStyle = "#bfa64a";
+    ctx.fillRect(x + 11 * scale, y - 66 * scale, 10 * scale, 1 * scale);
+  }
+  if (outfitId === "dwight_deputy") {
+    ctx.fillStyle = "#3a414f";
+    ctx.fillRect(x + 4 * scale, y - 64 * scale, 24 * scale, 2 * scale); // ranger brim (anchored)
+    ctx.fillRect(x + 10 * scale, y - 68 * scale, 12 * scale, 4 * scale); // hat top
+    ctx.fillStyle = "#d5b46a";
+    ctx.fillRect(x + 17 * scale, y - 66 * scale, 2 * scale, 2 * scale); // hat badge
+  }
+  if (outfitId === "dwight_joker") {
+    ctx.fillStyle = "#2f8f4e";
+    ctx.fillRect(x + 6 * scale, y - 65 * scale, 20 * scale, 4 * scale); // green wig
+    ctx.fillRect(x + 5 * scale, y - 61 * scale, 3 * scale, 4 * scale);
+    ctx.fillRect(x + 24 * scale, y - 61 * scale, 3 * scale, 4 * scale);
+    ctx.fillStyle = "#b8253c";
+    ctx.fillRect(x + 13 * scale, y - 49 * scale, 6 * scale, 1 * scale); // grin
+  }
+  if (outfitId === "prison_mike") {
+    ctx.fillStyle = "#7d43be";
+    ctx.fillRect(x + 7 * scale, y - 64 * scale, 18 * scale, 3 * scale); // bandana
+    ctx.fillRect(x + 9 * scale, y - 67 * scale, 14 * scale, 3 * scale);
+    ctx.fillStyle = "#ad86dd";
+    ctx.fillRect(x + 11 * scale, y - 66 * scale, 2 * scale, 1 * scale);
+    ctx.fillRect(x + 16 * scale, y - 66 * scale, 2 * scale, 1 * scale);
+    ctx.fillRect(x + 21 * scale, y - 66 * scale, 2 * scale, 1 * scale);
+  }
   if (outfitId === "strangler_hood") {
     // Single-piece hood shape so no seams show in previews/in-run sprites.
     ctx.fillStyle = "#1a2235";
@@ -5770,6 +5950,39 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     ctx.fillRect(torsoX + 3 * scale, torsoY + 14 * scale, torsoW - 6 * scale, 3 * scale); // belt
     ctx.fillStyle = "#c7a047";
     ctx.fillRect(torsoX + 10 * scale, torsoY + 14 * scale, 5 * scale, 3 * scale); // buckle
+  }
+  if (outfitId === "andy_plumber") {
+    ctx.fillStyle = "#b8c0cc";
+    ctx.fillRect(torsoX + 2 * scale, torsoY + 5 * scale, torsoW - 4 * scale, 2 * scale);
+    ctx.fillRect(torsoX + 2 * scale, torsoY + 11 * scale, torsoW - 4 * scale, 2 * scale);
+    ctx.fillRect(torsoX + 2 * scale, torsoY + 17 * scale, torsoW - 4 * scale, 2 * scale);
+    ctx.fillStyle = "#e7e2d6";
+    ctx.fillRect(torsoX + 16 * scale, torsoY + 8 * scale, 8 * scale, 4 * scale); // patch
+  }
+  if (outfitId === "andy_construction") {
+    ctx.fillStyle = "#121316";
+    ctx.fillRect(torsoX + 3 * scale, torsoY + 6 * scale, 3 * scale, torsoH - 8 * scale);
+    ctx.fillRect(torsoX + 9 * scale, torsoY + 7 * scale, 3 * scale, torsoH - 9 * scale);
+    ctx.fillRect(torsoX + 15 * scale, torsoY + 6 * scale, 3 * scale, torsoH - 8 * scale);
+  }
+  if (outfitId === "dwight_deputy") {
+    ctx.fillStyle = "#1b202a";
+    ctx.fillRect(torsoX + 2 * scale, torsoY + 2 * scale, torsoW - 4 * scale, torsoH - 4 * scale); // vest
+    ctx.fillStyle = "#d5b46a";
+    ctx.fillRect(torsoX + 10 * scale, torsoY + 8 * scale, 4 * scale, 4 * scale); // badge
+  }
+  if (outfitId === "dwight_joker") {
+    ctx.fillStyle = "#311547";
+    ctx.fillRect(torsoX + 2 * scale, torsoY + 3 * scale, torsoW - 4 * scale, torsoH - 4 * scale);
+    ctx.fillStyle = "#304634";
+    ctx.fillRect(torsoX + 10 * scale, torsoY + 8 * scale, 4 * scale, 6 * scale); // vest
+  }
+  if (outfitId === "scranton_penguins") {
+    ctx.fillStyle = "#f5f7fb";
+    ctx.fillRect(torsoX + 2 * scale, torsoY + 8 * scale, torsoW - 4 * scale, 2 * scale);
+    ctx.fillRect(torsoX + 2 * scale, torsoY + 14 * scale, torsoW - 4 * scale, 2 * scale);
+    ctx.fillStyle = "#c63d3d";
+    ctx.fillRect(torsoX + 11 * scale, torsoY + 7 * scale, 2 * scale, 10 * scale);
   }
 
   if (outfitId === "cat_andy") {
@@ -7823,6 +8036,24 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
   } else if (outfitId === "cat_andy") {
     shirtColor = "#8c6a3b";
     tieColor = "#8c6a3b";
+  } else if (outfitId === "andy_plumber") {
+    shirtColor = "#8c96a8";
+    tieColor = "#8c96a8";
+  } else if (outfitId === "andy_construction") {
+    shirtColor = "#b02b26";
+    tieColor = "#b02b26";
+  } else if (outfitId === "dwight_deputy") {
+    shirtColor = "#11161f";
+    tieColor = "#11161f";
+  } else if (outfitId === "dwight_joker") {
+    shirtColor = "#5a2b7a";
+    tieColor = "#5a2b7a";
+  } else if (outfitId === "prison_mike") {
+    shirtColor = "#2f3442";
+    tieColor = "#444c5f";
+  } else if (outfitId === "scranton_penguins") {
+    shirtColor = "#13161d";
+    tieColor = "#13161d";
   } else if (outfitId === "strangler_hood") {
     shirtColor = "#171a23";
     tieColor = "#171a23";
@@ -7835,7 +8066,15 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
   }
 
   const hideTie =
-    outfitId === "three_hole_gym" || outfitId === "strangler_hood" || outfitId === "cat_andy" || outfitId === "wrong_fit";
+    outfitId === "three_hole_gym" ||
+    outfitId === "strangler_hood" ||
+    outfitId === "cat_andy" ||
+    outfitId === "wrong_fit" ||
+    outfitId === "andy_plumber" ||
+    outfitId === "andy_construction" ||
+    outfitId === "dwight_deputy" ||
+    outfitId === "dwight_joker" ||
+    outfitId === "scranton_penguins";
 
   ctx.fillStyle = "rgba(0,0,0,0.2)";
   ctx.beginPath();
@@ -7894,6 +8133,52 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
     ctx.fillRect(baseX + 22 * s, baseY + 20 * s, 3 * s, 1 * s);
     ctx.fillRect(baseX + 24 * s, baseY + 18 * s, 1 * s, 3 * s);
   }
+  if (outfitId === "andy_plumber") {
+    ctx.fillStyle = "#b8c0cc";
+    ctx.fillRect(baseX + 8 * s, baseY + 14 * s, 12 * s, 1 * s);
+    ctx.fillRect(baseX + 8 * s, baseY + 18 * s, 12 * s, 1 * s);
+    ctx.fillStyle = "#bf2b2b";
+    ctx.fillRect(baseX + 7 * s, baseY, 14 * s, 2 * s);
+    ctx.fillRect(baseX + 10 * s, baseY - 3 * s, 8 * s, 3 * s);
+  }
+  if (outfitId === "andy_construction") {
+    ctx.fillStyle = "#e4c862";
+    ctx.fillRect(baseX + 7 * s, baseY, 14 * s, 2 * s);
+    ctx.fillRect(baseX + 9 * s, baseY - 3 * s, 10 * s, 3 * s);
+    ctx.fillStyle = "#121316";
+    ctx.fillRect(baseX + 9 * s, baseY + 13 * s, 2 * s, 10 * s);
+    ctx.fillRect(baseX + 14 * s, baseY + 13 * s, 2 * s, 10 * s);
+    ctx.fillRect(baseX + 18 * s, baseY + 13 * s, 2 * s, 10 * s);
+  }
+  if (outfitId === "dwight_deputy") {
+    ctx.fillStyle = "#3a414f";
+    ctx.fillRect(baseX + 5 * s, baseY - 1 * s, 18 * s, 2 * s);
+    ctx.fillRect(baseX + 10 * s, baseY - 4 * s, 8 * s, 3 * s);
+    ctx.fillStyle = "#d5b46a";
+    ctx.fillRect(baseX + 14 * s, baseY - 3 * s, 2 * s, 2 * s);
+    ctx.fillStyle = "#1b202a";
+    ctx.fillRect(baseX + 8 * s, baseY + 12 * s, 12 * s, 12 * s);
+  }
+  if (outfitId === "dwight_joker") {
+    ctx.fillStyle = "#2f8f4e";
+    ctx.fillRect(baseX + 6 * s, baseY - 1 * s, 16 * s, 3 * s);
+    ctx.fillStyle = "#b8253c";
+    ctx.fillRect(baseX + 12 * s, baseY + 8 * s, 4 * s, 1 * s);
+    ctx.fillStyle = "#311547";
+    ctx.fillRect(baseX + 8 * s, baseY + 12 * s, 12 * s, 12 * s);
+  }
+  if (outfitId === "prison_mike") {
+    ctx.fillStyle = "#7d43be";
+    ctx.fillRect(baseX + 7 * s, baseY, 14 * s, 2 * s);
+    ctx.fillRect(baseX + 9 * s, baseY - 2 * s, 10 * s, 2 * s);
+  }
+  if (outfitId === "scranton_penguins") {
+    ctx.fillStyle = "#f5f7fb";
+    ctx.fillRect(baseX + 8 * s, baseY + 14 * s, 12 * s, 1 * s);
+    ctx.fillRect(baseX + 8 * s, baseY + 18 * s, 12 * s, 1 * s);
+    ctx.fillStyle = "#c63d3d";
+    ctx.fillRect(baseX + 14 * s, baseY + 13 * s, 2 * s, 10 * s);
+  }
   if (outfitId === "goldenface") {
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(baseX + 12 * s, baseY + 12 * s, 4 * s, 10 * s);
@@ -7922,6 +8207,10 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
     ctx.fillRect(baseX + 17 * s, baseY - 6 * s, 2 * s, 2 * s);
     ctx.fillStyle = "#f6f4ef";
     ctx.fillRect(baseX + 19 * s, baseY - 6 * s, 2 * s, 2 * s);
+  } else if (outfitId === "prison_mike") {
+    ctx.fillStyle = "#7d43be";
+    ctx.fillRect(baseX + 7 * s, baseY, 14 * s, 2 * s);
+    ctx.fillRect(baseX + 9 * s, baseY - 2 * s, 10 * s, 2 * s);
   } else if (outfitId === "recyclops") {
     ctx.fillStyle = "#9be467";
     ctx.fillRect(baseX + 9 * s, baseY + 2 * s, 10 * s, 1 * s);
@@ -8968,7 +9257,7 @@ window.addEventListener("keydown", handlePress);
 window.addEventListener("keyup", (ev) => {
   if (ev.code === "Space") {
     state.spaceHeld = false;
-    if (state.pendingSpaceTapJump && !state.slideActive && state.spaceHoldSec < GAME.slideHoldThresholdSec) {
+    if (state.pendingSpaceTapJump && state.spaceHoldSec < GAME.slideHoldThresholdSec) {
       jump();
     }
     state.pendingSpaceTapJump = false;
