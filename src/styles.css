@@ -98,6 +98,19 @@ body {
     0 0 16px #ffd65f66;
 }
 
+.hud-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.hud-controls {
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+
 .controls {
   display: flex;
   gap: 10px;
@@ -246,5 +259,17 @@ kbd {
 
   .hud h1 {
     font-size: 1.7rem;
+    margin-bottom: 0;
+  }
+
+  .hud-top {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .hud-controls {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 }
