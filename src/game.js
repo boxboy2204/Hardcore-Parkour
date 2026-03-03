@@ -1687,6 +1687,14 @@ function handleJimConversationClick(choiceId) {
   if (state.shopConversation.step === "pam_info") {
     if (!state.saveData.missions.savePam.added) {
       state.saveData.missions.savePam.added = true;
+      const warehouseWorldIdx = WORLDS.findIndex((w) => w.id === "warehouse");
+      if (
+        warehouseWorldIdx !== -1 &&
+        state.saveData.unlockedWorldIndex > warehouseWorldIdx &&
+        !state.saveData.missions.savePam.completed
+      ) {
+        state.saveData.missions.savePam.warehouseCleared = true;
+      }
       persistSave();
       showMissionToast('Mission Added: "Save Pam"');
     }
@@ -1982,6 +1990,18 @@ function startRunStateNow(worldId = state.selectedWorldId) {
   const selectedPreset = CHARACTER_PRESETS[characterSelect.value];
   const preset = worldId === "skarn" ? CHARACTER_PRESETS.michael : selectedPreset;
   const savePam = state.saveData.missions.savePam;
+  const warehouseWorldIdx = WORLDS.findIndex((w) => w.id === "warehouse");
+  if (
+    savePam.added &&
+    !savePam.completed &&
+    !savePam.warehouseCleared &&
+    warehouseWorldIdx !== -1 &&
+    state.saveData.unlockedWorldIndex > warehouseWorldIdx
+  ) {
+    // Warehouse already cleared before mission was added: start Pam mode immediately.
+    savePam.warehouseCleared = true;
+    persistSave();
+  }
   const pamQuestRun = worldId === "warehouse" && savePam.added && !savePam.completed && savePam.warehouseCleared;
   state.scene = "run";
   state.running = true;
