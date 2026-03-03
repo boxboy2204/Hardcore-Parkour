@@ -237,13 +237,13 @@ const ANNEX_OUTFITS = [
   },
   {
     id: "wrong_fit",
-    name: "The Wrong Fit",
+    name: "Santa Suit",
     cost: 0,
     character: "all",
     requiredAchievement: "dontGoInThere",
-    tagline: "Dundie reward. Ironic-chic disaster fit. Still iconic.",
+    tagline: "Dundie reward. Holiday red coat, white trim, black belt, Santa chaos.",
     kelly:
-      "Kelly: Is that a sumo suit in New York? That is so ironic-chic, I literally cannot even.",
+      "Kelly: Ho-ho-holy wow. You look like Santa if he ran HR and ignored all boundaries.",
   },
   {
     id: "recyclops",
@@ -4055,7 +4055,7 @@ function drawPlayer() {
   if (outfitId === "cornell_fit") shirtColor = "#8a2432";
   else if (outfitId === "goldenface") shirtColor = "#121316";
   else if (outfitId === "date_mike") shirtColor = "#1e2f4e";
-  else if (outfitId === "wrong_fit") shirtColor = "#cb5fa4";
+  else if (outfitId === "wrong_fit") shirtColor = "#b82424";
   else if (outfitId === "recyclops") shirtColor = "#5c8f3c";
   else if (outfitId === "hay_king") shirtColor = "#6a4a2b";
   else if (outfitId === "two_headed_monster") shirtColor = "#202734";
@@ -4142,12 +4142,12 @@ function drawPlayer() {
     }
     ctx.fillStyle = "rgba(255,255,255,0.14)";
     ctx.fillRect(x + 30, hipY - 12, 5, 8);
-    if (outfitId !== "three_hole_gym" && outfitId !== "strangler_hood" && outfitId !== "cat_andy") {
+    if (outfitId !== "three_hole_gym" && outfitId !== "strangler_hood" && outfitId !== "cat_andy" && outfitId !== "wrong_fit") {
       let tie = effectiveTieColor;
       if (outfitId === "cornell_fit") tie = "#f4d76b";
       else if (outfitId === "goldenface") tie = "#d6b255";
       else if (outfitId === "date_mike") tie = "#9a1f2f";
-      else if (outfitId === "wrong_fit") tie = "#f5d35b";
+      else if (outfitId === "wrong_fit") tie = "#f5f5f5";
       else if (outfitId === "recyclops") tie = "#2d5a2e";
       else if (outfitId === "hay_king") tie = "#3f2f1f";
       if (!(label === "Andy" && !outfitId)) {
@@ -4186,6 +4186,24 @@ function drawPlayer() {
       ctx.fillRect(x + 19, hipY - 14, 4, 1);
       ctx.fillStyle = shirtColor;
       ctx.fillRect(x + 17, hipY - 10, 7, 2);
+    } else if (outfitId === "wrong_fit") {
+      // Santa coat details in slide pose.
+      ctx.fillStyle = "#f6f4ef";
+      ctx.fillRect(x + 18, hipY - 13, 18, 1); // collar trim
+      ctx.fillRect(x + 18, hipY - 5, 18, 1); // hem trim
+      ctx.fillRect(x + 26, hipY - 12, 2, 7); // coat opening trim
+      ctx.fillStyle = "#1b1b1d";
+      ctx.fillRect(x + 20, hipY - 8, 12, 2); // belt
+      ctx.fillStyle = "#c7a047";
+      ctx.fillRect(x + 24, hipY - 8, 4, 2); // buckle
+      ctx.fillStyle = "#b82424";
+      ctx.fillRect(x + 5, hipY - 17, 17, 2); // santa hat brim
+      ctx.fillStyle = "#f6f4ef";
+      ctx.fillRect(x + 9, hipY - 18, 9, 1);
+      ctx.fillStyle = "#9f1f1f";
+      ctx.fillRect(x + 10, hipY - 21, 7, 3);
+      ctx.fillStyle = "#f6f4ef";
+      ctx.fillRect(x + 16, hipY - 22, 2, 2); // pom
     }
 
     // Front arm reaches forward.
@@ -5442,8 +5460,9 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     shirtColor = "#1e2f4e";
     tieColor = "#9a1f2f";
   } else if (outfitId === "wrong_fit") {
-    shirtColor = "#cb5fa4";
-    tieColor = "#f5d35b";
+    shirtColor = "#b82424";
+    tieColor = "#f5f5f5";
+    hideTie = true;
   } else if (outfitId === "recyclops") {
     shirtColor = "#5c8f3c";
     tieColor = "#2d5a2e";
@@ -5605,6 +5624,16 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     ctx.fillRect(x + 6 * scale, y - 64 * scale, 20 * scale, 4 * scale);
     ctx.fillRect(x + 10 * scale, y - 69 * scale, 12 * scale, 6 * scale);
   }
+  if (outfitId === "wrong_fit") {
+    // Santa hat + white trim.
+    ctx.fillStyle = "#f6f4ef";
+    ctx.fillRect(x + 7 * scale, y - 64 * scale, 18 * scale, 2 * scale); // brim
+    ctx.fillStyle = "#b82424";
+    ctx.fillRect(x + 9 * scale, y - 69 * scale, 14 * scale, 5 * scale); // cap
+    ctx.fillRect(x + 20 * scale, y - 72 * scale, 3 * scale, 3 * scale); // tilted top
+    ctx.fillStyle = "#f6f4ef";
+    ctx.fillRect(x + 22 * scale, y - 73 * scale, 2 * scale, 2 * scale); // pom
+  }
   if (outfitId === "recyclops") {
     ctx.fillStyle = "#9be467";
     ctx.fillRect(x + 10 * scale, y - 58 * scale, 12 * scale, 2 * scale);
@@ -5730,6 +5759,17 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     ctx.fillRect(x + 16 * scale, y - 39 * scale, 4 * scale, 4 * scale);
     ctx.fillRect(x + 16 * scale, y - 33 * scale, 4 * scale, 4 * scale);
     ctx.fillRect(x + 16 * scale, y - 27 * scale, 4 * scale, 4 * scale);
+  }
+  if (outfitId === "wrong_fit") {
+    // Santa coat accents.
+    ctx.fillStyle = "#f6f4ef";
+    ctx.fillRect(torsoX + 1 * scale, torsoY + 1 * scale, torsoW - 2 * scale, 2 * scale); // collar
+    ctx.fillRect(torsoX + 1 * scale, torsoY + torsoH - 3 * scale, torsoW - 2 * scale, 2 * scale); // hem
+    ctx.fillRect(torsoX + Math.floor(torsoW * 0.5) - 1 * scale, torsoY + 3 * scale, 2 * scale, torsoH - 7 * scale); // center trim
+    ctx.fillStyle = "#1b1b1d";
+    ctx.fillRect(torsoX + 3 * scale, torsoY + 14 * scale, torsoW - 6 * scale, 3 * scale); // belt
+    ctx.fillStyle = "#c7a047";
+    ctx.fillRect(torsoX + 10 * scale, torsoY + 14 * scale, 5 * scale, 3 * scale); // buckle
   }
 
   if (outfitId === "cat_andy") {
@@ -7426,7 +7466,7 @@ function drawAnnexScene() {
   // Outfit cards.
   state.annexCards = [];
   const startX = 320;
-  const startY = 146;
+  const startY = 132;
   const cardW = 160;
   const cardH = 126;
   const colGap = 14;
@@ -7769,8 +7809,8 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
     shirtColor = "#1e2f4e";
     tieColor = "#9a1f2f";
   } else if (outfitId === "wrong_fit") {
-    shirtColor = "#cb5fa4";
-    tieColor = "#f5d35b";
+    shirtColor = "#b82424";
+    tieColor = "#f5f5f5";
   } else if (outfitId === "recyclops") {
     shirtColor = "#5c8f3c";
     tieColor = "#2d5a2e";
@@ -7794,7 +7834,8 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
     tieColor = "#9a1f2f";
   }
 
-  const hideTie = outfitId === "three_hole_gym" || outfitId === "strangler_hood" || outfitId === "cat_andy";
+  const hideTie =
+    outfitId === "three_hole_gym" || outfitId === "strangler_hood" || outfitId === "cat_andy" || outfitId === "wrong_fit";
 
   ctx.fillStyle = "rgba(0,0,0,0.2)";
   ctx.beginPath();
@@ -7833,6 +7874,17 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
     ctx.fillRect(baseX + 14 * s, baseY + 17 * s, 2 * s, 2 * s);
     ctx.fillRect(baseX + 14 * s, baseY + 20 * s, 2 * s, 2 * s);
   }
+  if (outfitId === "wrong_fit") {
+    // Santa trim + belt on thumbnail body.
+    ctx.fillStyle = "#f6f4ef";
+    ctx.fillRect(baseX + 7 * s, baseY + 11 * s, 14 * s, 1 * s);
+    ctx.fillRect(baseX + 7 * s, baseY + 26 * s, 14 * s, 1 * s);
+    ctx.fillRect(baseX + 13 * s, baseY + 12 * s, 2 * s, 12 * s);
+    ctx.fillStyle = "#1b1b1d";
+    ctx.fillRect(baseX + 8 * s, baseY + 20 * s, 12 * s, 2 * s);
+    ctx.fillStyle = "#c7a047";
+    ctx.fillRect(baseX + 12 * s, baseY + 20 * s, 3 * s, 2 * s);
+  }
   if (outfitId === "cat_andy") {
     ctx.fillStyle = "#3d2d18";
     ctx.fillRect(baseX + 9 * s, baseY + 13 * s, 2 * s, 2 * s);
@@ -7861,6 +7913,15 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
     ctx.fillStyle = "#0d1118";
     ctx.fillRect(baseX + 7 * s, baseY - 1 * s, 14 * s, 2 * s);
     ctx.fillRect(baseX + 10 * s, baseY - 4 * s, 8 * s, 3 * s);
+  } else if (outfitId === "wrong_fit") {
+    // Santa hat in thumbnail.
+    ctx.fillStyle = "#f6f4ef";
+    ctx.fillRect(baseX + 7 * s, baseY, 14 * s, 2 * s);
+    ctx.fillStyle = "#b82424";
+    ctx.fillRect(baseX + 9 * s, baseY - 4 * s, 11 * s, 4 * s);
+    ctx.fillRect(baseX + 17 * s, baseY - 6 * s, 2 * s, 2 * s);
+    ctx.fillStyle = "#f6f4ef";
+    ctx.fillRect(baseX + 19 * s, baseY - 6 * s, 2 * s, 2 * s);
   } else if (outfitId === "recyclops") {
     ctx.fillStyle = "#9be467";
     ctx.fillRect(baseX + 9 * s, baseY + 2 * s, 10 * s, 1 * s);
