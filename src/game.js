@@ -367,6 +367,7 @@ const state = {
   shopPromptBounds: [],
   shopConversation: null,
   shopPurchasePrompt: null,
+  inventoryCards: [],
   deskBounds: null,
   deskDrawerBounds: null,
   deskGoldenfaceBounds: null,
@@ -408,6 +409,7 @@ const state = {
   skarnAimActive: false,
   skarnAimPhase: 0,
   skarnAimHoldSec: 0,
+  runEquippedItems: [],
   cheatInvincible: false,
   cheatProgress: 0,
   reviewData: null,
@@ -419,6 +421,7 @@ const state = {
     shopCard: 0,
     shopTalk: 0,
     shopPrompt: 0,
+    inventoryCard: 0,
     annexCard: 0,
     reviewButton: 0,
   },
@@ -447,6 +450,7 @@ function createDefaultSave() {
       jimDeskKey: false,
       goldenfaceTakenFromDesk: false,
       shopUnlocked: false,
+      topRowGelCleared: {},
       outfitsUnlocked: [],
       equippedOutfits: {
         michael: null,
@@ -455,6 +459,10 @@ function createDefaultSave() {
       },
     },
     upgrades: {},
+    inventory: {
+      items: {},
+      loadout: [],
+    },
     achievements: {
       hottestInOffice: false,
       whitestSneakers: false,
@@ -518,12 +526,21 @@ function normalizeSave(parsedInput) {
         ...defaults.unlocks,
         ...parsedUnlocks,
         goldenfaceTakenFromDesk: Boolean(parsedUnlocks.goldenfaceTakenFromDesk),
+        topRowGelCleared: { ...defaults.unlocks.topRowGelCleared, ...(parsedUnlocks.topRowGelCleared || {}) },
         equippedOutfits: {
           ...defaults.unlocks.equippedOutfits,
           ...parsedEquippedOutfits,
         },
       },
       upgrades: { ...defaults.upgrades, ...(parsed.upgrades || {}) },
+      inventory: {
+        ...defaults.inventory,
+        ...(parsed.inventory || {}),
+        items: { ...defaults.inventory.items, ...((parsed.inventory && parsed.inventory.items) || {}) },
+        loadout: Array.isArray(parsed.inventory?.loadout)
+          ? parsed.inventory.loadout.filter((id) => SHOP_ITEMS.some((item) => item.id === id))
+          : [],
+      },
       achievements: migratedAchievements,
       missions: {
         ...defaults.missions,
@@ -537,6 +554,23 @@ function normalizeSave(parsedInput) {
   } catch {
     return createDefaultSave();
   }
+}
+
+function migrateLegacyUpgradesToInventory(save) {
+  if (!save || !save.upgrades) return;
+  if (!save.inventory) save.inventory = { items: {}, loadout: [] };
+  if (!save.inventory.items) save.inventory.items = {};
+  if (!Array.isArray(save.inventory.loadout)) save.inventory.loadout = [];
+  if (!save.unlocks) save.unlocks = {};
+  if (!save.unlocks.topRowGelCleared) save.unlocks.topRowGelCleared = {};
+
+  for (const item of SHOP_ITEMS) {
+    if (!save.upgrades[item.id]) continue;
+    save.inventory.items[item.id] = Math.max(1, Number(save.inventory.items[item.id] || 0));
+    if (item.row === "top") save.unlocks.topRowGelCleared[item.id] = true;
+  }
+  // Preserve old key for backward compatibility but stop using it for gameplay.
+  save.upgrades = {};
 }
 
 function loadSave(runnerId = "michael") {
@@ -561,6 +595,9 @@ function loadSave(runnerId = "michael") {
         dwight: normalizeSave(parsed.profiles.dwight),
         andy: normalizeSave(parsed.profiles.andy),
       };
+      migrateLegacyUpgradesToInventory(state.saveProfiles.michael);
+      migrateLegacyUpgradesToInventory(state.saveProfiles.dwight);
+      migrateLegacyUpgradesToInventory(state.saveProfiles.andy);
       state.activeRunnerId = RUNNER_IDS.includes(parsed.currentRunner) ? parsed.currentRunner : pickRunner;
       return state.saveProfiles[pickRunner];
     }
@@ -571,6 +608,7 @@ function loadSave(runnerId = "michael") {
       dwight: createDefaultSave(),
       andy: createDefaultSave(),
     };
+    migrateLegacyUpgradesToInventory(state.saveProfiles.michael);
     state.activeRunnerId = "michael";
     return state.saveProfiles[pickRunner];
   } catch {
@@ -1183,7 +1221,54 @@ function setMenuDialogue() {
 }
 
 function ownsUpgrade(id) {
-  return Boolean(state.saveData.upgrades[id]);
+  if (state.scene === "run") return Array.isArray(state.runEquippedItems) && state.runEquippedItems.includes(id);
+  return getInventoryCount(id) > 0;
+}
+
+function getInventoryCount(itemId) {
+  return Math.max(0, Number(state.saveData?.inventory?.items?.[itemId] || 0));
+}
+
+function isItemEquipped(itemId) {
+  return Array.isArray(state.saveData?.inventory?.loadout) && state.saveData.inventory.loadout.includes(itemId);
+}
+
+function toggleInventoryEquip(itemId) {
+  if (!state.saveData?.inventory) return;
+  if (!Array.isArray(state.saveData.inventory.loadout)) state.saveData.inventory.loadout = [];
+  const loadout = state.saveData.inventory.loadout;
+  const idx = loadout.indexOf(itemId);
+  if (idx !== -1) {
+    loadout.splice(idx, 1);
+    persistSave();
+    showMissionToast(`${SHOP_ITEMS.find((i) => i.id === itemId)?.name || "Item"} unequipped.`);
+    return;
+  }
+  if (getInventoryCount(itemId) <= 0) return;
+  loadout.push(itemId);
+  persistSave();
+  showMissionToast(`${SHOP_ITEMS.find((i) => i.id === itemId)?.name || "Item"} equipped for next run.`);
+}
+
+function consumeLoadoutForRun() {
+  if (!state.saveData?.inventory) return [];
+  if (!state.saveData.inventory.items) state.saveData.inventory.items = {};
+  if (!Array.isArray(state.saveData.inventory.loadout)) state.saveData.inventory.loadout = [];
+
+  const consumed = [];
+  const nextLoadout = [];
+  for (const itemId of state.saveData.inventory.loadout) {
+    if (!SHOP_ITEMS.some((item) => item.id === itemId)) continue;
+    const count = getInventoryCount(itemId);
+    if (count <= 0) continue;
+    state.saveData.inventory.items[itemId] = count - 1;
+    consumed.push(itemId);
+    // Auto-unequip after use. Re-buy is required to equip again.
+    if (state.saveData.inventory.items[itemId] > 0) nextLoadout.push(itemId);
+  }
+  state.saveData.inventory.loadout = nextLoadout;
+  if (consumed.length > 0) persistSave();
+  return consumed;
 }
 
 function formatSchruteBucks(amount) {
@@ -1721,11 +1806,6 @@ function tryBuyShopItem(itemId) {
     return;
   }
 
-  if (ownsUpgrade(item.id)) {
-    showShopMessage("Already owned. Jim nods in deadpan approval.", "#b6f6ff");
-    return;
-  }
-
   const stanleyWallet = state.saveData.currencies.stanleyNickels;
   if (stanleyWallet < item.cost) {
     if (state.saveData.currencies.schruteBucks > 0) {
@@ -1738,7 +1818,13 @@ function tryBuyShopItem(itemId) {
   }
 
   state.saveData.currencies.stanleyNickels -= item.cost;
-  state.saveData.upgrades[item.id] = true;
+  if (!state.saveData.inventory) state.saveData.inventory = { items: {}, loadout: [] };
+  if (!state.saveData.inventory.items) state.saveData.inventory.items = {};
+  state.saveData.inventory.items[item.id] = getInventoryCount(item.id) + 1;
+  if (item.row === "top") {
+    if (!state.saveData.unlocks.topRowGelCleared) state.saveData.unlocks.topRowGelCleared = {};
+    state.saveData.unlocks.topRowGelCleared[item.id] = true;
+  }
 
   if (item.id === "desk_keycard") {
     state.saveData.unlockedWorldIndex = Math.min(WORLDS.length - 1, state.saveData.unlockedWorldIndex + 1);
@@ -1746,14 +1832,14 @@ function tryBuyShopItem(itemId) {
 
   persistSave();
   playChaChingCue();
-  showShopMessage(`Purchased ${item.name}. Jim finally de-gels it.`, "#d3ffbf");
+  showShopMessage(`Purchased ${item.name}. Added to inventory.`, "#d3ffbf");
 }
 
 function openShopItemPrompt(itemId) {
   const item = SHOP_ITEMS.find((i) => i.id === itemId);
   if (!item) return;
   const topRowUnlocked = Boolean(state.saveData?.missions?.savePam?.completed);
-  const owned = ownsUpgrade(item.id);
+  const count = getInventoryCount(item.id);
   const lockedByKey = item.row === "top" && !topRowUnlocked;
   const canAfford = state.saveData.currencies.stanleyNickels >= item.cost;
   state.shopPurchasePrompt = {
@@ -1761,9 +1847,9 @@ function openShopItemPrompt(itemId) {
     name: item.name,
     description: item.description,
     cost: item.cost,
-    owned,
+    count,
     lockedByKey,
-    canAfford: canAfford && !owned && !lockedByKey,
+    canAfford: canAfford && !lockedByKey,
   };
   state.uiFocus.shopPrompt = 0;
 }
@@ -1817,6 +1903,7 @@ function switchScene(sceneId) {
     state.uiFocus.shopTalk = 0;
     state.uiFocus.shopPrompt = 0;
   }
+  if (sceneId === "inventory") state.uiFocus.inventoryCard = 0;
   if (sceneId === "annex") state.uiFocus.annexCard = 0;
   if (sceneId === "run") state.uiFocus.reviewButton = 0;
   if (leavingRun) stopPursuitSirenLoop();
@@ -1856,6 +1943,9 @@ function updateUiForScene() {
     startBtn.textContent = "Back To Menu";
     retryBtn.textContent = "Go Annex";
     retryBtn.hidden = false;
+  } else if (state.scene === "inventory") {
+    startBtn.textContent = "Back To Menu";
+    retryBtn.hidden = true;
   } else if (state.scene === "desk") {
     startBtn.textContent = "Back To Menu";
     retryBtn.hidden = true;
@@ -1868,6 +1958,7 @@ function updateUiForScene() {
 
 function resetRunState(worldId = state.selectedWorldId) {
   stopPursuitSirenLoop();
+  state.runEquippedItems = [];
   state.scene = "loading";
   state.loadingWorldId = worldId;
   state.loadingLeft = LOADING_SCENE_DURATION;
@@ -1943,17 +2034,18 @@ function startRunStateNow(worldId = state.selectedWorldId) {
   state.skarnAimActive = false;
   state.skarnAimPhase = 0;
   state.skarnAimHoldSec = 0;
+  state.runEquippedItems = consumeLoadoutForRun();
 
   if (pamQuestRun) state.worldBannerText = "Warehouse: Save Pam";
 
-  const hpBonus = ownsUpgrade("gel_shield") ? 1 : 0;
+  const hpBonus = state.runEquippedItems.includes("gel_shield") ? 1 : 0;
   const characterHpBonus = preset.hpBonus || 0;
-  const speedBonus = ownsUpgrade("parkour_shoes") ? 18 : 0;
-  const stumbleTuning = ownsUpgrade("chili_guard") ? 0.72 : 1;
-  const tapeHpSwing = ownsUpgrade("mifflin_tape") ? (Math.random() < 0.5 ? 2 : -2) : 0;
-  const boostTuning = (ownsUpgrade("energy_mug") ? 1.2 : 1) * (preset.boostMul || 1);
-  const keycardLootTuning = ownsUpgrade("desk_keycard") ? 1.2 : 1;
-  const keycardSpawnTuning = ownsUpgrade("desk_keycard") ? 0.82 : 1;
+  const speedBonus = state.runEquippedItems.includes("parkour_shoes") ? 18 : 0;
+  const stumbleTuning = state.runEquippedItems.includes("chili_guard") ? 0.72 : 1;
+  const tapeHpSwing = state.runEquippedItems.includes("mifflin_tape") ? (Math.random() < 0.5 ? 2 : -2) : 0;
+  const boostTuning = (state.runEquippedItems.includes("energy_mug") ? 1.2 : 1) * (preset.boostMul || 1);
+  const keycardLootTuning = state.runEquippedItems.includes("desk_keycard") ? 1.2 : 1;
+  const keycardSpawnTuning = state.runEquippedItems.includes("desk_keycard") ? 0.82 : 1;
 
   state.player = {
     preset,
@@ -5531,7 +5623,7 @@ function drawMenuScene() {
 
   ctx.fillStyle = "#fff3b4";
   ctx.font = "15px Trebuchet MS";
-  ctx.fillText("Enter: Launch Level   Click Sticky Notes   C: Characters   S: Shop   A: Annex   D: Jim's Desk", 34, 523);
+  ctx.fillText("Enter: Launch Level   Click Sticky Notes   C: Characters   S: Shop   A: Annex   D: Jim's Desk   I: Inventory", 34, 523);
 }
 
 function drawShopScene() {
@@ -5683,11 +5775,13 @@ function drawShopScene() {
     const x = vmX + 16 + col * colWidth;
     const y = vmY + 30 + row * 116;
     const lockedByKey = row === 0 && !state.saveData.missions.savePam.completed;
-    const owned = ownsUpgrade(item.id);
+    const count = getInventoryCount(item.id);
+    const equipped = isItemEquipped(item.id);
+    const topRowCleared = Boolean(state.saveData.unlocks?.topRowGelCleared?.[item.id]);
 
-    ctx.fillStyle = owned ? "#2f5032" : lockedByKey ? "#46403b" : "#234767";
+    ctx.fillStyle = equipped ? "#2f5032" : count > 0 ? "#2a4d62" : lockedByKey ? "#46403b" : "#234767";
     ctx.fillRect(x, y, cardW, cardH);
-    ctx.strokeStyle = owned ? "#b7f2bb" : lockedByKey ? "#8a7b6b" : "#8bc8ff";
+    ctx.strokeStyle = equipped ? "#b7f2bb" : lockedByKey ? "#8a7b6b" : "#8bc8ff";
     ctx.lineWidth = 2;
     ctx.strokeRect(x, y, cardW, cardH);
 
@@ -5785,19 +5879,23 @@ function drawShopScene() {
       ctx.fillRect(iconX + 7, iconY + 20, 16, 2);
     }
 
-    ctx.fillStyle = owned ? "#b7f2bb" : "#ffe4a8";
+    ctx.fillStyle = equipped ? "#b7f2bb" : "#ffe4a8";
     ctx.font = "bold 14px Trebuchet MS";
-    if (owned) {
-      ctx.fillText("OWNED", x + 8, y + 92);
+    if (equipped) {
+      ctx.fillText("EQUIPPED", x + 8, y + 92);
     } else if (lockedByKey) {
       ctx.fillText("LOCKED", x + 8, y + 92);
     } else {
-      ctx.fillText(`BUY ${item.cost}`, x + 8, y + 92);
-      drawCurrencyIcon("stanley_nickel", x + 60, y + 79, 1.0);
+      if (count > 0) {
+        ctx.fillText(`IN BAG x${count}`, x + 8, y + 92);
+      } else {
+        ctx.fillText(`BUY ${item.cost}`, x + 8, y + 92);
+        drawCurrencyIcon("stanley_nickel", x + 60, y + 79, 1.0);
+      }
     }
 
     // Top row is visually encased in yellow Jell-O until each item is purchased.
-    if (row === 0 && !owned) {
+    if (row === 0 && !topRowCleared) {
       const wobble = Math.sin(state.elapsedSec * 4 + col * 0.8) * 2;
       ctx.fillStyle = lockedByKey ? "rgba(255, 213, 82, 0.42)" : "rgba(255, 222, 108, 0.26)";
       ctx.fillRect(x + 2, y + 2, cardW - 4, cardH - 4);
@@ -5810,7 +5908,7 @@ function drawShopScene() {
       ctx.fillRect(x + cardW - 42, y + cardH - 12, 12, 4);
     }
 
-    state.shopCards.push({ x, y, w: cardW, h: cardH, itemId: item.id, lockedByKey, owned });
+    state.shopCards.push({ x, y, w: cardW, h: cardH, itemId: item.id, lockedByKey, count, equipped });
   }
 
   if (state.shopCards.length > 0 && !state.shopConversation) {
@@ -5836,11 +5934,11 @@ function drawShopScene() {
     ctx.font = "bold 16px Trebuchet MS";
     drawWrappedText(p.description, boxX + 14, boxY + 52, 560, 18, 2);
 
-    if (p.owned) {
-      ctx.fillStyle = "#b7f2bb";
-      ctx.font = "bold 18px Trebuchet MS";
-      ctx.fillText("OWNED", boxX + 620, boxY + 56);
-    } else if (p.lockedByKey) {
+    ctx.fillStyle = "#b7f2bb";
+    ctx.font = "bold 18px Trebuchet MS";
+    ctx.fillText(`In inventory: ${p.count}`, boxX + 600, boxY + 52);
+
+    if (p.lockedByKey) {
       ctx.fillStyle = "#ffd7a1";
       ctx.font = "bold 17px Trebuchet MS";
       drawWrappedText("LOCKED: Complete Save Pam to unlock top row.", boxX + 600, boxY + 52, 220, 18, 2);
@@ -6519,6 +6617,85 @@ function drawMissionsScene() {
   ctx.fillStyle = "#c9ddff";
   ctx.font = "17px Trebuchet MS";
   ctx.fillText("Press M to close missions and get back to the chaos.", 106, 524);
+}
+
+function drawInventoryScene() {
+  const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  grad.addColorStop(0, "#2b3658");
+  grad.addColorStop(1, "#151f37");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawPixelTexture(0, 0, canvas.width, canvas.height, "rgba(8,16,32,0.14)", "rgba(255,255,255,0.04)");
+
+  drawPixelPanel(54, 50, 852, 440, "rgba(14,23,40,0.9)", "rgba(9,16,30,0.9)", "#8bc8ff", "rgba(217,236,255,0.68)");
+  drawTitleText("Inventory", 404, 106, "bold 38px Trebuchet MS", "#ffe08f");
+
+  ctx.fillStyle = "#d4e9ff";
+  ctx.font = "16px Trebuchet MS";
+  drawWrappedText("Click or press Enter to equip/unequip. Equipped items are consumed when a run starts.", 84, 136, 792, 20, 2);
+
+  state.inventoryCards = [];
+  const cols = 3;
+  const cardW = 248;
+  const cardH = 108;
+  const startX = 84;
+  const startY = 178;
+  const colGap = 18;
+  const rowGap = 16;
+
+  for (let i = 0; i < SHOP_ITEMS.length; i += 1) {
+    const item = SHOP_ITEMS[i];
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = startX + col * (cardW + colGap);
+    const y = startY + row * (cardH + rowGap);
+    const count = getInventoryCount(item.id);
+    const equipped = isItemEquipped(item.id);
+
+    ctx.fillStyle = equipped ? "#2e5a42" : count > 0 ? "#2a4568" : "#343a4a";
+    ctx.fillRect(x, y, cardW, cardH);
+    ctx.strokeStyle = equipped ? "#b7f2bb" : count > 0 ? "#8bc8ff" : "#687086";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, cardW, cardH);
+
+    ctx.fillStyle = "#f5ead6";
+    ctx.font = "bold 18px Trebuchet MS";
+    drawWrappedText(item.name, x + 12, y + 25, 160, 18, 2);
+    ctx.font = "14px Trebuchet MS";
+    drawWrappedText(item.description, x + 12, y + 50, 186, 16, 3);
+
+    ctx.fillStyle = count > 0 ? "#d8f3ff" : "#ffb6b6";
+    ctx.font = "bold 15px Trebuchet MS";
+    ctx.fillText(`Count: ${count}`, x + 12, y + 96);
+
+    ctx.fillStyle = equipped ? "#b7f2bb" : count > 0 ? "#ffe4a8" : "#9ba5b9";
+    ctx.font = "bold 14px Trebuchet MS";
+    ctx.fillText(equipped ? "EQUIPPED" : count > 0 ? "AVAILABLE" : "EMPTY", x + 156, y + 96);
+
+    state.inventoryCards.push({ x, y, w: cardW, h: cardH, itemId: item.id });
+  }
+
+  if (state.inventoryCards.length > 0) {
+    const idx = Math.max(0, Math.min(state.inventoryCards.length - 1, state.uiFocus.inventoryCard || 0));
+    state.uiFocus.inventoryCard = idx;
+    const focused = state.inventoryCards[idx];
+    ctx.strokeStyle = "rgba(255, 228, 136, 0.95)";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(focused.x - 3, focused.y - 3, focused.w + 6, focused.h + 6);
+  }
+
+  ctx.fillStyle = "#c9ddff";
+  ctx.font = "16px Trebuchet MS";
+  ctx.fillText("I: Close inventory   Enter: Toggle equip   Esc: Back to conference room", 86, 474);
+}
+
+function selectInventoryByCanvasPoint(x, y) {
+  for (const card of state.inventoryCards) {
+    if (x < card.x || x > card.x + card.w || y < card.y || y > card.y + card.h) continue;
+    state.uiFocus.inventoryCard = Math.max(0, state.inventoryCards.indexOf(card));
+    toggleInventoryEquip(card.itemId);
+    return;
+  }
 }
 
 function drawCharacterSelectScene() {
@@ -7575,6 +7752,7 @@ function render() {
   else if (state.scene === "loading") drawLoadingScene();
   else if (state.scene === "run") drawRunScene();
   else if (state.scene === "shop") drawShopScene();
+  else if (state.scene === "inventory") drawInventoryScene();
   else if (state.scene === "desk") drawDeskScene();
   else if (state.scene === "missions") drawMissionsScene();
   else if (state.scene === "cutscene") drawFinalCutsceneScene();
@@ -7875,6 +8053,14 @@ function handlePress(ev) {
     return;
   }
 
+  if (ev.code === "KeyI") {
+    ev.preventDefault();
+    if (state.scene === "run" || state.scene === "loading" || state.scene === "cutscene") return;
+    if (state.scene === "inventory") switchScene(state.previousScene || "menu");
+    else switchScene("inventory");
+    return;
+  }
+
   if (ev.code === "Enter") {
     ev.preventDefault();
     if (state.scene === "run" && state.gameOver && !summaryPanel.hidden) {
@@ -7920,6 +8106,15 @@ function handlePress(ev) {
       if (state.shopCards.length > 0) {
         const idx = Math.max(0, Math.min(state.shopCards.length - 1, state.uiFocus.shopCard || 0));
         openShopItemPrompt(state.shopCards[idx].itemId);
+        return;
+      }
+      switchScene("menu");
+      return;
+    }
+    if (state.scene === "inventory") {
+      if (state.inventoryCards.length > 0) {
+        const idx = Math.max(0, Math.min(state.inventoryCards.length - 1, state.uiFocus.inventoryCard || 0));
+        toggleInventoryEquip(state.inventoryCards[idx].itemId);
         return;
       }
       switchScene("menu");
@@ -8009,6 +8204,10 @@ function handlePress(ev) {
     }
     if (state.scene === "annex") {
       state.uiFocus.annexCard = moveGridFocus(arrowDir, state.uiFocus.annexCard, state.annexCards.length, 3);
+      return;
+    }
+    if (state.scene === "inventory") {
+      state.uiFocus.inventoryCard = moveGridFocus(arrowDir, state.uiFocus.inventoryCard, state.inventoryCards.length, 3);
       return;
     }
     return;
@@ -8107,6 +8306,10 @@ canvas.addEventListener("pointerdown", (ev) => {
   }
   if (state.scene === "shop") {
     selectShopByCanvasPoint(x, y);
+    return;
+  }
+  if (state.scene === "inventory") {
+    selectInventoryByCanvasPoint(x, y);
     return;
   }
   if (state.scene === "annex") {
