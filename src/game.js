@@ -4101,20 +4101,22 @@ function drawPlayer() {
     ctx.ellipse(x + 24, groundY + 5, 34, 8, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    const slideHeadShift = outfitId === "two_headed_monster" ? 2 : 0;
+
     // Head and hair (larger for readability).
     ctx.fillStyle = skinBase;
-    ctx.fillRect(x + 7, hipY - 16, 14, 10);
+    ctx.fillRect(x + 7 + slideHeadShift, hipY - 16, 14, 10);
     ctx.fillStyle = hairBase;
-    ctx.fillRect(x + 6, hipY - 18, 15, 3);
+    ctx.fillRect(x + 6 + slideHeadShift, hipY - 18, 15, 3);
     if (outfitId === "strangler_hood") {
       ctx.fillStyle = "#c3d2ee";
-      ctx.fillRect(x + 12, hipY - 13, 1, 1);
-      ctx.fillRect(x + 16, hipY - 13, 1, 1);
+      ctx.fillRect(x + 12 + slideHeadShift, hipY - 13, 1, 1);
+      ctx.fillRect(x + 16 + slideHeadShift, hipY - 13, 1, 1);
     } else {
       ctx.fillStyle = "#1b2230";
-      ctx.fillRect(x + 11, hipY - 13, 2, 1);
-      ctx.fillRect(x + 15, hipY - 13, 2, 1);
-      ctx.fillRect(x + 12, hipY - 11, 4, 1);
+      ctx.fillRect(x + 11 + slideHeadShift, hipY - 13, 2, 1);
+      ctx.fillRect(x + 15 + slideHeadShift, hipY - 13, 2, 1);
+      ctx.fillRect(x + 12 + slideHeadShift, hipY - 11, 4, 1);
     }
 
     // Rear arm first so it sits behind the torso and below the head.
@@ -4173,15 +4175,17 @@ function drawPlayer() {
       ctx.fillRect(x + 7, hipY - 20, 14, 2);
       ctx.fillRect(x + 11, hipY - 23, 6, 3);
     } else if (outfitId === "two_headed_monster") {
-      // Extra head riding just above the back shoulder.
+      // Extra head emerging from the rear shoulder seam.
       ctx.fillStyle = skinBase;
-      ctx.fillRect(x + 20, hipY - 23, 10, 7);
+      ctx.fillRect(x + 15, hipY - 18, 12, 9);
       ctx.fillStyle = hairBase;
-      ctx.fillRect(x + 19, hipY - 25, 11, 2);
+      ctx.fillRect(x + 14, hipY - 20, 12, 2);
       ctx.fillStyle = "#1b2230";
-      ctx.fillRect(x + 23, hipY - 21, 1, 1);
-      ctx.fillRect(x + 27, hipY - 21, 1, 1);
-      ctx.fillRect(x + 24, hipY - 19, 3, 1);
+      ctx.fillRect(x + 18, hipY - 16, 1, 1);
+      ctx.fillRect(x + 23, hipY - 16, 1, 1);
+      ctx.fillRect(x + 19, hipY - 14, 4, 1);
+      ctx.fillStyle = shirtColor;
+      ctx.fillRect(x + 17, hipY - 10, 7, 2);
     }
 
     // Front arm reaches forward.
@@ -5064,7 +5068,8 @@ function drawPamQuestBackgroundSprite() {
 }
 
 function drawHud() {
-  drawPixelPanel(12, 12, 560, 188, "rgba(18,28,46,0.86)", "rgba(10,18,34,0.86)", "#7ecfff", "rgba(218,236,255,0.65)");
+  // Higher contrast pass: keep HUD text readable against bright level art.
+  drawPixelPanel(12, 12, 560, 188, "rgba(8,15,29,0.95)", "rgba(6,12,22,0.95)", "#7ecfff", "rgba(218,236,255,0.65)");
 
   const leftX = 20;
   const rightX = 300;
@@ -5076,7 +5081,7 @@ function drawHud() {
   const row6Y = 154;
   const row7Y = 176;
 
-  ctx.fillStyle = "#fff";
+  ctx.fillStyle = "#f3f8ff";
   ctx.font = "16px Trebuchet MS";
   ctx.fillText(`Runner: ${state.player.preset.label}`, leftX, row1Y);
   ctx.fillText(`HP: ${state.player.hp}`, leftX, row2Y);
@@ -5121,8 +5126,16 @@ function drawHud() {
     ctx.fillText(`Goldenface Hits: ${state.skarnGoldenfaceHits}/10`, rightX, row5Y);
   }
   if (state.pamQuestRun) {
+    // Dedicated quest panel prevents bright-text-on-bright-background issues.
+    const qx = 584;
+    const qy = 108;
+    const qw = 366;
+    const qh = 54;
+    drawPixelPanel(qx, qy, qw, qh, "rgba(10,17,32,0.94)", "rgba(8,14,24,0.94)", "#7ecfff", "rgba(212,232,255,0.6)");
     ctx.fillStyle = "#ffeeb2";
-    ctx.fillText(`Find Pam: ${state.pamSpottedCount}/${state.pamRequiredCount} (Press P when she appears)`, 500, 100);
+    ctx.font = "bold 14px Trebuchet MS";
+    drawWrappedText(`Find Pam: ${state.pamSpottedCount}/${state.pamRequiredCount}  Press P when she appears`, qx + 10, qy + 20, qw - 20, 15, 2);
+    ctx.font = "16px Trebuchet MS";
   }
   ctx.fillStyle = "#d4e6ff";
 
@@ -5460,6 +5473,7 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
   const isAndy = label === "Andy";
   const isDavid = label === "David Wallace" || style === "david";
   const isStranglerHood = outfitId === "strangler_hood";
+  const twoHeadShift = outfitId === "two_headed_monster" ? 2 * scale : 0;
   const hasSleeves = !isDwight && !isKelly;
   let renderSkinBase = skinBase;
   let renderSkinShade = skinShade;
@@ -5477,7 +5491,7 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
 
   // Base head first.
   ctx.fillStyle = renderSkinBase;
-  ctx.fillRect((isPam ? x + 10 * scale : x + 8 * scale), y - 58 * scale, 16 * scale, 12 * scale);
+  ctx.fillRect((isPam ? x + 10 * scale : x + 8 * scale) + twoHeadShift, y - 58 * scale, 16 * scale, 12 * scale);
 
   // Hair shell.
   if (isStranglerHood) {
@@ -5511,11 +5525,11 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     ctx.fillRect(x + 19 * scale, y - 60 * scale, 2 * scale, 2 * scale);
   } else {
     ctx.fillStyle = hairBase;
-    ctx.fillRect(x + 6 * scale, y - 63 * scale, 20 * scale, 6 * scale);
-    ctx.fillRect(x + 5 * scale, y - 59 * scale, 5 * scale, 3 * scale);
+    ctx.fillRect(x + 6 * scale + twoHeadShift, y - 63 * scale, 20 * scale, 6 * scale);
+    ctx.fillRect(x + 5 * scale + twoHeadShift, y - 59 * scale, 5 * scale, 3 * scale);
     if (isDavid) {
       ctx.fillStyle = hairShade;
-      ctx.fillRect(x + 15 * scale, y - 63 * scale, 2 * scale, 6 * scale);
+      ctx.fillRect(x + 15 * scale + twoHeadShift, y - 63 * scale, 2 * scale, 6 * scale);
     }
   }
 
@@ -5553,13 +5567,13 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
       }
     } else {
       const eyeY = isPam ? -53 : -54;
-      ctx.fillRect(x + 12 * scale, y + eyeY * scale, 2 * scale, 2 * scale);
-      ctx.fillRect(x + 18 * scale, y + eyeY * scale, 2 * scale, 2 * scale);
+      ctx.fillRect(x + 12 * scale + twoHeadShift, y + eyeY * scale, 2 * scale, 2 * scale);
+      ctx.fillRect(x + 18 * scale + twoHeadShift, y + eyeY * scale, 2 * scale, 2 * scale);
     }
     ctx.fillStyle = renderSkinShade;
-    ctx.fillRect(x + 15 * scale, y + (isPam ? -50 : -50) * scale, 1 * scale, 2 * scale);
+    ctx.fillRect(x + 15 * scale + twoHeadShift, y + (isPam ? -50 : -50) * scale, 1 * scale, 2 * scale);
     ctx.fillStyle = "#2f3b4e";
-    ctx.fillRect(x + 13 * scale, y + (isPam ? -48 : -50) * scale, 6 * scale, 1 * scale);
+    ctx.fillRect(x + 13 * scale + twoHeadShift, y + (isPam ? -48 : -50) * scale, 6 * scale, 1 * scale);
     if (isKelly) {
       // Kelly smile (filled so it reads clearly at pixel scale).
       ctx.fillRect(x + 13 * scale, y - 49 * scale, 6 * scale, 1 * scale);
@@ -5587,8 +5601,9 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
   }
   if (outfitId === "date_mike") {
     ctx.fillStyle = "#0d1118";
-    ctx.fillRect(x + 6 * scale, y - 68 * scale, 20 * scale, 4 * scale);
-    ctx.fillRect(x + 10 * scale, y - 73 * scale, 12 * scale, 6 * scale);
+    // Anchor hat brim directly on hairline so it does not float.
+    ctx.fillRect(x + 6 * scale, y - 64 * scale, 20 * scale, 4 * scale);
+    ctx.fillRect(x + 10 * scale, y - 69 * scale, 12 * scale, 6 * scale);
   }
   if (outfitId === "recyclops") {
     ctx.fillStyle = "#9be467";
@@ -5599,33 +5614,36 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
   if (outfitId === "hay_king") {
     // Straw crown and rough harvest trim.
     ctx.fillStyle = "#cda86e";
-    ctx.fillRect(x + 7 * scale, y - 69 * scale, 18 * scale, 4 * scale);
-    ctx.fillRect(x + 10 * scale, y - 74 * scale, 2 * scale, 5 * scale);
-    ctx.fillRect(x + 13 * scale, y - 75 * scale, 2 * scale, 6 * scale);
-    ctx.fillRect(x + 17 * scale, y - 75 * scale, 2 * scale, 6 * scale);
-    ctx.fillRect(x + 20 * scale, y - 74 * scale, 2 * scale, 5 * scale);
+    // Crown base sits on hairline.
+    ctx.fillRect(x + 7 * scale, y - 64 * scale, 18 * scale, 4 * scale);
+    ctx.fillRect(x + 10 * scale, y - 69 * scale, 2 * scale, 5 * scale);
+    ctx.fillRect(x + 13 * scale, y - 70 * scale, 2 * scale, 6 * scale);
+    ctx.fillRect(x + 17 * scale, y - 70 * scale, 2 * scale, 6 * scale);
+    ctx.fillRect(x + 20 * scale, y - 69 * scale, 2 * scale, 5 * scale);
     ctx.fillStyle = "#b69056";
-    ctx.fillRect(x + 8 * scale, y - 66 * scale, 16 * scale, 2 * scale);
+    ctx.fillRect(x + 8 * scale, y - 61 * scale, 16 * scale, 1 * scale);
   }
   if (outfitId === "two_headed_monster") {
-    // Extra head on Michael's shoulder.
+    // Extra head emerging from Michael's left shoulder.
     ctx.fillStyle = renderSkinBase;
-    ctx.fillRect(x - 2 * scale, y - 62 * scale, 12 * scale, 9 * scale);
+    ctx.fillRect(x - 1 * scale, y - 56 * scale, 13 * scale, 10 * scale);
     ctx.fillStyle = hairBase;
-    ctx.fillRect(x - 2 * scale, y - 64 * scale, 12 * scale, 3 * scale);
+    ctx.fillRect(x - 1 * scale, y - 58 * scale, 13 * scale, 3 * scale);
     ctx.fillStyle = "#1e2431";
-    ctx.fillRect(x + 1 * scale, y - 58 * scale, 2 * scale, 1 * scale);
-    ctx.fillRect(x + 5 * scale, y - 58 * scale, 2 * scale, 1 * scale);
-    ctx.fillRect(x + 2 * scale, y - 56 * scale, 4 * scale, 1 * scale);
+    ctx.fillRect(x + 2 * scale, y - 53 * scale, 1 * scale, 1 * scale);
+    ctx.fillRect(x + 7 * scale, y - 53 * scale, 1 * scale, 1 * scale);
+    ctx.fillRect(x + 3 * scale, y - 50 * scale, 4 * scale, 1 * scale);
+    ctx.fillStyle = shirtColor;
+    ctx.fillRect(x + 2 * scale, y - 46 * scale, 8 * scale, 2 * scale);
   }
   if (outfitId === "cat_andy") {
     // Cat ears.
     ctx.fillStyle = "#2a1c12";
-    ctx.fillRect(x + 9 * scale, y - 68 * scale, 4 * scale, 4 * scale);
-    ctx.fillRect(x + 21 * scale, y - 68 * scale, 4 * scale, 4 * scale);
+    ctx.fillRect(x + 9 * scale, y - 64 * scale, 4 * scale, 4 * scale);
+    ctx.fillRect(x + 21 * scale, y - 64 * scale, 4 * scale, 4 * scale);
     ctx.fillStyle = "#d7b27b";
-    ctx.fillRect(x + 10 * scale, y - 67 * scale, 2 * scale, 2 * scale);
-    ctx.fillRect(x + 22 * scale, y - 67 * scale, 2 * scale, 2 * scale);
+    ctx.fillRect(x + 10 * scale, y - 63 * scale, 2 * scale, 2 * scale);
+    ctx.fillRect(x + 22 * scale, y - 63 * scale, 2 * scale, 2 * scale);
   }
   if (outfitId === "strangler_hood") {
     // Single-piece hood shape so no seams show in previews/in-run sprites.
@@ -7841,8 +7859,8 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
   }
   if (outfitId === "date_mike") {
     ctx.fillStyle = "#0d1118";
-    ctx.fillRect(baseX + 7 * s, baseY - 3 * s, 14 * s, 2 * s);
-    ctx.fillRect(baseX + 10 * s, baseY - 6 * s, 8 * s, 3 * s);
+    ctx.fillRect(baseX + 7 * s, baseY - 1 * s, 14 * s, 2 * s);
+    ctx.fillRect(baseX + 10 * s, baseY - 4 * s, 8 * s, 3 * s);
   } else if (outfitId === "recyclops") {
     ctx.fillStyle = "#9be467";
     ctx.fillRect(baseX + 9 * s, baseY + 2 * s, 10 * s, 1 * s);
@@ -7850,27 +7868,29 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
     ctx.fillRect(baseX + 13 * s, baseY + 2 * s, 2 * s, 1 * s);
   } else if (outfitId === "hay_king") {
     ctx.fillStyle = "#cda86e";
-    ctx.fillRect(baseX + 7 * s, baseY - 3 * s, 14 * s, 2 * s);
-    ctx.fillRect(baseX + 9 * s, baseY - 6 * s, 2 * s, 3 * s);
-    ctx.fillRect(baseX + 12 * s, baseY - 7 * s, 2 * s, 4 * s);
-    ctx.fillRect(baseX + 15 * s, baseY - 7 * s, 2 * s, 4 * s);
-    ctx.fillRect(baseX + 18 * s, baseY - 6 * s, 2 * s, 3 * s);
+    ctx.fillRect(baseX + 7 * s, baseY - 1 * s, 14 * s, 2 * s);
+    ctx.fillRect(baseX + 9 * s, baseY - 4 * s, 2 * s, 3 * s);
+    ctx.fillRect(baseX + 12 * s, baseY - 5 * s, 2 * s, 4 * s);
+    ctx.fillRect(baseX + 15 * s, baseY - 5 * s, 2 * s, 4 * s);
+    ctx.fillRect(baseX + 18 * s, baseY - 4 * s, 2 * s, 3 * s);
   } else if (outfitId === "two_headed_monster") {
     ctx.fillStyle = "#efcfab";
-    ctx.fillRect(baseX + 2 * s, baseY + 3 * s, 8 * s, 5 * s);
+    ctx.fillRect(baseX + 4 * s, baseY + 9 * s, 7 * s, 5 * s);
     ctx.fillStyle = "#2a1e16";
-    ctx.fillRect(baseX + 2 * s, baseY + 1 * s, 8 * s, 2 * s);
+    ctx.fillRect(baseX + 4 * s, baseY + 7 * s, 7 * s, 2 * s);
     ctx.fillStyle = "#1b2230";
-    ctx.fillRect(baseX + 4 * s, baseY + 5 * s, 1 * s, 1 * s);
-    ctx.fillRect(baseX + 7 * s, baseY + 5 * s, 1 * s, 1 * s);
-    ctx.fillRect(baseX + 5 * s, baseY + 7 * s, 2 * s, 1 * s);
+    ctx.fillRect(baseX + 6 * s, baseY + 11 * s, 1 * s, 1 * s);
+    ctx.fillRect(baseX + 8 * s, baseY + 11 * s, 1 * s, 1 * s);
+    ctx.fillRect(baseX + 6 * s, baseY + 13 * s, 2 * s, 1 * s);
+    ctx.fillStyle = shirtColor;
+    ctx.fillRect(baseX + 5 * s, baseY + 14 * s, 4 * s, 1 * s);
   } else if (outfitId === "cat_andy") {
     ctx.fillStyle = "#2a1c12";
-    ctx.fillRect(baseX + 8 * s, baseY - 3 * s, 3 * s, 3 * s);
-    ctx.fillRect(baseX + 17 * s, baseY - 3 * s, 3 * s, 3 * s);
+    ctx.fillRect(baseX + 8 * s, baseY - 1 * s, 3 * s, 3 * s);
+    ctx.fillRect(baseX + 17 * s, baseY - 1 * s, 3 * s, 3 * s);
     ctx.fillStyle = "#d7b27b";
-    ctx.fillRect(baseX + 9 * s, baseY - 2 * s, 1 * s, 1 * s);
-    ctx.fillRect(baseX + 18 * s, baseY - 2 * s, 1 * s, 1 * s);
+    ctx.fillRect(baseX + 9 * s, baseY, 1 * s, 1 * s);
+    ctx.fillRect(baseX + 18 * s, baseY, 1 * s, 1 * s);
   } else if (outfitId === "strangler_hood") {
     ctx.fillStyle = "#141824";
     ctx.fillRect(baseX + 6 * s, baseY - 1 * s, 16 * s, 3 * s);
