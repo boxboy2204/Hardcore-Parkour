@@ -82,7 +82,7 @@ const GAME = {
   runTimeSec: 70,
   attackDurationSec: 0.14,
   attackCooldownSec: 0.24,
-  slideHoldThresholdSec: 0.14,
+  slideHoldThresholdSec: 0.24,
   slideInitialSpeed: 560,
   slideDeceleration: 720,
   slideScorePerObstacle: 80,
