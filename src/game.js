@@ -8462,7 +8462,9 @@ if (!localStorage.getItem(RESET_ONCE_KEY)) {
   localStorage.setItem(RESET_ONCE_KEY, "1");
 }
 state.saveData = loadSave(characterSelect.value || "michael");
-state.activeRunnerId = characterSelect.value || "michael";
+if (RUNNER_IDS.includes(state.activeRunnerId)) {
+  characterSelect.value = state.activeRunnerId;
+}
 if (state.saveProfiles) {
   if (!state.saveProfiles[state.activeRunnerId]) state.saveProfiles[state.activeRunnerId] = createDefaultSave();
   state.saveData = state.saveProfiles[state.activeRunnerId];
@@ -8471,6 +8473,6 @@ syncDundieOutfitRewards();
 syncPostKeyMissionRewards();
 persistSave();
 setMenuDialogue();
-switchScene("characters");
+switchScene("menu");
 summaryPanel.hidden = true;
 requestAnimationFrame(loop);
