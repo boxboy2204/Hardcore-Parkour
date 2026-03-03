@@ -208,7 +208,7 @@ const ANNEX_OUTFITS = [
   {
     id: "cornell_fit",
     name: "The Cornell Fit",
-    cost: 180,
+    cost: 800,
     character: "andy",
     requiredAchievement: null,
     tagline: "Andy only. Crimson blazer, peak a cappella energy.",
@@ -228,7 +228,7 @@ const ANNEX_OUTFITS = [
   {
     id: "date_mike",
     name: "Date Mike",
-    cost: 220,
+    cost: 800,
     character: "michael",
     requiredAchievement: null,
     tagline: "Michael only. Pool-hall vintage chaos.",
@@ -248,7 +248,7 @@ const ANNEX_OUTFITS = [
   {
     id: "recyclops",
     name: "Recyclops",
-    cost: 240,
+    cost: 800,
     character: "dwight",
     requiredAchievement: null,
     tagline: "Dwight only. Eco-terrorist chic.",
@@ -264,6 +264,33 @@ const ANNEX_OUTFITS = [
     tagline: "Dundie reward. Jim's classic shirt with three horizontal punch holes.",
     kelly:
       "Kelly: Jim-core. Minimal, iconic, and yes, the holes are a deliberate fashion choice.",
+  },
+  {
+    id: "hay_king",
+    name: "Hay King",
+    cost: 800,
+    character: "dwight",
+    requiredAchievement: null,
+    tagline: "Dwight only. Brown harvest robe plus a hay crown fit for beet royalty.",
+    kelly: "Kelly: This is farm-regal. Like if Homecoming met harvest season.",
+  },
+  {
+    id: "two_headed_monster",
+    name: "Two-Headed Monster",
+    cost: 800,
+    character: "michael",
+    requiredAchievement: null,
+    tagline: "Michael only. Double the head, double the drama, double the confusion.",
+    kelly: "Kelly: Two heads? One icon. Honestly this is giving prestige horror.",
+  },
+  {
+    id: "cat_andy",
+    name: "Cat Andy",
+    cost: 800,
+    character: "andy",
+    requiredAchievement: null,
+    tagline: "Andy only. Leopard print fur fit, cat ears, and full tail energy.",
+    kelly: "Kelly: Nard Cat is wildly committed and I support the chaos.",
   },
   {
     id: "goldenface",
@@ -4030,6 +4057,9 @@ function drawPlayer() {
   else if (outfitId === "date_mike") shirtColor = "#1e2f4e";
   else if (outfitId === "wrong_fit") shirtColor = "#cb5fa4";
   else if (outfitId === "recyclops") shirtColor = "#5c8f3c";
+  else if (outfitId === "hay_king") shirtColor = "#6a4a2b";
+  else if (outfitId === "two_headed_monster") shirtColor = "#202734";
+  else if (outfitId === "cat_andy") shirtColor = "#8c6a3b";
   else if (outfitId === "strangler_hood") shirtColor = "#171a23";
   else if (outfitId === "three_hole_gym") shirtColor = "#d9dde4";
   let skinBase = label === "Darryl" ? "#8b664b" : label === "Kelly" ? "#a47657" : label === "Pam" ? "#f1cfb3" : "#efcfab";
@@ -4110,17 +4140,48 @@ function drawPlayer() {
     }
     ctx.fillStyle = "rgba(255,255,255,0.14)";
     ctx.fillRect(x + 30, hipY - 12, 5, 8);
-    if (outfitId !== "three_hole_gym" && outfitId !== "strangler_hood") {
+    if (outfitId !== "three_hole_gym" && outfitId !== "strangler_hood" && outfitId !== "cat_andy") {
       let tie = effectiveTieColor;
       if (outfitId === "cornell_fit") tie = "#f4d76b";
       else if (outfitId === "goldenface") tie = "#d6b255";
       else if (outfitId === "date_mike") tie = "#9a1f2f";
       else if (outfitId === "wrong_fit") tie = "#f5d35b";
       else if (outfitId === "recyclops") tie = "#2d5a2e";
+      else if (outfitId === "hay_king") tie = "#3f2f1f";
       if (!(label === "Andy" && !outfitId)) {
         ctx.fillStyle = tie;
         ctx.fillRect(x + 24, hipY - 11, 2, 6);
       }
+    }
+
+    if (outfitId === "cat_andy") {
+      // Fur collar + leopard spots + tail in slide pose.
+      ctx.fillStyle = "#d5b47f";
+      ctx.fillRect(x + 18, hipY - 14, 11, 2);
+      ctx.fillRect(x + 29, hipY - 13, 6, 2);
+      ctx.fillStyle = "#3d2d18";
+      ctx.fillRect(x + 21, hipY - 9, 2, 2);
+      ctx.fillRect(x + 27, hipY - 10, 2, 2);
+      ctx.fillRect(x + 31, hipY - 8, 2, 2);
+      ctx.fillStyle = "#2a1e11";
+      ctx.fillRect(x + 14, hipY - 2, 4, 2);
+      ctx.fillRect(x + 12, hipY, 2, 2);
+    } else if (outfitId === "hay_king") {
+      ctx.fillStyle = "#b8935a";
+      ctx.fillRect(x + 19, hipY - 14, 12, 2);
+      ctx.fillStyle = "#9e7a47";
+      ctx.fillRect(x + 7, hipY - 20, 14, 2);
+      ctx.fillRect(x + 11, hipY - 23, 6, 3);
+    } else if (outfitId === "two_headed_monster") {
+      // Extra head riding just above the back shoulder.
+      ctx.fillStyle = skinBase;
+      ctx.fillRect(x + 20, hipY - 23, 10, 7);
+      ctx.fillStyle = hairBase;
+      ctx.fillRect(x + 19, hipY - 25, 11, 2);
+      ctx.fillStyle = "#1b2230";
+      ctx.fillRect(x + 23, hipY - 21, 1, 1);
+      ctx.fillRect(x + 27, hipY - 21, 1, 1);
+      ctx.fillRect(x + 24, hipY - 19, 3, 1);
     }
 
     // Front arm reaches forward.
@@ -5373,6 +5434,16 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
   } else if (outfitId === "recyclops") {
     shirtColor = "#5c8f3c";
     tieColor = "#2d5a2e";
+  } else if (outfitId === "hay_king") {
+    shirtColor = "#6a4a2b";
+    tieColor = "#3f2f1f";
+  } else if (outfitId === "two_headed_monster") {
+    shirtColor = "#202734";
+    tieColor = "#dce4ef";
+  } else if (outfitId === "cat_andy") {
+    shirtColor = "#8c6a3b";
+    tieColor = "#8c6a3b";
+    hideTie = true;
   } else if (outfitId === "strangler_hood") {
     shirtColor = "#171a23";
     tieColor = "#171a23";
@@ -5525,6 +5596,37 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     ctx.fillStyle = "#2f4f2f";
     ctx.fillRect(x + 15 * scale, y - 58 * scale, 2 * scale, 2 * scale);
   }
+  if (outfitId === "hay_king") {
+    // Straw crown and rough harvest trim.
+    ctx.fillStyle = "#cda86e";
+    ctx.fillRect(x + 7 * scale, y - 69 * scale, 18 * scale, 4 * scale);
+    ctx.fillRect(x + 10 * scale, y - 74 * scale, 2 * scale, 5 * scale);
+    ctx.fillRect(x + 13 * scale, y - 75 * scale, 2 * scale, 6 * scale);
+    ctx.fillRect(x + 17 * scale, y - 75 * scale, 2 * scale, 6 * scale);
+    ctx.fillRect(x + 20 * scale, y - 74 * scale, 2 * scale, 5 * scale);
+    ctx.fillStyle = "#b69056";
+    ctx.fillRect(x + 8 * scale, y - 66 * scale, 16 * scale, 2 * scale);
+  }
+  if (outfitId === "two_headed_monster") {
+    // Extra head on Michael's shoulder.
+    ctx.fillStyle = renderSkinBase;
+    ctx.fillRect(x - 2 * scale, y - 62 * scale, 12 * scale, 9 * scale);
+    ctx.fillStyle = hairBase;
+    ctx.fillRect(x - 2 * scale, y - 64 * scale, 12 * scale, 3 * scale);
+    ctx.fillStyle = "#1e2431";
+    ctx.fillRect(x + 1 * scale, y - 58 * scale, 2 * scale, 1 * scale);
+    ctx.fillRect(x + 5 * scale, y - 58 * scale, 2 * scale, 1 * scale);
+    ctx.fillRect(x + 2 * scale, y - 56 * scale, 4 * scale, 1 * scale);
+  }
+  if (outfitId === "cat_andy") {
+    // Cat ears.
+    ctx.fillStyle = "#2a1c12";
+    ctx.fillRect(x + 9 * scale, y - 68 * scale, 4 * scale, 4 * scale);
+    ctx.fillRect(x + 21 * scale, y - 68 * scale, 4 * scale, 4 * scale);
+    ctx.fillStyle = "#d7b27b";
+    ctx.fillRect(x + 10 * scale, y - 67 * scale, 2 * scale, 2 * scale);
+    ctx.fillRect(x + 22 * scale, y - 67 * scale, 2 * scale, 2 * scale);
+  }
   if (outfitId === "strangler_hood") {
     // Single-piece hood shape so no seams show in previews/in-run sprites.
     ctx.fillStyle = "#1a2235";
@@ -5610,6 +5712,22 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     ctx.fillRect(x + 16 * scale, y - 39 * scale, 4 * scale, 4 * scale);
     ctx.fillRect(x + 16 * scale, y - 33 * scale, 4 * scale, 4 * scale);
     ctx.fillRect(x + 16 * scale, y - 27 * scale, 4 * scale, 4 * scale);
+  }
+
+  if (outfitId === "cat_andy") {
+    // Leopard-print body.
+    ctx.fillStyle = "#d7b27b";
+    ctx.fillRect(torsoX + 2 * scale, torsoY + 2 * scale, torsoW - 4 * scale, 4 * scale);
+    ctx.fillStyle = "#3d2d18";
+    ctx.fillRect(torsoX + 5 * scale, torsoY + 8 * scale, 2 * scale, 2 * scale);
+    ctx.fillRect(torsoX + 11 * scale, torsoY + 10 * scale, 2 * scale, 2 * scale);
+    ctx.fillRect(torsoX + 17 * scale, torsoY + 7 * scale, 2 * scale, 2 * scale);
+    ctx.fillRect(torsoX + 8 * scale, torsoY + 14 * scale, 2 * scale, 2 * scale);
+    ctx.fillRect(torsoX + 15 * scale, torsoY + 17 * scale, 2 * scale, 2 * scale);
+    // Tail.
+    ctx.fillStyle = "#2a1e11";
+    ctx.fillRect(torsoX + torsoW - 1 * scale, torsoY + 18 * scale, 5 * scale, 2 * scale);
+    ctx.fillRect(torsoX + torsoW + 3 * scale, torsoY + 16 * scale, 2 * scale, 4 * scale);
   }
 
   // Arms (Pam now same body system, no floating look).
@@ -7638,6 +7756,15 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
   } else if (outfitId === "recyclops") {
     shirtColor = "#5c8f3c";
     tieColor = "#2d5a2e";
+  } else if (outfitId === "hay_king") {
+    shirtColor = "#6a4a2b";
+    tieColor = "#3f2f1f";
+  } else if (outfitId === "two_headed_monster") {
+    shirtColor = "#202734";
+    tieColor = "#dce4ef";
+  } else if (outfitId === "cat_andy") {
+    shirtColor = "#8c6a3b";
+    tieColor = "#8c6a3b";
   } else if (outfitId === "strangler_hood") {
     shirtColor = "#171a23";
     tieColor = "#171a23";
@@ -7649,7 +7776,7 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
     tieColor = "#9a1f2f";
   }
 
-  const hideTie = outfitId === "three_hole_gym" || outfitId === "strangler_hood";
+  const hideTie = outfitId === "three_hole_gym" || outfitId === "strangler_hood" || outfitId === "cat_andy";
 
   ctx.fillStyle = "rgba(0,0,0,0.2)";
   ctx.beginPath();
@@ -7688,6 +7815,15 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
     ctx.fillRect(baseX + 14 * s, baseY + 17 * s, 2 * s, 2 * s);
     ctx.fillRect(baseX + 14 * s, baseY + 20 * s, 2 * s, 2 * s);
   }
+  if (outfitId === "cat_andy") {
+    ctx.fillStyle = "#3d2d18";
+    ctx.fillRect(baseX + 9 * s, baseY + 13 * s, 2 * s, 2 * s);
+    ctx.fillRect(baseX + 14 * s, baseY + 15 * s, 2 * s, 2 * s);
+    ctx.fillRect(baseX + 17 * s, baseY + 12 * s, 2 * s, 2 * s);
+    ctx.fillStyle = "#2a1e11";
+    ctx.fillRect(baseX + 22 * s, baseY + 20 * s, 3 * s, 1 * s);
+    ctx.fillRect(baseX + 24 * s, baseY + 18 * s, 1 * s, 3 * s);
+  }
   if (outfitId === "goldenface") {
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(baseX + 12 * s, baseY + 12 * s, 4 * s, 10 * s);
@@ -7712,6 +7848,29 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
     ctx.fillRect(baseX + 9 * s, baseY + 2 * s, 10 * s, 1 * s);
     ctx.fillStyle = "#2f4f2f";
     ctx.fillRect(baseX + 13 * s, baseY + 2 * s, 2 * s, 1 * s);
+  } else if (outfitId === "hay_king") {
+    ctx.fillStyle = "#cda86e";
+    ctx.fillRect(baseX + 7 * s, baseY - 3 * s, 14 * s, 2 * s);
+    ctx.fillRect(baseX + 9 * s, baseY - 6 * s, 2 * s, 3 * s);
+    ctx.fillRect(baseX + 12 * s, baseY - 7 * s, 2 * s, 4 * s);
+    ctx.fillRect(baseX + 15 * s, baseY - 7 * s, 2 * s, 4 * s);
+    ctx.fillRect(baseX + 18 * s, baseY - 6 * s, 2 * s, 3 * s);
+  } else if (outfitId === "two_headed_monster") {
+    ctx.fillStyle = "#efcfab";
+    ctx.fillRect(baseX + 2 * s, baseY + 3 * s, 8 * s, 5 * s);
+    ctx.fillStyle = "#2a1e16";
+    ctx.fillRect(baseX + 2 * s, baseY + 1 * s, 8 * s, 2 * s);
+    ctx.fillStyle = "#1b2230";
+    ctx.fillRect(baseX + 4 * s, baseY + 5 * s, 1 * s, 1 * s);
+    ctx.fillRect(baseX + 7 * s, baseY + 5 * s, 1 * s, 1 * s);
+    ctx.fillRect(baseX + 5 * s, baseY + 7 * s, 2 * s, 1 * s);
+  } else if (outfitId === "cat_andy") {
+    ctx.fillStyle = "#2a1c12";
+    ctx.fillRect(baseX + 8 * s, baseY - 3 * s, 3 * s, 3 * s);
+    ctx.fillRect(baseX + 17 * s, baseY - 3 * s, 3 * s, 3 * s);
+    ctx.fillStyle = "#d7b27b";
+    ctx.fillRect(baseX + 9 * s, baseY - 2 * s, 1 * s, 1 * s);
+    ctx.fillRect(baseX + 18 * s, baseY - 2 * s, 1 * s, 1 * s);
   } else if (outfitId === "strangler_hood") {
     ctx.fillStyle = "#141824";
     ctx.fillRect(baseX + 6 * s, baseY - 1 * s, 16 * s, 3 * s);
