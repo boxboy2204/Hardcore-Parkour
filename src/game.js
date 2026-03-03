@@ -160,7 +160,7 @@ const SHOP_ITEMS = [
   {
     id: "parkour_shoes",
     name: "Parkour Shoes",
-    description: "Permanent +18 run speed.",
+    description: "Next run only: +20 run speed.",
     currency: "stanleyNickels",
     cost: 36,
     row: "top",
@@ -1439,8 +1439,13 @@ function updateCornerTv(dt) {
     hitY = true;
   }
 
-  if (hitX && hitY) {
-    // Only reward actual corner collisions, and keep jackpot rare.
+  // Count visible corner contacts even when edge bounces happen on adjacent frames.
+  const edgeTol = 1;
+  const atXEdge = state.cornerLogoX <= edgeTol || state.cornerLogoX >= maxX - edgeTol;
+  const atYEdge = state.cornerLogoY <= edgeTol || state.cornerLogoY >= maxY - edgeTol;
+  const cornerContact = (hitX || hitY) && atXEdge && atYEdge;
+  if (cornerContact) {
+    // Keep jackpot rare: 1 in 100 corner contacts.
     if (Math.random() < 0.01 && state.cornerLogoRewardCooldown <= 0 && state.saveData) {
       awardCornerTvJackpot();
     }
@@ -2040,7 +2045,7 @@ function startRunStateNow(worldId = state.selectedWorldId) {
 
   const hpBonus = state.runEquippedItems.includes("gel_shield") ? 1 : 0;
   const characterHpBonus = preset.hpBonus || 0;
-  const speedBonus = state.runEquippedItems.includes("parkour_shoes") ? 18 : 0;
+  const speedBonus = state.runEquippedItems.includes("parkour_shoes") ? 20 : 0;
   const stumbleTuning = state.runEquippedItems.includes("chili_guard") ? 0.72 : 1;
   const tapeHpSwing = state.runEquippedItems.includes("mifflin_tape") ? (Math.random() < 0.5 ? 2 : -2) : 0;
   const boostTuning = (state.runEquippedItems.includes("energy_mug") ? 1.2 : 1) * (preset.boostMul || 1);
@@ -5934,18 +5939,20 @@ function drawShopScene() {
     ctx.font = "bold 16px Trebuchet MS";
     drawWrappedText(p.description, boxX + 14, boxY + 52, 560, 18, 2);
 
-    ctx.fillStyle = "#b7f2bb";
-    ctx.font = "bold 18px Trebuchet MS";
-    ctx.fillText(`In inventory: ${p.count}`, boxX + 600, boxY + 52);
-
+    // Dedicated status panel on the right so state text never overlaps.
+    const infoX = boxX + 586;
+    const infoY = boxY + 14;
+    const infoW = 236;
+    const infoH = 68;
+    drawPixelPanel(infoX, infoY, infoW, infoH, "rgba(16,26,44,0.9)", "rgba(10,18,32,0.94)", "#7fbfff", "rgba(205,228,255,0.58)");
     if (p.lockedByKey) {
       ctx.fillStyle = "#ffd7a1";
-      ctx.font = "bold 17px Trebuchet MS";
-      drawWrappedText("LOCKED: Complete Save Pam to unlock top row.", boxX + 600, boxY + 52, 220, 18, 2);
+      ctx.font = "bold 15px Trebuchet MS";
+      drawWrappedText("LOCKED: Complete Save Pam.", infoX + 10, infoY + 22, infoW - 20, 16, 2);
     } else if (!p.canAfford) {
       ctx.fillStyle = "#ffb8a6";
-      ctx.font = "bold 18px Trebuchet MS";
-      ctx.fillText("NOT ENOUGH MONEY", boxX + 596, boxY + 56);
+      ctx.font = "bold 17px Trebuchet MS";
+      ctx.fillText("NOT ENOUGH MONEY", infoX + 10, infoY + 24);
     } else {
       const buyBtn = { id: "buy", x: boxX + 592, y: boxY + 18, w: 108, h: 34 };
       const cancelBtn = { id: "cancel", x: boxX + 710, y: boxY + 18, w: 108, h: 34 };
@@ -5961,6 +5968,9 @@ function drawShopScene() {
         if (btn.id === "buy") drawCurrencyIcon("stanley_nickel", btn.x + 74, btn.y + 10, 0.9);
       }
     }
+    ctx.fillStyle = "#b7f2bb";
+    ctx.font = "bold 16px Trebuchet MS";
+    ctx.fillText(`In inventory: ${p.count}`, infoX + 10, infoY + 56);
   }
 
   if (!state.shopPurchasePrompt || state.shopConversation) {
