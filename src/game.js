@@ -1322,7 +1322,7 @@ function advanceCheatCode(code) {
       state.cheatInvincible = !state.cheatInvincible;
       showMissionToast(
         state.cheatInvincible
-          ? "Cheat ON: No injuries. (Code: B E E T S)"
+          ? "Cheat ON: No injuries, all HARDCORE yells land, and every DVD bounce pays out."
           : "Cheat OFF: Injury is back on."
       );
     }
@@ -1386,11 +1386,13 @@ function showAnnexMessage(text) {
 
 function awardCornerTvJackpot() {
   state.saveData.currencies.schruteBucks += 250;
+  state.saveData.currencies.stanleyNickels += 50;
   state.cornerLogoRewardCooldown = 0.8;
   state.jackpotRainLeft = 2.8;
   state.jackpotRainSpawnAcc = 0;
-  for (let i = 0; i < 48; i += 1) {
+  for (let i = 0; i < 64; i += 1) {
     state.jackpotRainDrops.push({
+      type: Math.random() < 0.58 ? "schrute_buck" : "stanley_nickel",
       x: Math.random() * canvas.width,
       y: -Math.random() * 180,
       vy: 220 + Math.random() * 230,
@@ -1400,7 +1402,7 @@ function awardCornerTvJackpot() {
     });
   }
   persistSave();
-  showMissionToast("Corner hit! +250 [SB] from the office TV.");
+  showMissionToast("Corner hit! +250 [SB] and +50 [SN] from the office TV.");
 }
 
 function updateCornerTv(dt) {
@@ -1444,7 +1446,9 @@ function updateCornerTv(dt) {
   const atXEdge = state.cornerLogoX <= edgeTol || state.cornerLogoX >= maxX - edgeTol;
   const atYEdge = state.cornerLogoY <= edgeTol || state.cornerLogoY >= maxY - edgeTol;
   const cornerContact = (hitX || hitY) && atXEdge && atYEdge;
-  if (cornerContact) {
+  if (state.cheatInvincible && (hitX || hitY) && state.saveData) {
+    awardCornerTvJackpot();
+  } else if (cornerContact) {
     // Keep jackpot rare: 1 in 100 corner contacts.
     if (Math.random() < 0.01 && state.cornerLogoRewardCooldown <= 0 && state.saveData) {
       awardCornerTvJackpot();
@@ -2463,6 +2467,18 @@ function handlePamSpottingKey() {
 
 function doParkourShout() {
   if (!state.running || state.paused) return;
+  if (state.cheatInvincible) {
+    state.pendingLanding = false;
+    state.landingWindowLeft = 0;
+    state.speedBoostLeft = GAME.speedBoostSec * (state.player?.runtimeBoostMul || 1);
+    state.multiplier = Math.min(20, state.multiplier + 1);
+    state.bestChain = Math.max(state.bestChain, state.multiplier - 1);
+    if (state.bestChain >= 20 && unlockDundieAward("whitestSneakers")) {
+      addFloatingText("WHITEST!", state.player.x - 8, state.player.y - 46, "#fff4b2");
+    }
+    addFloatingText("HARDCORE!", state.player.x + 16, state.player.y - 28, "#ffd54d");
+    return;
+  }
   if (state.pendingLanding && state.landingWindowLeft > 0) {
     state.pendingLanding = false;
     state.landingWindowLeft = 0;
@@ -7771,13 +7787,50 @@ function render() {
   if (state.jackpotRainDrops.length > 0) {
     for (const drop of state.jackpotRainDrops) {
       const tilt = Math.sin(drop.spin) * 2.5;
-      ctx.fillStyle = "#f0c44d";
-      ctx.fillRect(drop.x + tilt, drop.y, drop.size, drop.size * 0.62);
-      ctx.fillStyle = "#fff2b8";
-      ctx.fillRect(drop.x + 2 + tilt, drop.y + 1, Math.max(2, drop.size - 4), Math.max(2, drop.size * 0.62 - 2));
-      ctx.fillStyle = "#8a5d08";
-      ctx.font = "bold 9px Trebuchet MS";
-      ctx.fillText("$", drop.x + 3 + tilt, drop.y + Math.max(8, drop.size * 0.5));
+      const dx = drop.x + tilt;
+      const dy = drop.y;
+      if (drop.type === "stanley_nickel") {
+        const r = Math.max(5, Math.floor(drop.size * 0.55));
+        const cx = dx + r;
+        const cy = dy + r;
+        ctx.fillStyle = "#9298a2";
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#cfd4db";
+        ctx.beginPath();
+        ctx.arc(cx, cy, Math.max(3, r - 2), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#5c6370";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(cx, cy, Math.max(3, r - 1), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = "#565e6a";
+        ctx.font = "bold 7px Trebuchet MS";
+        ctx.fillText("5", cx - 2, cy + 2);
+      } else {
+        const w = Math.max(10, drop.size + 6);
+        const h = Math.max(6, Math.floor(w * 0.58));
+        // Mini Schrute Buck bill sprite.
+        ctx.fillStyle = "#c9d8d4";
+        ctx.fillRect(dx, dy, w, h);
+        ctx.fillStyle = "#93a9a4";
+        ctx.fillRect(dx + 1, dy + 1, w - 2, h - 2);
+        ctx.fillStyle = "#dde9e6";
+        ctx.fillRect(dx + 2, dy + 2, w - 4, h - 4);
+        ctx.strokeStyle = "#4d6460";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(dx + 1.5, dy + 1.5, w - 3, h - 3);
+        ctx.fillStyle = "#49615d";
+        ctx.fillRect(dx + Math.floor(w * 0.42), dy + 2, Math.max(2, Math.floor(w * 0.16)), h - 4);
+        ctx.fillStyle = "#f0f6f4";
+        ctx.fillRect(dx + Math.floor(w * 0.47), dy + 3, 1, Math.max(2, h - 6));
+        ctx.fillStyle = "#516b66";
+        ctx.font = "bold 7px Trebuchet MS";
+        ctx.fillText("1", dx + 2, dy + h - 1);
+        ctx.fillText("1", dx + w - 6, dy + h - 1);
+      }
     }
   }
 
@@ -7846,6 +7899,7 @@ function update(dt) {
       while (state.jackpotRainSpawnAcc >= 0.045) {
         state.jackpotRainSpawnAcc -= 0.045;
         state.jackpotRainDrops.push({
+          type: Math.random() < 0.58 ? "schrute_buck" : "stanley_nickel",
           x: Math.random() * canvas.width,
           y: -16 - Math.random() * 42,
           vy: 250 + Math.random() * 210,
