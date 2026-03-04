@@ -236,6 +236,16 @@ const ANNEX_OUTFITS = [
       "Kelly: You look like you are about to lose all your money at a pool hall. It is so vintage.",
   },
   {
+    id: "date_mike_neon",
+    name: "Date Mike: Neon",
+    cost: 0,
+    character: "michael",
+    requiredAchievement: null,
+    requiredMission: "kellyTrendEmergency",
+    tagline: "Kelly quest reward. Neon Date Mike with loud colors and louder confidence.",
+    kelly: "Kelly: This neon Date Mike is giving 'club promoter with unresolved office drama.'",
+  },
+  {
     id: "wrong_fit",
     name: "Santa Suit",
     cost: 0,
@@ -254,6 +264,16 @@ const ANNEX_OUTFITS = [
     tagline: "Dwight only. Eco-terrorist chic.",
     kelly:
       "Kelly: Is this for Burning Man? You look like a transformer stuck in a dumpster and I am kind of obsessed.",
+  },
+  {
+    id: "recyclops_black_red",
+    name: "Recyclops: Black/Red",
+    cost: 0,
+    character: "dwight",
+    requiredAchievement: null,
+    requiredMission: "kellyTrendEmergency",
+    tagline: "Kelly quest reward. Black-and-red Recyclops variant with villain energy.",
+    kelly: "Kelly: Dark Recyclops? Sustainable, but make it intimidating.",
   },
   {
     id: "three_hole_gym",
@@ -293,6 +313,16 @@ const ANNEX_OUTFITS = [
     kelly: "Kelly: Nard Cat is wildly committed and I support the chaos.",
   },
   {
+    id: "cat_andy_tiger",
+    name: "Cat Andy: Tiger",
+    cost: 0,
+    character: "andy",
+    requiredAchievement: null,
+    requiredMission: "kellyTrendEmergency",
+    tagline: "Kelly quest reward. Tiger-print Nard Cat with full feral confidence.",
+    kelly: "Kelly: Tiger print Andy is reckless, bold, and totally on-brand.",
+  },
+  {
     id: "andy_plumber",
     name: "Mafia Plumber",
     cost: 800,
@@ -300,15 +330,6 @@ const ANNEX_OUTFITS = [
     requiredAchievement: null,
     tagline: "Andy only. Red cap, gray work suit, and fake-union confidence.",
     kelly: "Kelly: You look like you fix pipes and start rumors at the same time.",
-  },
-  {
-    id: "andy_construction",
-    name: "Builder Bernard",
-    cost: 800,
-    character: "andy",
-    requiredAchievement: null,
-    tagline: "Andy only. Yellow hard hat, plaid shirt, and pure safety theater.",
-    kelly: "Kelly: OSHA but make it preppy. This is deeply chaotic and I approve.",
   },
   {
     id: "dwight_deputy",
@@ -320,15 +341,6 @@ const ANNEX_OUTFITS = [
     kelly: "Kelly: This is giving mall security final boss, in a good way.",
   },
   {
-    id: "dwight_joker",
-    name: "Dwoker",
-    cost: 800,
-    character: "dwight",
-    requiredAchievement: null,
-    tagline: "Dwight only. Purple coat, green hair, and unsettling grin energy.",
-    kelly: "Kelly: Scary-clown couture. I hate it and love it equally.",
-  },
-  {
     id: "prison_mike",
     name: "Prison Mike",
     cost: 800,
@@ -336,15 +348,6 @@ const ANNEX_OUTFITS = [
     requiredAchievement: null,
     tagline: "Michael only. Purple bandana and hard-time motivational speaking.",
     kelly: "Kelly: Prison-core. Intense. A lot. Definitely a choice.",
-  },
-  {
-    id: "scranton_penguins",
-    name: "Scranton Penguins",
-    cost: 800,
-    character: "michael",
-    requiredAchievement: null,
-    tagline: "From Dwight.",
-    kelly: "Kelly: Sports merch from Dwight is somehow both sweet and threatening.",
   },
   {
     id: "goldenface",
@@ -365,6 +368,18 @@ const ANNEX_OUTFITS = [
     tagline: "Final pursuit reward. Shadowy hood, alleyway menace energy.",
     kelly: "Kelly: This hood says mysterious, dramatic, and mildly lawsuit-adjacent.",
   },
+];
+
+const OUTFIT_VARIANTS = {
+  date_mike: "date_mike_neon",
+  recyclops: "recyclops_black_red",
+  cat_andy: "cat_andy_tiger",
+};
+
+const AURAS = [
+  { id: "blue", name: "Blue Aura", color: "rgba(82, 162, 255, 0.44)" },
+  { id: "stink", name: "Stink Aura", color: "rgba(126, 166, 92, 0.42)" },
+  { id: "violet", name: "Violet Aura", color: "rgba(176, 114, 255, 0.42)" },
 ];
 
 const state = {
@@ -469,6 +484,12 @@ const state = {
   missionToastLeft: 0,
   annexCards: [],
   annexAchievementBounds: [],
+  annexKellyBounds: null,
+  annexKellyTalkBounds: null,
+  annexTalkBounds: [],
+  annexConversation: null,
+  annexOutfitPrompt: null,
+  annexOutfitPromptBounds: [],
   annexMessage: "Kelly: Welcome to the Annex Boutique, where confidence is mandatory and glitter is a lifestyle.",
   annexMessageLeft: 0,
   characterCards: [],
@@ -512,6 +533,7 @@ const state = {
     settingsOption: 0,
     annexCard: 0,
     reviewButton: 0,
+    annexTalk: 0,
   },
   debugHitboxes: false,
   tutorialMode: false,
@@ -546,6 +568,8 @@ function createDefaultSave() {
       goldenfaceTakenFromDesk: false,
       shopUnlocked: false,
       topRowGelCleared: {},
+      aurasUnlocked: [],
+      equippedAura: null,
       outfitsUnlocked: [],
       equippedOutfits: {
         michael: null,
@@ -588,9 +612,24 @@ function createDefaultSave() {
         added: false,
         completed: false,
       },
+      kellyTrendEmergency: {
+        added: false,
+        completed: false,
+        bestStyle: 0,
+        bestChain: 0,
+        rewardClaimed: false,
+      },
+      kellyCorporateConundrum: {
+        added: false,
+        completed: false,
+        bestStyle: 0,
+        bestChain: 0,
+        rewardClaimed: false,
+      },
     },
     stats: {
       bestHardcoreChain: 0,
+      bestRunStyle: 0,
       lifetimeRuns: 0,
       economyV2ResetApplied: false,
       ryanBeardBonusClaimed: false,
@@ -608,6 +647,8 @@ function normalizeSave(parsedInput) {
     const parsedSavePam = parsedMissions.savePam || {};
     const parsedCaptureStrangler = parsedMissions.captureStrangler || {};
     const parsedThreatLevelMidnight = parsedMissions.threatLevelMidnight || {};
+    const parsedKellyTrendEmergency = parsedMissions.kellyTrendEmergency || {};
+    const parsedKellyCorporateConundrum = parsedMissions.kellyCorporateConundrum || {};
     const parsedUnlocks = parsed.unlocks || {};
     const parsedEquippedOutfits = parsedUnlocks.equippedOutfits || {};
     const parsedAchievements = parsed.achievements || {};
@@ -632,6 +673,8 @@ function normalizeSave(parsedInput) {
         ...parsedUnlocks,
         goldenfaceTakenFromDesk: Boolean(parsedUnlocks.goldenfaceTakenFromDesk),
         topRowGelCleared: { ...defaults.unlocks.topRowGelCleared, ...(parsedUnlocks.topRowGelCleared || {}) },
+        aurasUnlocked: Array.isArray(parsedUnlocks.aurasUnlocked) ? [...parsedUnlocks.aurasUnlocked] : [],
+        equippedAura: parsedUnlocks.equippedAura || null,
         equippedOutfits: {
           ...defaults.unlocks.equippedOutfits,
           ...parsedEquippedOutfits,
@@ -655,6 +698,11 @@ function normalizeSave(parsedInput) {
         savePam: { ...defaults.missions.savePam, ...parsedSavePam },
         captureStrangler: { ...defaults.missions.captureStrangler, ...parsedCaptureStrangler },
         threatLevelMidnight: { ...defaults.missions.threatLevelMidnight, ...parsedThreatLevelMidnight },
+        kellyTrendEmergency: { ...defaults.missions.kellyTrendEmergency, ...parsedKellyTrendEmergency },
+        kellyCorporateConundrum: {
+          ...defaults.missions.kellyCorporateConundrum,
+          ...parsedKellyCorporateConundrum,
+        },
       },
       stats: { ...defaults.stats, ...(parsed.stats || {}) },
     };
@@ -1680,6 +1728,26 @@ function ownsOutfit(id) {
   return state.saveData.unlocks.outfitsUnlocked.includes(id);
 }
 
+function hasAuraUnlocked(auraId) {
+  return Array.isArray(state.saveData?.unlocks?.aurasUnlocked) && state.saveData.unlocks.aurasUnlocked.includes(auraId);
+}
+
+function getEquippedAuraId() {
+  return state.saveData?.unlocks?.equippedAura || null;
+}
+
+function getVariantOutfitId(baseOutfitId) {
+  return OUTFIT_VARIANTS[baseOutfitId] || null;
+}
+
+function getBaseOutfitId(outfitId) {
+  if (OUTFIT_VARIANTS[outfitId]) return outfitId;
+  for (const [baseId, variantId] of Object.entries(OUTFIT_VARIANTS)) {
+    if (variantId === outfitId) return baseId;
+  }
+  return outfitId;
+}
+
 function isOutfitUsableByRunner(outfit, runnerId = getRunnerId()) {
   return outfit.character === "all" || outfit.character === runnerId;
 }
@@ -1715,10 +1783,25 @@ function getEquippedOutfitId(runnerId = getRunnerId()) {
   return state.saveData.unlocks.equippedOutfits[runnerId] || null;
 }
 
-function toggleOutfit(outfitId) {
+function toggleOutfit(outfitId, options = {}) {
   const outfit = ANNEX_OUTFITS.find((o) => o.id === outfitId);
   if (!outfit) return;
   const runnerId = getRunnerId();
+  const baseOutfitId = getBaseOutfitId(outfitId);
+  const variantOutfitId = getVariantOutfitId(baseOutfitId);
+
+  if (
+    !options.skipVariantPrompt &&
+    outfitId === baseOutfitId &&
+    variantOutfitId &&
+    ownsOutfit(variantOutfitId) &&
+    ownsOutfit(baseOutfitId)
+  ) {
+    state.annexConversation = null;
+    state.annexOutfitPrompt = { baseOutfitId, variantOutfitId };
+    state.annexOutfitPromptBounds = [];
+    return;
+  }
 
   if (!isOutfitUsableByRunner(outfit, runnerId)) {
     showAnnexMessage(
@@ -1732,7 +1815,13 @@ function toggleOutfit(outfitId) {
         `Kelly: This unlock comes from the "${getAchievementLabel(outfit.requiredAchievement)}" Dundie. Go earn it.`
       );
     } else if (outfit.requiredMission) {
-      showAnnexMessage("Kelly: Finish the Final Pursuit and catch the Strangler to unlock that one.");
+      if (outfit.requiredMission === "captureStrangler") {
+        showAnnexMessage("Kelly: Finish the Final Pursuit and catch the Strangler to unlock that one.");
+      } else if (outfit.requiredMission === "kellyTrendEmergency") {
+        showAnnexMessage("Kelly: Earn this in my Trend Emergency mission first.");
+      } else {
+        showAnnexMessage("Kelly: That one is mission-locked. Go finish the mission first.");
+      }
     } else {
       showAnnexMessage("Kelly: Win more Dundies first. Fashion is merit-based, like chaos.");
     }
@@ -1912,6 +2001,289 @@ function startPamConversation() {
   };
 }
 
+function maybeCompleteKellyMission(auto = false) {
+  const mission = state.saveData?.missions?.kellyTrendEmergency;
+  if (!mission || mission.completed) return false;
+  const reachedGoal = Number(mission.bestStyle || 0) >= 1500 && Number(mission.bestChain || 0) >= 6;
+  if (!reachedGoal) return false;
+  mission.completed = true;
+  const runnerId = getRunnerId();
+  const rewardOutfitId =
+    runnerId === "dwight"
+      ? "recyclops_black_red"
+      : runnerId === "andy"
+      ? "cat_andy_tiger"
+      : "date_mike_neon";
+  const rewardOutfit = ANNEX_OUTFITS.find((o) => o.id === rewardOutfitId);
+  if (rewardOutfitId && !state.saveData.unlocks.outfitsUnlocked.includes(rewardOutfitId)) {
+    state.saveData.unlocks.outfitsUnlocked.push(rewardOutfitId);
+  }
+  if (!mission.rewardClaimed) {
+    mission.rewardClaimed = true;
+  }
+  persistSave();
+  showMissionToast(auto ? 'Mission Auto-Completed: "Kelly\'s Trend Emergency"' : 'Mission Complete: "Kelly\'s Trend Emergency"');
+  showMissionToast(`Reward Unlocked: ${rewardOutfit?.name || "Special Variant"}`);
+  showAnnexMessage("Kelly: You served chaos, confidence, and cardio. Your special variant is now in the boutique.");
+  return true;
+}
+
+function addKellyMissionIfNeeded() {
+  const mission = state.saveData?.missions?.kellyTrendEmergency;
+  if (!mission) return;
+  if (!mission.added) {
+    mission.added = true;
+    mission.bestChain = Math.max(mission.bestChain || 0, state.saveData.stats.bestHardcoreChain || 0);
+    mission.bestStyle = Math.max(mission.bestStyle || 0, state.saveData.stats.bestRunStyle || 0);
+    persistSave();
+    if (maybeCompleteKellyMission(true)) return;
+    showMissionToast('New Mission: "Kelly\'s Trend Emergency"');
+  }
+}
+
+function maybeCompleteKellyCorporateMission(auto = false) {
+  const mission = state.saveData?.missions?.kellyCorporateConundrum;
+  if (!mission || mission.completed) return false;
+  const reachedGoal = Number(mission.bestStyle || 0) >= 2200 && Number(mission.bestChain || 0) >= 8;
+  if (!reachedGoal) return false;
+  mission.completed = true;
+  mission.rewardClaimed = false;
+  persistSave();
+  showMissionToast(
+    auto ? 'Mission Auto-Completed: "Corporate Conundrum"' : 'Mission Complete: "Corporate Conundrum"'
+  );
+  showMissionToast("Return to Kelly in the Annex to claim your fashion reward.");
+  return true;
+}
+
+function addKellyCorporateMissionIfNeeded() {
+  const mission = state.saveData?.missions?.kellyCorporateConundrum;
+  if (!mission || mission.added) return;
+  mission.added = true;
+  mission.bestStyle = Math.max(mission.bestStyle || 0, 0);
+  mission.bestChain = Math.max(mission.bestChain || 0, 0);
+  persistSave();
+  showMissionToast('New Mission: "Corporate Conundrum"');
+}
+
+function startKellyConversation() {
+  const mission1 = state.saveData?.missions?.kellyTrendEmergency;
+  const mission2 = state.saveData?.missions?.kellyCorporateConundrum;
+  if (!mission1 || !mission2) return;
+
+  if (mission2.completed) {
+    if (!mission2.rewardClaimed) {
+      state.annexConversation = {
+        actor: "kelly",
+        step: "corporate_reward_ready",
+        text:
+          "Kelly: Okay, this is major. Corporate got schooled and now it is reward time. I have a very interesting fashion trend for you.",
+      };
+      return;
+    }
+    state.annexConversation = {
+      actor: "kelly",
+      step: "corporate_complete",
+      text: "Kelly: Your aura game is officially corporate-approved. Come back later and I might have another trend.",
+    };
+    return;
+  }
+  if (mission2.added) {
+    state.annexConversation = {
+      actor: "kelly",
+      step: "corporate_active",
+      text: `Kelly: Corporate Conundrum is active. In NYC Corporate, finish a run with at least 2200 Style and x8 HARDCORE. Current best there: ${
+        mission2.bestStyle || 0
+      } Style, x${mission2.bestChain || 0} HARDCORE.`,
+    };
+    return;
+  }
+
+  if (mission1.completed && isWorldUnlocked("corporate")) {
+    state.annexConversation = {
+      actor: "kelly",
+      step: "corporate_intro",
+      text:
+        "Kelly: Hey, there is another fashion emergency. All the people up at corporate do not know the meaning of trends or fashion. I need you to go show them how it is done.",
+    };
+    return;
+  }
+
+  if (mission1.completed) {
+    state.annexConversation = {
+      actor: "kelly",
+      step: "wait_corporate_unlock",
+      text: "Kelly: You crushed mission one. Unlock NYC Corporate and I have a bigger fashion crisis for you.",
+    };
+    return;
+  }
+
+  if (mission1.added) {
+    state.annexConversation = {
+      actor: "kelly",
+      step: "active",
+      text: `Kelly: Mission is still live. Hit 1500+ Style and x6 HARDCORE in one run. Current best: ${mission1.bestStyle || 0} Style, x${mission1.bestChain || 0} HARDCORE.`,
+    };
+    return;
+  }
+  state.annexConversation = {
+    actor: "kelly",
+    step: "intro",
+    text: "Kelly: Fashion emergency. Corporate wants a hero run that is both athletic and extremely camera-ready. You in?",
+  };
+}
+
+function handleKellyConversationClick(choiceId) {
+  if (!state.annexConversation) return;
+  const mission1 = state.saveData?.missions?.kellyTrendEmergency;
+  const mission2 = state.saveData?.missions?.kellyCorporateConundrum;
+  if (!mission1 || !mission2) {
+    state.annexConversation = null;
+    return;
+  }
+
+  if (state.annexConversation.step === "intro") {
+    if (choiceId === "details") {
+      state.annexConversation = {
+        actor: "kelly",
+        step: "details",
+        text: "Kelly: Requirement is simple. Finish any level with at least 1500 Style and a x6 HARDCORE chain in that same run. Reward is a special color variant outfit for your current runner.",
+      };
+      return;
+    }
+    if (choiceId === "accept") {
+      addKellyMissionIfNeeded();
+      if (!mission1.completed) {
+        state.annexConversation = {
+          actor: "kelly",
+          step: "accepted",
+          text: "Kelly: Perfect. Keep it fast, dramatic, and vaguely inappropriate for office policy.",
+        };
+      } else {
+        state.annexConversation = null;
+      }
+      return;
+    }
+    state.annexConversation = null;
+    return;
+  }
+
+  if (state.annexConversation.step === "details") {
+    if (choiceId === "accept") {
+      addKellyMissionIfNeeded();
+      if (!mission1.completed) {
+        state.annexConversation = {
+          actor: "kelly",
+          step: "accepted",
+          text: "Kelly: Slay now, paperwork later.",
+        };
+      } else {
+        state.annexConversation = null;
+      }
+      return;
+    }
+    state.annexConversation = null;
+    return;
+  }
+
+  if (state.annexConversation.step === "active") {
+    if (choiceId === "details") {
+      state.annexConversation = {
+        actor: "kelly",
+        step: "details_active",
+        text: `Kelly: Your current mission stats are ${mission1.bestStyle || 0} Style and x${mission1.bestChain || 0} HARDCORE. One run needs both: 1500 Style and x6 chain.`,
+      };
+      return;
+    }
+    state.annexConversation = null;
+    return;
+  }
+
+  if (state.annexConversation.step === "corporate_intro") {
+    if (choiceId === "details") {
+      state.annexConversation = {
+        actor: "kelly",
+        step: "corporate_details",
+        text:
+          "Kelly: Mission two is called Corporate Conundrum. In NYC Corporate only, finish a run with at least 2200 Style and x8 HARDCORE. If you do it, I have a very interesting fashion trend for you.",
+      };
+      return;
+    }
+    if (choiceId === "accept") {
+      addKellyCorporateMissionIfNeeded();
+      if (!mission2.completed) {
+        state.annexConversation = {
+          actor: "kelly",
+          step: "corporate_accepted",
+          text:
+            "Kelly: Good. Go humble corporate fashion. If you pull this off, I will show you a very interesting fashion trend.",
+        };
+      } else {
+        state.annexConversation = null;
+      }
+      return;
+    }
+    state.annexConversation = null;
+    return;
+  }
+
+  if (state.annexConversation.step === "corporate_details") {
+    if (choiceId === "accept") {
+      addKellyCorporateMissionIfNeeded();
+      if (!mission2.completed) {
+        state.annexConversation = {
+          actor: "kelly",
+          step: "corporate_accepted",
+          text: "Kelly: Yes. Bring me dramatic stats and a flawless finish.",
+        };
+      } else {
+        state.annexConversation = null;
+      }
+      return;
+    }
+    state.annexConversation = null;
+    return;
+  }
+
+  if (state.annexConversation.step === "corporate_active") {
+    if (choiceId === "details") {
+      state.annexConversation = {
+        actor: "kelly",
+        step: "corporate_details_active",
+        text: `Corporate Conundrum progress: ${mission2.bestStyle || 0}/2200 Style, x${mission2.bestChain || 0}/x8 HARDCORE. Only runs in NYC Corporate count.`,
+      };
+      return;
+    }
+    state.annexConversation = null;
+    return;
+  }
+
+  if (
+    state.annexConversation.step === "details_active" ||
+    state.annexConversation.step === "accepted" ||
+    state.annexConversation.step === "wait_corporate_unlock" ||
+    state.annexConversation.step === "corporate_accepted" ||
+    state.annexConversation.step === "corporate_details_active" ||
+    state.annexConversation.step === "corporate_complete"
+  ) {
+    state.annexConversation = null;
+    return;
+  }
+
+  if (state.annexConversation.step === "corporate_reward_ready") {
+    const mission = state.saveData?.missions?.kellyCorporateConundrum;
+    if (mission && !mission.rewardClaimed) {
+      mission.rewardClaimed = true;
+      if (!hasAuraUnlocked("blue")) state.saveData.unlocks.aurasUnlocked.push("blue");
+      state.saveData.unlocks.equippedAura = "blue";
+      persistSave();
+      showMissionToast("Aura Unlocked: Blue Aura");
+      showAnnexMessage("Kelly: Blue aura equipped. You are literally glowing with office prestige.");
+    }
+    state.annexConversation = null;
+  }
+}
+
 function handlePamConversationClick(choiceId) {
   if (!state.shopConversation) return;
   const capture = state.saveData.missions.captureStrangler;
@@ -2069,6 +2441,12 @@ function switchScene(sceneId) {
   if (sceneId !== "shop") {
     state.shopConversation = null;
     state.shopPurchasePrompt = null;
+  }
+  if (sceneId !== "annex") {
+    state.annexConversation = null;
+    state.annexTalkBounds = [];
+    state.annexOutfitPrompt = null;
+    state.annexOutfitPromptBounds = [];
   }
   if (sceneId === "desk") {
     state.deskDrawerOpen = false;
@@ -2547,6 +2925,7 @@ function endRun(reason = "time") {
   state.saveData.currencies.schruteBucks += state.earnedSchruteBucks;
   state.saveData.currencies.stanleyNickels += state.earnedStanleyNickels;
   state.saveData.stats.bestHardcoreChain = Math.max(state.saveData.stats.bestHardcoreChain, state.bestChain);
+  state.saveData.stats.bestRunStyle = Math.max(state.saveData.stats.bestRunStyle || 0, state.style);
 
   let questEndingLine = "";
   if (reason === "time" || (reason === "goldenface_down" && state.runWorldId === "skarn")) {
@@ -2591,6 +2970,29 @@ function endRun(reason = "time") {
   }
   if (reason === "goldenface_down" && state.runWorldId === "skarn") {
     questEndingLine = "Threat Level Midnight complete: Goldenface is down.";
+  }
+
+  const missionSuccess =
+    reason === "time" ||
+    reason === "toby_caught" ||
+    reason === "goldenface_down";
+  const kellyMission = state.saveData.missions.kellyTrendEmergency;
+  if (kellyMission?.added && !kellyMission.completed && missionSuccess) {
+    kellyMission.bestStyle = Math.max(kellyMission.bestStyle || 0, state.style);
+    kellyMission.bestChain = Math.max(kellyMission.bestChain || 0, state.bestChain);
+    if (state.style >= 1500 && state.bestChain >= 6) {
+      maybeCompleteKellyMission();
+      questEndingLine = `${questEndingLine ? `${questEndingLine} ` : ""}Mission Complete: Kelly's Trend Emergency.`;
+    }
+  }
+  const kellyCorporate = state.saveData.missions.kellyCorporateConundrum;
+  if (kellyCorporate?.added && !kellyCorporate.completed && missionSuccess && state.runWorldId === "corporate") {
+    kellyCorporate.bestStyle = Math.max(kellyCorporate.bestStyle || 0, state.style);
+    kellyCorporate.bestChain = Math.max(kellyCorporate.bestChain || 0, state.bestChain);
+    if (state.style >= 2200 && state.bestChain >= 8) {
+      maybeCompleteKellyCorporateMission();
+      questEndingLine = `${questEndingLine ? `${questEndingLine} ` : ""}Mission Complete: Corporate Conundrum.`;
+    }
   }
 
   persistSave();
@@ -2685,7 +3087,7 @@ function doParkourShout() {
     state.speedBoostLeft = GAME.speedBoostSec * (state.player?.runtimeBoostMul || 1);
     state.multiplier = Math.min(20, state.multiplier + 1);
     state.bestChain = Math.max(state.bestChain, state.multiplier - 1);
-    if (state.bestChain >= 20 && unlockDundieAward("whitestSneakers")) {
+    if (state.multiplier >= 20 && unlockDundieAward("whitestSneakers")) {
       addFloatingText("WHITEST!", state.player.x - 8, state.player.y - 46, "#fff4b2");
     }
     addFloatingText("HARDCORE!", state.player.x + 16, state.player.y - 28, "#ffd54d");
@@ -2698,7 +3100,7 @@ function doParkourShout() {
     state.speedBoostLeft = GAME.speedBoostSec * (state.player?.runtimeBoostMul || 1);
     state.multiplier = Math.min(20, state.multiplier + 1);
     state.bestChain = Math.max(state.bestChain, state.multiplier - 1);
-    if (state.bestChain >= 20 && unlockDundieAward("whitestSneakers")) {
+    if (state.multiplier >= 20 && unlockDundieAward("whitestSneakers")) {
       addFloatingText("WHITEST!", state.player.x - 8, state.player.y - 46, "#fff4b2");
     }
     addFloatingText("HARDCORE!", state.player.x + 16, state.player.y - 28, "#ffd54d");
@@ -4119,11 +4521,8 @@ function drawPlayer() {
   else if (outfitId === "two_headed_monster") shirtColor = "#202734";
   else if (outfitId === "cat_andy") shirtColor = "#8c6a3b";
   else if (outfitId === "andy_plumber") shirtColor = "#8c96a8";
-  else if (outfitId === "andy_construction") shirtColor = "#b02b26";
   else if (outfitId === "dwight_deputy") shirtColor = "#11161f";
-  else if (outfitId === "dwight_joker") shirtColor = "#5a2b7a";
   else if (outfitId === "prison_mike") shirtColor = "#2f3442";
-  else if (outfitId === "scranton_penguins") shirtColor = "#13161d";
   else if (outfitId === "strangler_hood") shirtColor = "#171a23";
   else if (outfitId === "three_hole_gym") shirtColor = "#d9dde4";
   let skinBase = label === "Darryl" ? "#8b664b" : label === "Kelly" ? "#a47657" : label === "Pam" ? "#f1cfb3" : "#efcfab";
@@ -4137,7 +4536,6 @@ function drawPlayer() {
       : label === "Jim"
       ? "#2a1e16"
       : "#3a281d";
-  if (outfitId === "dwight_joker") hairBase = "#2f8f4e";
   if (outfitId === "goldenface") {
     skinBase = "#e4ba53";
     hairBase = "#1f1d1b";
@@ -4213,10 +4611,7 @@ function drawPlayer() {
       outfitId !== "cat_andy" &&
       outfitId !== "wrong_fit" &&
       outfitId !== "andy_plumber" &&
-      outfitId !== "andy_construction" &&
-      outfitId !== "dwight_deputy" &&
-      outfitId !== "dwight_joker" &&
-      outfitId !== "scranton_penguins"
+      outfitId !== "dwight_deputy"
     ) {
       let tie = effectiveTieColor;
       if (outfitId === "cornell_fit") tie = "#f4d76b";
@@ -4287,26 +4682,12 @@ function drawPlayer() {
       ctx.fillStyle = "#b12b2b";
       ctx.fillRect(x + 7, hipY - 20, 15, 3);
       ctx.fillRect(x + 10, hipY - 23, 9, 3);
-    } else if (outfitId === "andy_construction") {
-      ctx.fillStyle = "#e4c862";
-      ctx.fillRect(x + 7, hipY - 20, 14, 3);
-      ctx.fillRect(x + 9, hipY - 22, 10, 2);
-      ctx.fillStyle = "#141517";
-      ctx.fillRect(x + 20, hipY - 12, 2, 8);
-      ctx.fillRect(x + 24, hipY - 12, 2, 8);
-      ctx.fillRect(x + 28, hipY - 12, 2, 8);
     } else if (outfitId === "dwight_deputy") {
       ctx.fillStyle = "#3a414f";
       ctx.fillRect(x + 4, hipY - 22, 19, 2); // hat brim
       ctx.fillRect(x + 9, hipY - 25, 9, 3); // crown
       ctx.fillStyle = "#d5b46a";
       ctx.fillRect(x + 16, hipY - 8, 2, 2); // badge
-    } else if (outfitId === "dwight_joker") {
-      ctx.fillStyle = "#2f8f4e";
-      ctx.fillRect(x + 6, hipY - 19, 15, 2);
-      ctx.fillRect(x + 5, hipY - 17, 17, 2);
-      ctx.fillStyle = "#b8253c";
-      ctx.fillRect(x + 12, hipY - 11, 5, 1); // grin
     } else if (outfitId === "prison_mike") {
       ctx.fillStyle = "#7d43be";
       ctx.fillRect(x + 7, hipY - 20, 15, 3);
@@ -4315,12 +4696,6 @@ function drawPlayer() {
       ctx.fillRect(x + 10, hipY - 21, 2, 1);
       ctx.fillRect(x + 14, hipY - 21, 2, 1);
       ctx.fillRect(x + 18, hipY - 21, 2, 1);
-    } else if (outfitId === "scranton_penguins") {
-      ctx.fillStyle = "#f5f7fb";
-      ctx.fillRect(x + 20, hipY - 10, 14, 1);
-      ctx.fillRect(x + 20, hipY - 7, 14, 1);
-      ctx.fillStyle = "#c63d3d";
-      ctx.fillRect(x + 26, hipY - 12, 2, 7);
     }
 
     // Front arm reaches forward.
@@ -5576,6 +5951,9 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
   } else if (outfitId === "date_mike") {
     shirtColor = "#1e2f4e";
     tieColor = "#9a1f2f";
+  } else if (outfitId === "date_mike_neon") {
+    shirtColor = "#2f115d";
+    tieColor = "#52ffe0";
   } else if (outfitId === "wrong_fit") {
     shirtColor = "#b82424";
     tieColor = "#f5f5f5";
@@ -5583,6 +5961,9 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
   } else if (outfitId === "recyclops") {
     shirtColor = "#5c8f3c";
     tieColor = "#2d5a2e";
+  } else if (outfitId === "recyclops_black_red") {
+    shirtColor = "#191d24";
+    tieColor = "#af1d24";
   } else if (outfitId === "hay_king") {
     shirtColor = "#6a4a2b";
     tieColor = "#3f2f1f";
@@ -5593,29 +5974,21 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     shirtColor = "#8c6a3b";
     tieColor = "#8c6a3b";
     hideTie = true;
+  } else if (outfitId === "cat_andy_tiger") {
+    shirtColor = "#b96d22";
+    tieColor = "#b96d22";
+    hideTie = true;
   } else if (outfitId === "andy_plumber") {
     shirtColor = "#8c96a8";
     tieColor = "#8c96a8";
-    hideTie = true;
-  } else if (outfitId === "andy_construction") {
-    shirtColor = "#b02b26";
-    tieColor = "#b02b26";
     hideTie = true;
   } else if (outfitId === "dwight_deputy") {
     shirtColor = "#11161f";
     tieColor = "#11161f";
     hideTie = true;
-  } else if (outfitId === "dwight_joker") {
-    shirtColor = "#5a2b7a";
-    tieColor = "#5a2b7a";
-    hideTie = true;
   } else if (outfitId === "prison_mike") {
     shirtColor = "#2f3442";
     tieColor = "#444c5f";
-  } else if (outfitId === "scranton_penguins") {
-    shirtColor = "#13161d";
-    tieColor = "#13161d";
-    hideTie = true;
   } else if (outfitId === "strangler_hood") {
     shirtColor = "#171a23";
     tieColor = "#171a23";
@@ -5640,15 +6013,25 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     renderSkinBase = "#0b0f18";
     renderSkinShade = "#0b0f18";
   }
-  if (outfitId === "dwight_joker") {
-    // Joker wig tint.
-    hairBase = "#2f8f4e";
-  }
 
   if (opts.shadow !== false) {
     ctx.fillStyle = "rgba(0,0,0,0.24)";
     ctx.beginPath();
     ctx.ellipse(x + 20 * scale, y + 8 * scale, 20 * scale, 7 * scale, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const activeRunnerLabel = CHARACTER_PRESETS[state.activeRunnerId || getRunnerId()]?.label;
+  const auraId = getEquippedAuraId();
+  const auraDef = AURAS.find((a) => a.id === auraId);
+  if (!opts.noAura && auraDef && hasAuraUnlocked(auraId) && label === activeRunnerLabel) {
+    ctx.fillStyle = auraDef.color;
+    ctx.beginPath();
+    ctx.ellipse(x + 18 * scale, y - 30 * scale, 22 * scale, 34 * scale, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = auraDef.color.replace(/0\.\d+\)/, "0.28)");
+    ctx.beginPath();
+    ctx.ellipse(x + 18 * scale, y - 30 * scale, 28 * scale, 42 * scale, 0, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -5768,6 +6151,13 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     ctx.fillRect(x + 6 * scale, y - 64 * scale, 20 * scale, 4 * scale);
     ctx.fillRect(x + 10 * scale, y - 69 * scale, 12 * scale, 6 * scale);
   }
+  if (outfitId === "date_mike_neon") {
+    ctx.fillStyle = "#1d1034";
+    ctx.fillRect(x + 6 * scale, y - 64 * scale, 20 * scale, 4 * scale);
+    ctx.fillRect(x + 10 * scale, y - 69 * scale, 12 * scale, 6 * scale);
+    ctx.fillStyle = "#52ffe0";
+    ctx.fillRect(x + 7 * scale, y - 64 * scale, 18 * scale, 1 * scale);
+  }
   if (outfitId === "wrong_fit") {
     // Santa hat + white trim.
     ctx.fillStyle = "#f6f4ef";
@@ -5782,6 +6172,12 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     ctx.fillStyle = "#9be467";
     ctx.fillRect(x + 10 * scale, y - 58 * scale, 12 * scale, 2 * scale);
     ctx.fillStyle = "#2f4f2f";
+    ctx.fillRect(x + 15 * scale, y - 58 * scale, 2 * scale, 2 * scale);
+  }
+  if (outfitId === "recyclops_black_red") {
+    ctx.fillStyle = "#4a4f5c";
+    ctx.fillRect(x + 10 * scale, y - 58 * scale, 12 * scale, 2 * scale);
+    ctx.fillStyle = "#b31920";
     ctx.fillRect(x + 15 * scale, y - 58 * scale, 2 * scale, 2 * scale);
   }
   if (outfitId === "hay_king") {
@@ -5818,17 +6214,21 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     ctx.fillRect(x + 10 * scale, y - 63 * scale, 2 * scale, 2 * scale);
     ctx.fillRect(x + 22 * scale, y - 63 * scale, 2 * scale, 2 * scale);
   }
+  if (outfitId === "cat_andy_tiger") {
+    ctx.fillStyle = "#1f1208";
+    ctx.fillRect(x + 9 * scale, y - 64 * scale, 4 * scale, 4 * scale);
+    ctx.fillRect(x + 21 * scale, y - 64 * scale, 4 * scale, 4 * scale);
+    ctx.fillStyle = "#f5bd73";
+    ctx.fillRect(x + 10 * scale, y - 63 * scale, 2 * scale, 2 * scale);
+    ctx.fillRect(x + 22 * scale, y - 63 * scale, 2 * scale, 2 * scale);
+    ctx.fillStyle = "#0f0a05";
+    ctx.fillRect(x + 10 * scale, y - 62 * scale, 2 * scale, 1 * scale);
+    ctx.fillRect(x + 22 * scale, y - 62 * scale, 2 * scale, 1 * scale);
+  }
   if (outfitId === "andy_plumber") {
     ctx.fillStyle = "#bf2b2b";
     ctx.fillRect(x + 7 * scale, y - 64 * scale, 18 * scale, 3 * scale); // cap brim
     ctx.fillRect(x + 10 * scale, y - 68 * scale, 12 * scale, 4 * scale); // cap crown
-  }
-  if (outfitId === "andy_construction") {
-    ctx.fillStyle = "#e4c862";
-    ctx.fillRect(x + 7 * scale, y - 64 * scale, 18 * scale, 3 * scale); // hard hat brim
-    ctx.fillRect(x + 9 * scale, y - 68 * scale, 14 * scale, 4 * scale); // hard hat dome
-    ctx.fillStyle = "#bfa64a";
-    ctx.fillRect(x + 11 * scale, y - 66 * scale, 10 * scale, 1 * scale);
   }
   if (outfitId === "dwight_deputy") {
     ctx.fillStyle = "#3a414f";
@@ -5836,14 +6236,6 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     ctx.fillRect(x + 10 * scale, y - 68 * scale, 12 * scale, 4 * scale); // hat top
     ctx.fillStyle = "#d5b46a";
     ctx.fillRect(x + 17 * scale, y - 66 * scale, 2 * scale, 2 * scale); // hat badge
-  }
-  if (outfitId === "dwight_joker") {
-    ctx.fillStyle = "#2f8f4e";
-    ctx.fillRect(x + 6 * scale, y - 65 * scale, 20 * scale, 4 * scale); // green wig
-    ctx.fillRect(x + 5 * scale, y - 61 * scale, 3 * scale, 4 * scale);
-    ctx.fillRect(x + 24 * scale, y - 61 * scale, 3 * scale, 4 * scale);
-    ctx.fillStyle = "#b8253c";
-    ctx.fillRect(x + 13 * scale, y - 49 * scale, 6 * scale, 1 * scale); // grin
   }
   if (outfitId === "prison_mike") {
     ctx.fillStyle = "#7d43be";
@@ -5959,30 +6351,11 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     ctx.fillStyle = "#e7e2d6";
     ctx.fillRect(torsoX + 16 * scale, torsoY + 8 * scale, 8 * scale, 4 * scale); // patch
   }
-  if (outfitId === "andy_construction") {
-    ctx.fillStyle = "#121316";
-    ctx.fillRect(torsoX + 3 * scale, torsoY + 6 * scale, 3 * scale, torsoH - 8 * scale);
-    ctx.fillRect(torsoX + 9 * scale, torsoY + 7 * scale, 3 * scale, torsoH - 9 * scale);
-    ctx.fillRect(torsoX + 15 * scale, torsoY + 6 * scale, 3 * scale, torsoH - 8 * scale);
-  }
   if (outfitId === "dwight_deputy") {
     ctx.fillStyle = "#1b202a";
     ctx.fillRect(torsoX + 2 * scale, torsoY + 2 * scale, torsoW - 4 * scale, torsoH - 4 * scale); // vest
     ctx.fillStyle = "#d5b46a";
     ctx.fillRect(torsoX + 10 * scale, torsoY + 8 * scale, 4 * scale, 4 * scale); // badge
-  }
-  if (outfitId === "dwight_joker") {
-    ctx.fillStyle = "#311547";
-    ctx.fillRect(torsoX + 2 * scale, torsoY + 3 * scale, torsoW - 4 * scale, torsoH - 4 * scale);
-    ctx.fillStyle = "#304634";
-    ctx.fillRect(torsoX + 10 * scale, torsoY + 8 * scale, 4 * scale, 6 * scale); // vest
-  }
-  if (outfitId === "scranton_penguins") {
-    ctx.fillStyle = "#f5f7fb";
-    ctx.fillRect(torsoX + 2 * scale, torsoY + 8 * scale, torsoW - 4 * scale, 2 * scale);
-    ctx.fillRect(torsoX + 2 * scale, torsoY + 14 * scale, torsoW - 4 * scale, 2 * scale);
-    ctx.fillStyle = "#c63d3d";
-    ctx.fillRect(torsoX + 11 * scale, torsoY + 7 * scale, 2 * scale, 10 * scale);
   }
 
   if (outfitId === "cat_andy") {
@@ -5999,6 +6372,23 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     ctx.fillStyle = "#2a1e11";
     ctx.fillRect(torsoX + torsoW - 1 * scale, torsoY + 18 * scale, 5 * scale, 2 * scale);
     ctx.fillRect(torsoX + torsoW + 3 * scale, torsoY + 16 * scale, 2 * scale, 4 * scale);
+  }
+  if (outfitId === "cat_andy_tiger") {
+    // Tiger-print body.
+    ctx.fillStyle = "#f5bd73";
+    ctx.fillRect(torsoX + 2 * scale, torsoY + 2 * scale, torsoW - 4 * scale, torsoH - 4 * scale);
+    ctx.fillStyle = "#120c06";
+    ctx.fillRect(torsoX + 3 * scale, torsoY + 6 * scale, torsoW - 8 * scale, 2 * scale);
+    ctx.fillRect(torsoX + 5 * scale, torsoY + 11 * scale, torsoW - 12 * scale, 1 * scale);
+    ctx.fillRect(torsoX + 4 * scale, torsoY + 15 * scale, torsoW - 10 * scale, 2 * scale);
+    ctx.fillRect(torsoX + 6 * scale, torsoY + 20 * scale, torsoW - 14 * scale, 1 * scale);
+    ctx.fillRect(torsoX + 5 * scale, torsoY + 24 * scale, torsoW - 12 * scale, 2 * scale);
+    // Tail.
+    ctx.fillStyle = "#2a1e11";
+    ctx.fillRect(torsoX + torsoW - 1 * scale, torsoY + 18 * scale, 5 * scale, 2 * scale);
+    ctx.fillRect(torsoX + torsoW + 3 * scale, torsoY + 16 * scale, 2 * scale, 4 * scale);
+    ctx.fillStyle = "#120c06";
+    ctx.fillRect(torsoX + torsoW + 1 * scale, torsoY + 19 * scale, 3 * scale, 1 * scale);
   }
 
   // Arms (Pam now same body system, no floating look).
@@ -6022,6 +6412,13 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
         ctx.fillStyle = shirtColor;
         ctx.fillRect(leftArmX, armTopY, 3 * scale, 5 * scale);
         ctx.fillRect(rightArmX, armTopY, 3 * scale, 5 * scale);
+        if (outfitId === "cat_andy_tiger") {
+          ctx.fillStyle = "#120c06";
+          ctx.fillRect(leftArmX, armTopY + 1 * scale, 3 * scale, 1 * scale);
+          ctx.fillRect(rightArmX, armTopY + 1 * scale, 3 * scale, 1 * scale);
+          ctx.fillRect(leftArmX, armTopY + 3 * scale, 3 * scale, 1 * scale);
+          ctx.fillRect(rightArmX, armTopY + 3 * scale, 3 * scale, 1 * scale);
+        }
       }
     }
   }
@@ -7176,6 +7573,8 @@ function drawMissionsScene() {
   const savePam = state.saveData.missions.savePam;
   const capture = state.saveData.missions.captureStrangler;
   const tlm = state.saveData.missions.threatLevelMidnight;
+  const kelly = state.saveData.missions.kellyTrendEmergency;
+  const corporateConundrum = state.saveData.missions.kellyCorporateConundrum;
   const visibleMissions = [];
   if (savePam.added || savePam.completed) {
     let detail = "";
@@ -7223,14 +7622,45 @@ function drawMissionsScene() {
       color: "#f4cc7a",
     });
   }
+  if (kelly.added || kelly.completed) {
+    const detail = kelly.completed
+      ? "Runway mission complete. Kelly unlocked your special runner variant outfit."
+      : `Finish any level with 1500+ Style and x6 HARDCORE in one run. Best so far: ${kelly.bestStyle || 0} Style / x${
+          kelly.bestChain || 0
+        } HARDCORE.`;
+    visibleMissions.push({
+      title: "Kelly's Trend Emergency",
+      detail,
+      status: kelly.completed ? "Completed" : "Active",
+      done: kelly.completed,
+      color: "#ff9fd8",
+    });
+  }
+  if (corporateConundrum.added || corporateConundrum.completed) {
+    const detail = corporateConundrum.completed
+      ? corporateConundrum.rewardClaimed
+        ? "Corporate humbled. Blue Aura claimed. Two future aura slots remain locked."
+        : "Corporate humbled. Talk to Kelly in the Annex to claim your fashion reward."
+      : `NYC Corporate only: finish one run with 2200+ Style and x8 HARDCORE. Best there: ${
+          corporateConundrum.bestStyle || 0
+        } Style / x${corporateConundrum.bestChain || 0} HARDCORE.`;
+    visibleMissions.push({
+      title: "Corporate Conundrum",
+      detail,
+      status: corporateConundrum.completed ? (corporateConundrum.rewardClaimed ? "Completed" : "Complete - Reward Unclaimed") : "Active",
+      done: corporateConundrum.completed && corporateConundrum.rewardClaimed,
+      color: "#7fd2ff",
+    });
+  }
 
-  const baseY = 136;
-  const rowStep = 122;
+  const baseY = 120;
+  const rowStep = 78;
+  const cardH = 70;
   for (let i = 0; i < visibleMissions.length; i += 1) {
     const mission = visibleMissions[i];
     const y = baseY + i * rowStep;
     ctx.fillStyle = "rgba(255,255,255,0.06)";
-    ctx.fillRect(88, y, 784, 102);
+    ctx.fillRect(88, y, 784, cardH);
     ctx.fillStyle = mission.done ? mission.color : "#3e4b64";
     ctx.fillRect(96, y + 12, 14, 14);
     if (mission.done) {
@@ -7241,19 +7671,19 @@ function drawMissionsScene() {
     }
 
     ctx.fillStyle = "#f5ead6";
-    ctx.font = "bold 22px Trebuchet MS";
+    ctx.font = "bold 18px Trebuchet MS";
     ctx.fillText(mission.title, 124, y + 24);
-    ctx.font = "18px Trebuchet MS";
+    ctx.font = "15px Trebuchet MS";
     drawWrappedText(
       mission.detail,
       124,
-      y + 52,
+      y + 42,
       740,
-      22,
+      18,
       2
     );
     ctx.fillStyle = "#d5ecff";
-    ctx.fillText(`Status: ${mission.status}`, 124, y + 92);
+    ctx.fillText(`Status: ${mission.status}`, 124, y + 66);
   }
 
   if (visibleMissions.length === 0) {
@@ -7659,6 +8089,59 @@ function drawAnnexScene() {
   ctx.font = "12px Trebuchet MS";
   ctx.fillText("Click a Dundie to view how to earn it.", caseX + 10, caseY + caseH - 10);
 
+  // Aura shelf appears after Corporate Conundrum is complete.
+  if (state.saveData.missions.kellyCorporateConundrum.completed) {
+    const auraPanelX = caseX;
+    const auraPanelY = caseY + caseH + 8;
+    const auraPanelW = caseW;
+    const auraPanelH = 86;
+    drawPixelPanel(
+      auraPanelX,
+      auraPanelY,
+      auraPanelW,
+      auraPanelH,
+      "rgba(36,22,56,0.92)",
+      "rgba(20,12,36,0.94)",
+      "#9acbff",
+      "rgba(230,242,255,0.58)"
+    );
+    ctx.fillStyle = "#f0e8ff";
+    ctx.font = "bold 14px Trebuchet MS";
+    ctx.fillText("AURAS", auraPanelX + 10, auraPanelY + 18);
+
+    for (let i = 0; i < AURAS.length; i += 1) {
+      const aura = AURAS[i];
+      const unlocked = hasAuraUnlocked(aura.id);
+      const slotX = auraPanelX + 12 + i * 78;
+      const slotY = auraPanelY + 26;
+      ctx.fillStyle = unlocked ? "rgba(46,72,110,0.9)" : "rgba(52,52,62,0.85)";
+      ctx.fillRect(slotX, slotY, 66, 44);
+      ctx.strokeStyle = unlocked ? "#9ed2ff" : "#7f7a88";
+      ctx.strokeRect(slotX, slotY, 66, 44);
+
+      if (unlocked) {
+        const auraColor = aura.color;
+        ctx.fillStyle = auraColor;
+        ctx.beginPath();
+        ctx.ellipse(slotX + 33, slotY + 20, 18, 10, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#f5fbff";
+        ctx.fillRect(slotX + 31, slotY + 16, 4, 7);
+        if (getEquippedAuraId() === aura.id) {
+          ctx.fillStyle = "#d8ffe0";
+          ctx.font = "bold 10px Trebuchet MS";
+          ctx.fillText("EQUIPPED", slotX + 10, slotY + 39);
+        }
+      } else {
+        ctx.fillStyle = "#c9c2d1";
+        ctx.font = "bold 15px Trebuchet MS";
+        ctx.fillText("?", slotX + 30, slotY + 26);
+        ctx.font = "bold 10px Trebuchet MS";
+        ctx.fillText("LOCKED", slotX + 14, slotY + 39);
+      }
+    }
+  }
+
   // Kelly sprite.
   const kx = 832;
   const ky = 424;
@@ -7669,10 +8152,27 @@ function drawAnnexScene() {
     hideTie: true,
     hairBase: "#221616",
   });
+  state.annexKellyBounds = { x: kx - 26, y: ky - 110, w: 94, h: 118 };
+  const kellyTalkBtn = { id: "kelly_talk", x: kx - 12, y: ky - 138, w: 90, h: 28 };
+  state.annexKellyTalkBounds = kellyTalkBtn;
+  ctx.fillStyle = "rgba(255, 236, 143, 0.95)";
+  ctx.fillRect(kellyTalkBtn.x, kellyTalkBtn.y, kellyTalkBtn.w, kellyTalkBtn.h);
+  ctx.strokeStyle = "#7b5f24";
+  ctx.strokeRect(kellyTalkBtn.x, kellyTalkBtn.y, kellyTalkBtn.w, kellyTalkBtn.h);
+  ctx.fillStyle = "#2e2a1c";
+  ctx.font = "bold 18px Trebuchet MS";
+  ctx.fillText("TALK", kellyTalkBtn.x + 22, kellyTalkBtn.y + 20);
+  ctx.fillStyle = "#fff0aa";
+  ctx.beginPath();
+  ctx.moveTo(kellyTalkBtn.x + 38, kellyTalkBtn.y + kellyTalkBtn.h);
+  ctx.lineTo(kellyTalkBtn.x + 48, kellyTalkBtn.y + kellyTalkBtn.h);
+  ctx.lineTo(kx + 14, ky - 100);
+  ctx.closePath();
+  ctx.fill();
 
   // Player preview wearing the currently equipped outfit.
   const px = 852;
-  const py = 286;
+  const py = 240;
   const ps = 1.8;
   drawHeroPortraitSprite(px, py, ps, { label: runnerPreset.label, outfitId: equipped });
 
@@ -7686,6 +8186,7 @@ function drawAnnexScene() {
   const rowGap = 10;
   const visibleOutfits = ANNEX_OUTFITS.filter((outfit) => {
     if (!isOutfitUsableByRunner(outfit, runnerId)) return false;
+    if (Object.values(OUTFIT_VARIANTS).includes(outfit.id)) return false;
     if (outfit.id === "goldenface") {
       return Boolean(state.saveData.unlocks.goldenfaceTakenFromDesk || ownsOutfit("goldenface"));
     }
@@ -7702,7 +8203,9 @@ function drawAnnexScene() {
     const y = startY + row * (cardH + rowGap);
     const owned = ownsOutfit(outfit.id);
     const reqMet = hasOutfitAchievementRequirement(outfit);
-    const isEquipped = equipped === outfit.id;
+    const variantId = getVariantOutfitId(outfit.id);
+    const variantOwned = Boolean(variantId && ownsOutfit(variantId));
+    const isEquipped = equipped === outfit.id || (variantId && equipped === variantId);
 
     ctx.fillStyle = isEquipped ? "#3d6f4f" : owned ? "#31507a" : reqMet ? "#4c3d62" : "#3f3948";
     ctx.fillRect(x, y, cardW, cardH);
@@ -7718,7 +8221,9 @@ function drawAnnexScene() {
 
     let badge = isDundieRewardOutfit(outfit) ? "EARN FROM DUNDIE" : `BUY ${outfit.cost} [SB]`;
     if (!reqMet) badge = isDundieRewardOutfit(outfit) ? "LOCKED (DUNDIE)" : "LOCKED";
+    else if (isEquipped && variantId && equipped === variantId) badge = "EQUIPPED: VARIANT";
     else if (isEquipped) badge = "EQUIPPED";
+    else if (variantOwned && owned) badge = "SELECT STYLE";
     else if (owned) badge = "EQUIP";
     ctx.fillStyle = isEquipped ? "#d6ffd8" : "#ffe0a8";
     ctx.font = "bold 14px Trebuchet MS";
@@ -7751,6 +8256,98 @@ function drawAnnexScene() {
     18,
     1
   );
+
+  state.annexTalkBounds = [];
+  state.annexOutfitPromptBounds = [];
+  if (state.annexConversation) {
+    const boxX = 92;
+    const boxY = 274;
+    const boxW = 798;
+    const boxH = 142;
+    drawPixelPanel(boxX, boxY, boxW, boxH, "rgba(20,12,34,0.94)", "rgba(10,7,20,0.95)", "#ffb6e6", "rgba(255,226,244,0.66)");
+    ctx.fillStyle = "#f8e7f7";
+    ctx.font = "18px Trebuchet MS";
+    drawWrappedText(state.annexConversation.text, boxX + 14, boxY + 32, boxW - 28, 22, 3);
+
+    const drawAnnexButton = (btn, label, wrapped = false) => {
+      ctx.fillStyle = "#4b3d69";
+      ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
+      ctx.strokeStyle = "#ffb9e6";
+      ctx.strokeRect(btn.x, btn.y, btn.w, btn.h);
+      ctx.fillStyle = "#fbeaf8";
+      ctx.font = "bold 15px Trebuchet MS";
+      if (wrapped) drawWrappedText(label, btn.x + 8, btn.y + 19, btn.w - 14, 15, 2);
+      else ctx.fillText(label, btn.x + 14, btn.y + 20);
+      state.annexTalkBounds.push(btn);
+    };
+
+    if (state.annexConversation.step === "intro") {
+      drawAnnexButton({ id: "details", x: boxX + 16, y: boxY + 98, w: 300, h: 30 }, "What's the emergency?");
+      drawAnnexButton({ id: "accept", x: boxX + 332, y: boxY + 98, w: 220, h: 30 }, "I'm in.");
+      drawAnnexButton({ id: "leave", x: boxX + 568, y: boxY + 98, w: 160, h: 30 }, "Leave");
+    } else if (state.annexConversation.step === "details") {
+      drawAnnexButton({ id: "accept", x: boxX + 16, y: boxY + 98, w: 250, h: 30 }, "Accept mission");
+      drawAnnexButton({ id: "leave", x: boxX + 282, y: boxY + 98, w: 190, h: 30 }, "Maybe later");
+    } else if (state.annexConversation.step === "active") {
+      drawAnnexButton({ id: "details", x: boxX + 16, y: boxY + 98, w: 300, h: 30 }, "Remind me of the goals");
+      drawAnnexButton({ id: "leave", x: boxX + 332, y: boxY + 98, w: 160, h: 30 }, "Leave");
+    } else if (state.annexConversation.step === "corporate_intro") {
+      drawAnnexButton({ id: "details", x: boxX + 16, y: boxY + 98, w: 300, h: 30 }, "How bad is corporate?");
+      drawAnnexButton({ id: "accept", x: boxX + 332, y: boxY + 98, w: 220, h: 30 }, "I'll fix it.");
+      drawAnnexButton({ id: "leave", x: boxX + 568, y: boxY + 98, w: 160, h: 30 }, "Leave");
+    } else if (state.annexConversation.step === "corporate_details") {
+      drawAnnexButton({ id: "accept", x: boxX + 16, y: boxY + 98, w: 250, h: 30 }, "Accept mission");
+      drawAnnexButton({ id: "leave", x: boxX + 282, y: boxY + 98, w: 190, h: 30 }, "Maybe later");
+    } else if (state.annexConversation.step === "corporate_active") {
+      drawAnnexButton({ id: "details", x: boxX + 16, y: boxY + 98, w: 300, h: 30 }, "Show mission goals");
+      drawAnnexButton({ id: "leave", x: boxX + 332, y: boxY + 98, w: 160, h: 30 }, "Leave");
+    } else if (state.annexConversation.step === "details_active") {
+      drawAnnexButton({ id: "done", x: boxX + 16, y: boxY + 98, w: 140, h: 30 }, "Got it");
+    } else if (
+      state.annexConversation.step === "accepted" ||
+      state.annexConversation.step === "wait_corporate_unlock" ||
+      state.annexConversation.step === "corporate_accepted" ||
+      state.annexConversation.step === "corporate_details_active" ||
+      state.annexConversation.step === "corporate_reward_ready" ||
+      state.annexConversation.step === "corporate_complete"
+    ) {
+      drawAnnexButton({ id: "done", x: boxX + 16, y: boxY + 98, w: 140, h: 30 }, "Nice");
+    }
+  }
+
+  if (state.annexOutfitPrompt) {
+    const p = state.annexOutfitPrompt;
+    const baseOutfit = ANNEX_OUTFITS.find((o) => o.id === p.baseOutfitId);
+    const variantOutfit = ANNEX_OUTFITS.find((o) => o.id === p.variantOutfitId);
+    const boxX = 158;
+    const boxY = 286;
+    const boxW = 650;
+    const boxH = 124;
+    drawPixelPanel(boxX, boxY, boxW, boxH, "rgba(21,12,34,0.95)", "rgba(10,8,19,0.96)", "#ffb9ea", "rgba(255,227,245,0.68)");
+    ctx.fillStyle = "#fbeaf8";
+    ctx.font = "bold 20px Trebuchet MS";
+    ctx.fillText("Choose Style Variant", boxX + 16, boxY + 30);
+    ctx.font = "16px Trebuchet MS";
+    drawWrappedText(`Pick your look for ${baseOutfit?.name || "this outfit"}.`, boxX + 16, boxY + 56, boxW - 32, 18, 1);
+
+    const baseBtn = { id: "base", x: boxX + 16, y: boxY + 74, w: 220, h: 34 };
+    const variantBtn = { id: "variant", x: boxX + 252, y: boxY + 74, w: 268, h: 34 };
+    const cancelBtn = { id: "cancel", x: boxX + 536, y: boxY + 74, w: 98, h: 34 };
+    state.annexOutfitPromptBounds.push(baseBtn, variantBtn, cancelBtn);
+
+    const drawBtn = (btn, label) => {
+      ctx.fillStyle = "#4b3d69";
+      ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
+      ctx.strokeStyle = "#ffb9e6";
+      ctx.strokeRect(btn.x, btn.y, btn.w, btn.h);
+      ctx.fillStyle = "#fbeaf8";
+      ctx.font = "bold 15px Trebuchet MS";
+      drawWrappedText(label, btn.x + 8, btn.y + 21, btn.w - 14, 15, 1);
+    };
+    drawBtn(baseBtn, baseOutfit?.name || "Base");
+    drawBtn(variantBtn, variantOutfit?.name || "Variant");
+    drawBtn(cancelBtn, "Cancel");
+  }
 }
 
 function drawFinalCutsceneScene() {
@@ -8021,12 +8618,18 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
   } else if (outfitId === "date_mike") {
     shirtColor = "#1e2f4e";
     tieColor = "#9a1f2f";
+  } else if (outfitId === "date_mike_neon") {
+    shirtColor = "#2f115d";
+    tieColor = "#52ffe0";
   } else if (outfitId === "wrong_fit") {
     shirtColor = "#b82424";
     tieColor = "#f5f5f5";
   } else if (outfitId === "recyclops") {
     shirtColor = "#5c8f3c";
     tieColor = "#2d5a2e";
+  } else if (outfitId === "recyclops_black_red") {
+    shirtColor = "#191d24";
+    tieColor = "#af1d24";
   } else if (outfitId === "hay_king") {
     shirtColor = "#6a4a2b";
     tieColor = "#3f2f1f";
@@ -8036,24 +8639,18 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
   } else if (outfitId === "cat_andy") {
     shirtColor = "#8c6a3b";
     tieColor = "#8c6a3b";
+  } else if (outfitId === "cat_andy_tiger") {
+    shirtColor = "#b96d22";
+    tieColor = "#b96d22";
   } else if (outfitId === "andy_plumber") {
     shirtColor = "#8c96a8";
     tieColor = "#8c96a8";
-  } else if (outfitId === "andy_construction") {
-    shirtColor = "#b02b26";
-    tieColor = "#b02b26";
   } else if (outfitId === "dwight_deputy") {
     shirtColor = "#11161f";
     tieColor = "#11161f";
-  } else if (outfitId === "dwight_joker") {
-    shirtColor = "#5a2b7a";
-    tieColor = "#5a2b7a";
   } else if (outfitId === "prison_mike") {
     shirtColor = "#2f3442";
     tieColor = "#444c5f";
-  } else if (outfitId === "scranton_penguins") {
-    shirtColor = "#13161d";
-    tieColor = "#13161d";
   } else if (outfitId === "strangler_hood") {
     shirtColor = "#171a23";
     tieColor = "#171a23";
@@ -8069,12 +8666,10 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
     outfitId === "three_hole_gym" ||
     outfitId === "strangler_hood" ||
     outfitId === "cat_andy" ||
+    outfitId === "cat_andy_tiger" ||
     outfitId === "wrong_fit" ||
     outfitId === "andy_plumber" ||
-    outfitId === "andy_construction" ||
-    outfitId === "dwight_deputy" ||
-    outfitId === "dwight_joker" ||
-    outfitId === "scranton_penguins";
+    outfitId === "dwight_deputy";
 
   ctx.fillStyle = "rgba(0,0,0,0.2)";
   ctx.beginPath();
@@ -8133,6 +8728,16 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
     ctx.fillRect(baseX + 22 * s, baseY + 20 * s, 3 * s, 1 * s);
     ctx.fillRect(baseX + 24 * s, baseY + 18 * s, 1 * s, 3 * s);
   }
+  if (outfitId === "cat_andy_tiger") {
+    ctx.fillStyle = "#2f1909";
+    ctx.fillRect(baseX + 9 * s, baseY + 13 * s, 2 * s, 2 * s);
+    ctx.fillRect(baseX + 14 * s, baseY + 15 * s, 2 * s, 2 * s);
+    ctx.fillRect(baseX + 17 * s, baseY + 12 * s, 2 * s, 2 * s);
+    ctx.fillRect(baseX + 10 * s, baseY + 18 * s, 8 * s, 1 * s);
+    ctx.fillStyle = "#311d0d";
+    ctx.fillRect(baseX + 22 * s, baseY + 20 * s, 3 * s, 1 * s);
+    ctx.fillRect(baseX + 24 * s, baseY + 18 * s, 1 * s, 3 * s);
+  }
   if (outfitId === "andy_plumber") {
     ctx.fillStyle = "#b8c0cc";
     ctx.fillRect(baseX + 8 * s, baseY + 14 * s, 12 * s, 1 * s);
@@ -8140,15 +8745,6 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
     ctx.fillStyle = "#bf2b2b";
     ctx.fillRect(baseX + 7 * s, baseY, 14 * s, 2 * s);
     ctx.fillRect(baseX + 10 * s, baseY - 3 * s, 8 * s, 3 * s);
-  }
-  if (outfitId === "andy_construction") {
-    ctx.fillStyle = "#e4c862";
-    ctx.fillRect(baseX + 7 * s, baseY, 14 * s, 2 * s);
-    ctx.fillRect(baseX + 9 * s, baseY - 3 * s, 10 * s, 3 * s);
-    ctx.fillStyle = "#121316";
-    ctx.fillRect(baseX + 9 * s, baseY + 13 * s, 2 * s, 10 * s);
-    ctx.fillRect(baseX + 14 * s, baseY + 13 * s, 2 * s, 10 * s);
-    ctx.fillRect(baseX + 18 * s, baseY + 13 * s, 2 * s, 10 * s);
   }
   if (outfitId === "dwight_deputy") {
     ctx.fillStyle = "#3a414f";
@@ -8159,25 +8755,10 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
     ctx.fillStyle = "#1b202a";
     ctx.fillRect(baseX + 8 * s, baseY + 12 * s, 12 * s, 12 * s);
   }
-  if (outfitId === "dwight_joker") {
-    ctx.fillStyle = "#2f8f4e";
-    ctx.fillRect(baseX + 6 * s, baseY - 1 * s, 16 * s, 3 * s);
-    ctx.fillStyle = "#b8253c";
-    ctx.fillRect(baseX + 12 * s, baseY + 8 * s, 4 * s, 1 * s);
-    ctx.fillStyle = "#311547";
-    ctx.fillRect(baseX + 8 * s, baseY + 12 * s, 12 * s, 12 * s);
-  }
   if (outfitId === "prison_mike") {
     ctx.fillStyle = "#7d43be";
     ctx.fillRect(baseX + 7 * s, baseY, 14 * s, 2 * s);
     ctx.fillRect(baseX + 9 * s, baseY - 2 * s, 10 * s, 2 * s);
-  }
-  if (outfitId === "scranton_penguins") {
-    ctx.fillStyle = "#f5f7fb";
-    ctx.fillRect(baseX + 8 * s, baseY + 14 * s, 12 * s, 1 * s);
-    ctx.fillRect(baseX + 8 * s, baseY + 18 * s, 12 * s, 1 * s);
-    ctx.fillStyle = "#c63d3d";
-    ctx.fillRect(baseX + 14 * s, baseY + 13 * s, 2 * s, 10 * s);
   }
   if (outfitId === "goldenface") {
     ctx.fillStyle = "#ffffff";
@@ -8198,6 +8779,12 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
     ctx.fillStyle = "#0d1118";
     ctx.fillRect(baseX + 7 * s, baseY - 1 * s, 14 * s, 2 * s);
     ctx.fillRect(baseX + 10 * s, baseY - 4 * s, 8 * s, 3 * s);
+  } else if (outfitId === "date_mike_neon") {
+    ctx.fillStyle = "#1d1034";
+    ctx.fillRect(baseX + 7 * s, baseY - 1 * s, 14 * s, 2 * s);
+    ctx.fillRect(baseX + 10 * s, baseY - 4 * s, 8 * s, 3 * s);
+    ctx.fillStyle = "#52ffe0";
+    ctx.fillRect(baseX + 7 * s, baseY, 14 * s, 1 * s);
   } else if (outfitId === "wrong_fit") {
     // Santa hat in thumbnail.
     ctx.fillStyle = "#f6f4ef";
@@ -8215,6 +8802,11 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
     ctx.fillStyle = "#9be467";
     ctx.fillRect(baseX + 9 * s, baseY + 2 * s, 10 * s, 1 * s);
     ctx.fillStyle = "#2f4f2f";
+    ctx.fillRect(baseX + 13 * s, baseY + 2 * s, 2 * s, 1 * s);
+  } else if (outfitId === "recyclops_black_red") {
+    ctx.fillStyle = "#3e414a";
+    ctx.fillRect(baseX + 9 * s, baseY + 2 * s, 10 * s, 1 * s);
+    ctx.fillStyle = "#b31920";
     ctx.fillRect(baseX + 13 * s, baseY + 2 * s, 2 * s, 1 * s);
   } else if (outfitId === "hay_king") {
     ctx.fillStyle = "#cda86e";
@@ -8241,6 +8833,20 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
     ctx.fillStyle = "#d7b27b";
     ctx.fillRect(baseX + 9 * s, baseY, 1 * s, 1 * s);
     ctx.fillRect(baseX + 18 * s, baseY, 1 * s, 1 * s);
+  } else if (outfitId === "cat_andy_tiger") {
+    ctx.fillStyle = "#2a1c12";
+    ctx.fillRect(baseX + 8 * s, baseY - 1 * s, 3 * s, 3 * s);
+    ctx.fillRect(baseX + 17 * s, baseY - 1 * s, 3 * s, 3 * s);
+    ctx.fillStyle = "#f5bd73";
+    ctx.fillRect(baseX + 9 * s, baseY, 1 * s, 1 * s);
+    ctx.fillRect(baseX + 18 * s, baseY, 1 * s, 1 * s);
+    ctx.fillStyle = "#1f1208";
+    ctx.fillRect(baseX + 8 * s, baseY + 11 * s, 12 * s, 2 * s);
+    ctx.fillRect(baseX + 10 * s, baseY + 15 * s, 8 * s, 1 * s);
+    ctx.fillRect(baseX + 7 * s, baseY + 19 * s, 5 * s, 1 * s);
+    ctx.fillRect(baseX + 15 * s, baseY + 21 * s, 6 * s, 1 * s);
+    ctx.fillRect(baseX + 22 * s, baseY + 20 * s, 3 * s, 1 * s);
+    ctx.fillRect(baseX + 24 * s, baseY + 18 * s, 1 * s, 3 * s);
   } else if (outfitId === "strangler_hood") {
     ctx.fillStyle = "#141824";
     ctx.fillRect(baseX + 6 * s, baseY - 1 * s, 16 * s, 3 * s);
@@ -8260,6 +8866,37 @@ function drawOutfitCardThumbnail(x, y, outfitId) {
 }
 
 function selectAnnexByCanvasPoint(x, y) {
+  if (state.annexOutfitPrompt && state.annexOutfitPromptBounds.length > 0) {
+    for (const btn of state.annexOutfitPromptBounds) {
+      if (x < btn.x || x > btn.x + btn.w || y < btn.y || y > btn.y + btn.h) continue;
+      const p = state.annexOutfitPrompt;
+      if (btn.id === "base") toggleOutfit(p.baseOutfitId, { skipVariantPrompt: true });
+      else if (btn.id === "variant") toggleOutfit(p.variantOutfitId, { skipVariantPrompt: true });
+      state.annexOutfitPrompt = null;
+      state.annexOutfitPromptBounds = [];
+      return;
+    }
+  }
+
+  if (state.annexKellyTalkBounds) {
+    const b = state.annexKellyTalkBounds;
+    if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+      startKellyConversation();
+      return;
+    }
+  }
+
+  if (state.annexTalkBounds.length > 0) {
+    for (const target of state.annexTalkBounds) {
+      if (x < target.x || x > target.x + target.w || y < target.y || y > target.y + target.h) continue;
+      state.uiFocus.annexTalk = Math.max(0, state.annexTalkBounds.indexOf(target));
+      handleKellyConversationClick(target.id);
+      return;
+    }
+  }
+
+  if (state.annexConversation || state.annexOutfitPrompt) return;
+
   for (const badge of state.annexAchievementBounds) {
     if (x < badge.x || x > badge.x + badge.w || y < badge.y || y > badge.y + badge.h) continue;
     if (badge.id === "hottestInOffice") {
