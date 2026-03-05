@@ -464,6 +464,7 @@ const state = {
   shopCards: [],
   shopJimBounds: null,
   shopPamBounds: null,
+  shopCreedBounds: null,
   shopTalkBounds: [],
   shopPromptBounds: [],
   shopConversation: null,
@@ -484,6 +485,7 @@ const state = {
   missionToastLeft: 0,
   annexCards: [],
   annexAchievementBounds: [],
+  annexAuraBounds: [],
   annexKellyBounds: null,
   annexKellyTalkBounds: null,
   annexTalkBounds: [],
@@ -523,6 +525,8 @@ const state = {
   reviewData: null,
   reviewAnimSec: 0,
   reviewAnimDuration: 2.6,
+  missionsScroll: 0,
+  missionsScrollMax: 0,
   uiFocus: {
     menuCard: 0,
     characterCard: 0,
@@ -626,6 +630,13 @@ function createDefaultSave() {
         bestChain: 0,
         rewardClaimed: false,
       },
+      creedMungBeans: {
+        added: false,
+        completed: false,
+        rewardClaimed: false,
+        bagGranted: false,
+        beanCount: 0,
+      },
     },
     stats: {
       bestHardcoreChain: 0,
@@ -649,6 +660,7 @@ function normalizeSave(parsedInput) {
     const parsedThreatLevelMidnight = parsedMissions.threatLevelMidnight || {};
     const parsedKellyTrendEmergency = parsedMissions.kellyTrendEmergency || {};
     const parsedKellyCorporateConundrum = parsedMissions.kellyCorporateConundrum || {};
+    const parsedCreedMungBeans = parsedMissions.creedMungBeans || {};
     const parsedUnlocks = parsed.unlocks || {};
     const parsedEquippedOutfits = parsedUnlocks.equippedOutfits || {};
     const parsedAchievements = parsed.achievements || {};
@@ -702,6 +714,10 @@ function normalizeSave(parsedInput) {
         kellyCorporateConundrum: {
           ...defaults.missions.kellyCorporateConundrum,
           ...parsedKellyCorporateConundrum,
+        },
+        creedMungBeans: {
+          ...defaults.missions.creedMungBeans,
+          ...parsedCreedMungBeans,
         },
       },
       stats: { ...defaults.stats, ...(parsed.stats || {}) },
@@ -2352,6 +2368,121 @@ function handlePamConversationClick(choiceId) {
   }
 }
 
+function startCreedConversation() {
+  state.shopPurchasePrompt = null;
+  const mission = state.saveData?.missions?.creedMungBeans;
+  if (!mission) return;
+  if (mission.completed) {
+    if (!mission.rewardClaimed) {
+      state.shopConversation = {
+        actor: "creed",
+        step: "reward_ready",
+        text: "Creed: Bag says 20. That checks out. Here, take this Stink Aura. Do not ask where I got it.",
+      };
+      return;
+    }
+    state.shopConversation = {
+      actor: "creed",
+      step: "complete",
+      text: "Creed: Smells like victory. Or soup. Hard to separate those at this point.",
+    };
+    return;
+  }
+  if (mission.bagGranted) {
+    if ((mission.beanCount || 0) >= 20) {
+      mission.completed = true;
+      persistSave();
+      state.shopConversation = {
+        actor: "creed",
+        step: "reward_ready",
+        text: "Creed: Bag says 20. Beautiful numbers. Let's exchange weird prizes.",
+      };
+      return;
+    }
+    state.shopConversation = {
+      actor: "creed",
+      step: "active",
+      text: `Creed: Bag status: ${mission.beanCount || 0}/20 mung beans. Final pursuit beans count too.`,
+    };
+    return;
+  }
+  state.shopConversation = {
+    actor: "creed",
+    step: "intro",
+    text: "Creed: You want to play a game?",
+  };
+}
+
+function handleCreedConversationClick(choiceId) {
+  if (!state.shopConversation) return;
+  const mission = state.saveData?.missions?.creedMungBeans;
+  if (!mission) {
+    state.shopConversation = null;
+    return;
+  }
+
+  if (state.shopConversation.step === "intro") {
+    if (choiceId === "leave") {
+      state.shopConversation = null;
+      return;
+    }
+    if (choiceId === "what_game" || choiceId === "sure") {
+      state.shopConversation = {
+        actor: "creed",
+        step: "explain",
+        text:
+          "Creed: Lost my mung beans. Tragic. Here is a bag. While you carry it, mung beans fly right into it. Bring back 20 and I might have something fashionable and mildly alarming.",
+      };
+      return;
+    }
+    return;
+  }
+
+  if (state.shopConversation.step === "explain") {
+    const wasAdded = mission.added;
+    if (!mission.added) mission.added = true;
+    mission.bagGranted = true;
+    persistSave();
+    if (!wasAdded) showMissionToast('New Mission: "Creed\'s Mung Bean Hunt"');
+    state.shopConversation = {
+      actor: "creed",
+      step: "active",
+      text: `Creed: Bag is live. Current count: ${mission.beanCount || 0}/20.`,
+    };
+    return;
+  }
+
+  if (state.shopConversation.step === "active") {
+    if ((mission.beanCount || 0) >= 20) {
+      mission.completed = true;
+      persistSave();
+      state.shopConversation = {
+        actor: "creed",
+        step: "reward_ready",
+        text: "Creed: 20 beans. Exactly like I requested. Nice. You know too much now.",
+      };
+      return;
+    }
+    state.shopConversation = null;
+    return;
+  }
+
+  if (state.shopConversation.step === "reward_ready") {
+    mission.rewardClaimed = true;
+    if (!hasAuraUnlocked("stink")) state.saveData.unlocks.aurasUnlocked.push("stink");
+    state.saveData.unlocks.equippedAura = "stink";
+    persistSave();
+    showMissionToast("Aura Unlocked: Stink Aura");
+    showShopMessage("Creed gave you the Stink Aura. You now radiate suspicious energy.", "#d5ffbf");
+    state.shopConversation = null;
+    return;
+  }
+
+  if (state.shopConversation.step === "complete") {
+    state.shopConversation = null;
+  }
+}
+
 function tryBuyShopItem(itemId) {
   const item = SHOP_ITEMS.find((i) => i.id === itemId);
   if (!item) return;
@@ -2473,6 +2604,7 @@ function switchScene(sceneId) {
   if (sceneId === "inventory") state.uiFocus.inventoryCard = 0;
   if (sceneId === "settings") state.uiFocus.settingsOption = 0;
   if (sceneId === "annex") state.uiFocus.annexCard = 0;
+  if (sceneId === "missions") state.missionsScroll = 0;
   if (sceneId === "run") state.uiFocus.reviewButton = 0;
   if (leavingRun) stopPursuitSirenLoop();
   if (leavingCutscene) {
@@ -3525,6 +3657,7 @@ function updateRun(dt) {
   }
 
   handleAttackHits(playerBox);
+  const creedMission = state.saveData?.missions?.creedMungBeans;
 
   for (const obstacle of state.obstacles) {
     obstacle.x -= runSpeed * dt * obstacle.speedFactor;
@@ -3550,7 +3683,33 @@ function updateRun(dt) {
       };
       touching = intersects(playerBox, ladderBlock);
     }
-    if (!touching) continue;
+    const beanBagActive = obstacle.type === "mung_beans" && creedMission?.bagGranted && !creedMission.rewardClaimed;
+    const bagCatchZone = beanBagActive
+      ? {
+          x: playerBox.x - 12,
+          y: playerBox.y - 10,
+          width: playerBox.width + 24,
+          height: playerBox.height + 20,
+        }
+      : null;
+    const beanCaught = beanBagActive && intersects(bagCatchZone, obstacle);
+    if (!touching && !beanCaught) continue;
+
+    if (beanCaught) {
+      obstacle.hit = true;
+      if ((creedMission.beanCount || 0) < 20) {
+        creedMission.beanCount = Math.min(20, (creedMission.beanCount || 0) + 1);
+        state.style += 14;
+        addFloatingText("BAGGED +1", obstacle.x - 8, obstacle.y - 14, "#c6f39f");
+        if (creedMission.beanCount >= 20 && !creedMission.completed) {
+          showMissionToast("Bag full: return to Creed in the shop.");
+        }
+        persistSave();
+      } else {
+        addFloatingText("BAG FULL", obstacle.x - 8, obstacle.y - 14, "#d5e6ff");
+      }
+      continue;
+    }
 
     if (obstacle.type === "ladder") {
       if (state.slideActive) {
@@ -5909,6 +6068,8 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
       ? "#a47657"
       : label === "Pam"
       ? "#f1cfb3"
+      : label === "Creed"
+      ? "#dfbf9f"
       : label === "David Wallace"
       ? "#d7b99e"
       : "#efcfab");
@@ -5920,6 +6081,8 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
       ? "#8b6348"
       : label === "Pam"
       ? "#dfbda0"
+      : label === "Creed"
+      ? "#c7a286"
       : label === "David Wallace"
       ? "#c7a78b"
       : "#c9a682");
@@ -5933,13 +6096,24 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
       ? "#886345"
       : label === "Jim"
       ? "#2a1e16"
+      : label === "Creed"
+      ? "#8e8b86"
       : label === "David Wallace"
       ? "#2d1f18"
       : "#3a281d");
-  const hairShade = opts.hairShade || (label === "David Wallace" ? "#4b352a" : label === "Andy" ? "#6d4e35" : "#2b1f17");
+  const hairShade =
+    opts.hairShade ||
+    (label === "David Wallace"
+      ? "#4b352a"
+      : label === "Andy"
+      ? "#6d4e35"
+      : label === "Creed"
+      ? "#6f6c68"
+      : "#2b1f17");
 
-  let shirtColor = opts.shirtColor || preset?.color || (label === "Pam" ? "#d9eef9" : "#5f8fca");
-  let tieColor = opts.tieColor || preset?.tieColor || "#2f4f7a";
+  let shirtColor =
+    opts.shirtColor || preset?.color || (label === "Pam" ? "#d9eef9" : label === "Creed" ? "#4a5a52" : "#5f8fca");
+  let tieColor = opts.tieColor || preset?.tieColor || (label === "Creed" ? "#b6a482" : "#2f4f7a");
   let hideTie = Boolean(opts.hideTie);
 
   if (outfitId === "cornell_fit") {
@@ -6003,6 +6177,7 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
   const isDwight = label === "Dwight";
   const isKelly = label === "Kelly";
   const isAndy = label === "Andy";
+  const isCreed = label === "Creed";
   const isDavid = label === "David Wallace" || style === "david";
   const isStranglerHood = outfitId === "strangler_hood";
   const twoHeadShift = outfitId === "two_headed_monster" ? 2 * scale : 0;
@@ -6033,6 +6208,17 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     ctx.beginPath();
     ctx.ellipse(x + 18 * scale, y - 30 * scale, 28 * scale, 42 * scale, 0, 0, Math.PI * 2);
     ctx.fill();
+    if (auraId === "stink") {
+      const wispColor = "rgba(139, 176, 101, 0.75)";
+      const pulse = Math.sin(state.elapsedSec * 5.5);
+      ctx.fillStyle = wispColor;
+      ctx.fillRect(x + 2 * scale, y - 42 * scale, 2 * scale, 8 * scale);
+      ctx.fillRect(x + 0 * scale, y - 48 * scale, 3 * scale, 2 * scale);
+      ctx.fillRect(x + 30 * scale, y - 44 * scale, 2 * scale, 8 * scale);
+      ctx.fillRect(x + 31 * scale, y - 50 * scale, 3 * scale, 2 * scale);
+      ctx.fillRect(x + 15 * scale, y - 56 * scale + pulse * 1.5 * scale, 2 * scale, 8 * scale);
+      ctx.fillRect(x + 14 * scale, y - 62 * scale + pulse * 1.5 * scale, 3 * scale, 2 * scale);
+    }
   }
 
   // Base head first.
@@ -6069,6 +6255,17 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     ctx.fillRect(x + 15 * scale, y - 63 * scale, 2 * scale, 3 * scale); // center part (stays above hairline notch)
     ctx.fillRect(x + 11 * scale, y - 60 * scale, 2 * scale, 2 * scale);
     ctx.fillRect(x + 19 * scale, y - 60 * scale, 2 * scale, 2 * scale);
+  } else if (isCreed) {
+    // Creed: short gray hair, strong recession at top center, thinner sides.
+    ctx.fillStyle = hairBase;
+    ctx.fillRect(x + 6 * scale, y - 63 * scale, 20 * scale, 3 * scale);
+    ctx.fillRect(x + 6 * scale, y - 60 * scale, 3 * scale, 4 * scale);
+    ctx.fillRect(x + 23 * scale, y - 60 * scale, 3 * scale, 4 * scale);
+    ctx.fillStyle = renderSkinBase;
+    ctx.fillRect(x + 11 * scale, y - 61 * scale, 10 * scale, 4 * scale);
+    ctx.fillStyle = hairShade;
+    ctx.fillRect(x + 6 * scale, y - 63 * scale, 3 * scale, 1 * scale);
+    ctx.fillRect(x + 23 * scale, y - 63 * scale, 3 * scale, 1 * scale);
   } else {
     ctx.fillStyle = hairBase;
     ctx.fillRect(x + 6 * scale + twoHeadShift, y - 63 * scale, 20 * scale, 6 * scale);
@@ -6082,7 +6279,7 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
   // Face details.
   if (!isStranglerHood) {
     ctx.fillStyle = "#1e2431";
-    if (isDwight || isDavid) {
+    if (isDwight || isDavid || isCreed) {
       if (isDwight) {
         // Pixel-aligned silver glasses and centered eyes.
         ctx.fillStyle = "#9ba9ba";
@@ -6099,17 +6296,30 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
         ctx.fillRect(x + 12 * scale, y - 54 * scale, 1 * scale, 1 * scale);
         ctx.fillRect(x + 19 * scale, y - 54 * scale, 1 * scale, 1 * scale);
       } else {
-        const g = "#8fa3bd";
-        ctx.strokeStyle = g;
-        ctx.lineWidth = Math.max(1, scale * 0.45);
-        ctx.strokeRect(x + 11.5 * scale, y - 54.5 * scale, 3.2 * scale, 2.6 * scale);
-        ctx.strokeRect(x + 17.3 * scale, y - 54.5 * scale, 3.2 * scale, 2.6 * scale);
-        ctx.beginPath();
-        ctx.moveTo(x + 14.7 * scale, y - 53.2 * scale);
-        ctx.lineTo(x + 17.3 * scale, y - 53.2 * scale);
-        ctx.stroke();
-        ctx.fillRect(x + 13 * scale, y - 53.2 * scale, 1 * scale, 1 * scale);
-        ctx.fillRect(x + 19 * scale, y - 53.2 * scale, 1 * scale, 1 * scale);
+        if (isCreed) {
+          ctx.fillStyle = "#1f2633";
+          ctx.fillRect(x + 12 * scale, y - 54 * scale, 2 * scale, 2 * scale);
+          ctx.fillRect(x + 18 * scale, y - 54 * scale, 2 * scale, 2 * scale);
+          // Cleaner mouth so face reads less "scribbly".
+          ctx.fillStyle = "#2f3b4e";
+          ctx.fillRect(x + 13 * scale, y - 49 * scale, 6 * scale, 1 * scale);
+          // Soft nasolabial hints.
+          ctx.fillStyle = "#b38f76";
+          ctx.fillRect(x + 10 * scale, y - 52 * scale, 1 * scale, 2 * scale);
+          ctx.fillRect(x + 21 * scale, y - 52 * scale, 1 * scale, 2 * scale);
+        } else {
+          const g = "#8fa3bd";
+          ctx.strokeStyle = g;
+          ctx.lineWidth = Math.max(1, scale * 0.45);
+          ctx.strokeRect(x + 11.5 * scale, y - 54.5 * scale, 3.2 * scale, 2.6 * scale);
+          ctx.strokeRect(x + 17.3 * scale, y - 54.5 * scale, 3.2 * scale, 2.6 * scale);
+          ctx.beginPath();
+          ctx.moveTo(x + 14.7 * scale, y - 53.2 * scale);
+          ctx.lineTo(x + 17.3 * scale, y - 53.2 * scale);
+          ctx.stroke();
+          ctx.fillRect(x + 13 * scale, y - 53.2 * scale, 1 * scale, 1 * scale);
+          ctx.fillRect(x + 19 * scale, y - 53.2 * scale, 1 * scale, 1 * scale);
+        }
       }
     } else {
       const eyeY = isPam ? -53 : -54;
@@ -6806,6 +7016,46 @@ function drawShopScene() {
   ctx.fill();
   state.shopTalkBounds.push({ id: "talk", x: talkX, y: talkY, w: 66, h: 30 });
 
+  // Creed at a side table beside the vending machine.
+  const tableX = vmX - 116;
+  const tableY = 334;
+  ctx.fillStyle = "#6b4e34";
+  ctx.fillRect(tableX, tableY, 90, 10);
+  ctx.fillRect(tableX + 6, tableY + 10, 6, 38);
+  ctx.fillRect(tableX + 78, tableY + 10, 6, 38);
+  ctx.fillStyle = "#473422";
+  ctx.fillRect(tableX + 2, tableY + 2, 86, 3);
+  const creedX = tableX + 22;
+  const creedY = 402;
+  const creedScale = 1.55;
+  const creedW = 40 * creedScale;
+  const creedH = 70 * creedScale;
+  state.shopCreedBounds = { x: creedX, y: creedY - creedH, w: creedW, h: creedH };
+  drawHeroPortraitSprite(creedX, creedY, creedScale, {
+    label: "Creed",
+    shirtColor: "#4a5a52",
+    tieColor: "#b6a482",
+    hairBase: "#8e8b86",
+    hairShade: "#6f6c68",
+  });
+  const creedTalkX = creedX - 4;
+  const creedTalkY = creedY - creedH - 18;
+  ctx.fillStyle = "#ffed99";
+  ctx.fillRect(creedTalkX, creedTalkY, 66, 22);
+  ctx.strokeStyle = "#8b6d1e";
+  ctx.strokeRect(creedTalkX, creedTalkY, 66, 22);
+  ctx.fillStyle = "#2a2618";
+  ctx.font = "bold 14px Trebuchet MS";
+  ctx.fillText("TALK", creedTalkX + 13, creedTalkY + 15);
+  ctx.fillStyle = "#ffed99";
+  ctx.beginPath();
+  ctx.moveTo(creedTalkX + 28, creedTalkY + 22);
+  ctx.lineTo(creedTalkX + 38, creedTalkY + 22);
+  ctx.lineTo(creedTalkX + 33, creedTalkY + 30);
+  ctx.closePath();
+  ctx.fill();
+  state.shopTalkBounds.push({ id: "creed_talk", x: creedTalkX, y: creedTalkY, w: 66, h: 30 });
+
   state.shopCards = [];
   state.shopPromptBounds = [];
   const colWidth = 108;
@@ -7140,6 +7390,51 @@ function drawShopScene() {
       ctx.fillStyle = "#f5ead6";
       ctx.font = "bold 16px Trebuchet MS";
       ctx.fillText("Got it", doneBtn.x + 50, doneBtn.y + 20);
+      state.shopTalkBounds.push(doneBtn);
+    } else if (state.shopConversation.actor === "creed" && state.shopConversation.step === "intro") {
+      const leaveBtn = { id: "leave", x: boxX + 16, y: boxY + 94, w: 156, h: 30 };
+      const sureBtn = { id: "sure", x: boxX + 188, y: boxY + 94, w: 156, h: 30 };
+      const gameBtn = { id: "what_game", x: boxX + 360, y: boxY + 94, w: 230, h: 30 };
+      for (const btn of [leaveBtn, sureBtn, gameBtn]) {
+        ctx.fillStyle = "#2f4f7a";
+        ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
+        ctx.strokeStyle = "#8bc8ff";
+        ctx.strokeRect(btn.x, btn.y, btn.w, btn.h);
+      }
+      ctx.fillStyle = "#f5ead6";
+      ctx.font = "bold 16px Trebuchet MS";
+      ctx.fillText("Leave", leaveBtn.x + 50, leaveBtn.y + 20);
+      ctx.fillText("Uh, sure", sureBtn.x + 42, sureBtn.y + 20);
+      ctx.fillText("What's the game?", gameBtn.x + 40, gameBtn.y + 20);
+      state.shopTalkBounds.push(leaveBtn, sureBtn, gameBtn);
+    } else if (state.shopConversation.actor === "creed" && state.shopConversation.step === "explain") {
+      const takeBtn = { id: "take_bag", x: boxX + 16, y: boxY + 94, w: 220, h: 30 };
+      ctx.fillStyle = "#2f4f7a";
+      ctx.fillRect(takeBtn.x, takeBtn.y, takeBtn.w, takeBtn.h);
+      ctx.strokeStyle = "#8bc8ff";
+      ctx.strokeRect(takeBtn.x, takeBtn.y, takeBtn.w, takeBtn.h);
+      ctx.fillStyle = "#f5ead6";
+      ctx.font = "bold 16px Trebuchet MS";
+      ctx.fillText("Take the bag", takeBtn.x + 56, takeBtn.y + 20);
+      state.shopTalkBounds.push(takeBtn);
+    } else if (
+      state.shopConversation.actor === "creed" &&
+      (state.shopConversation.step === "active" ||
+        state.shopConversation.step === "reward_ready" ||
+        state.shopConversation.step === "complete")
+    ) {
+      const doneBtn = { id: "done", x: boxX + 16, y: boxY + 94, w: 170, h: 30 };
+      ctx.fillStyle = "#2f4f7a";
+      ctx.fillRect(doneBtn.x, doneBtn.y, doneBtn.w, doneBtn.h);
+      ctx.strokeStyle = "#8bc8ff";
+      ctx.strokeRect(doneBtn.x, doneBtn.y, doneBtn.w, doneBtn.h);
+      ctx.fillStyle = "#f5ead6";
+      ctx.font = "bold 16px Trebuchet MS";
+      ctx.fillText(
+        state.shopConversation.step === "reward_ready" ? "Hand over bag" : "Got it",
+        doneBtn.x + 20,
+        doneBtn.y + 20
+      );
       state.shopTalkBounds.push(doneBtn);
     }
   }
@@ -7527,6 +7822,8 @@ function selectShopByCanvasPoint(x, y) {
       state.uiFocus.shopTalk = Math.max(0, state.shopTalkBounds.indexOf(target));
       if (target.id === "talk") startJimConversation();
       else if (target.id === "pam_talk") startPamConversation();
+      else if (target.id === "creed_talk") startCreedConversation();
+      else if (state.shopConversation?.actor === "creed") handleCreedConversationClick(target.id);
       else if (state.shopConversation?.actor === "pam") handlePamConversationClick(target.id);
       else handleJimConversationClick(target.id);
       return;
@@ -7575,6 +7872,7 @@ function drawMissionsScene() {
   const tlm = state.saveData.missions.threatLevelMidnight;
   const kelly = state.saveData.missions.kellyTrendEmergency;
   const corporateConundrum = state.saveData.missions.kellyCorporateConundrum;
+  const creedMungBeans = state.saveData.missions.creedMungBeans;
   const visibleMissions = [];
   if (savePam.added || savePam.completed) {
     let detail = "";
@@ -7652,13 +7950,41 @@ function drawMissionsScene() {
       color: "#7fd2ff",
     });
   }
+  if (creedMungBeans.added || creedMungBeans.completed || creedMungBeans.beanCount > 0) {
+    const detail = creedMungBeans.completed
+      ? creedMungBeans.rewardClaimed
+        ? "Mung bean run complete. Creed gave you the Stink Aura."
+        : "Bag is full. Return to Creed in the shop for your reward."
+      : `Collect 20 mung beans using Creed's bag. Progress: ${creedMungBeans.beanCount || 0}/20.`;
+    visibleMissions.push({
+      title: "Creed's Mung Bean Hunt",
+      detail,
+      status: creedMungBeans.completed ? (creedMungBeans.rewardClaimed ? "Completed" : "Complete - Reward Unclaimed") : "Active",
+      done: creedMungBeans.completed && creedMungBeans.rewardClaimed,
+      color: "#b6e38a",
+    });
+  }
 
   const baseY = 120;
   const rowStep = 78;
   const cardH = 70;
+  const listX = 84;
+  const listY = 118;
+  const listW = 792;
+  const listH = 378;
+  const contentHeight = visibleMissions.length * rowStep + 10;
+  state.missionsScrollMax = Math.max(0, contentHeight - listH);
+  state.missionsScroll = Math.max(0, Math.min(state.missionsScroll || 0, state.missionsScrollMax));
+  const scrollY = Math.floor(state.missionsScroll);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(listX, listY, listW, listH);
+  ctx.clip();
   for (let i = 0; i < visibleMissions.length; i += 1) {
     const mission = visibleMissions[i];
-    const y = baseY + i * rowStep;
+    const y = baseY + i * rowStep - scrollY;
+    if (y + cardH < listY - 6 || y > listY + listH + 6) continue;
     ctx.fillStyle = "rgba(255,255,255,0.06)";
     ctx.fillRect(88, y, 784, cardH);
     ctx.fillStyle = mission.done ? mission.color : "#3e4b64";
@@ -7674,16 +8000,25 @@ function drawMissionsScene() {
     ctx.font = "bold 18px Trebuchet MS";
     ctx.fillText(mission.title, 124, y + 24);
     ctx.font = "15px Trebuchet MS";
-    drawWrappedText(
-      mission.detail,
-      124,
-      y + 42,
-      740,
-      18,
-      2
-    );
+    drawWrappedText(mission.detail, 124, y + 42, 740, 18, 2);
     ctx.fillStyle = "#d5ecff";
     ctx.fillText(`Status: ${mission.status}`, 124, y + 66);
+  }
+  ctx.restore();
+
+  if (state.missionsScrollMax > 0) {
+    const railX = 880;
+    const railY = listY;
+    const railH = listH;
+    const thumbH = Math.max(34, Math.floor((listH / (contentHeight || 1)) * railH));
+    const thumbY = railY + Math.floor((state.missionsScroll / state.missionsScrollMax) * (railH - thumbH));
+    ctx.fillStyle = "rgba(180,210,245,0.22)";
+    ctx.fillRect(railX, railY, 8, railH);
+    ctx.fillStyle = "#9fcfff";
+    ctx.fillRect(railX, thumbY, 8, thumbH);
+    ctx.fillStyle = "#d9edff";
+    ctx.font = "bold 13px Trebuchet MS";
+    ctx.fillText("SCROLL", 824, 514);
   }
 
   if (visibleMissions.length === 0) {
@@ -7697,7 +8032,7 @@ function drawMissionsScene() {
 
   ctx.fillStyle = "#c9ddff";
   ctx.font = "17px Trebuchet MS";
-  ctx.fillText("Press M to close missions and get back to the chaos.", 106, 524);
+  ctx.fillText("Press M to close. Mouse wheel or Arrow Up/Down to scroll missions.", 106, 524);
 }
 
 function drawTutorialScene() {
@@ -8090,6 +8425,7 @@ function drawAnnexScene() {
   ctx.fillText("Click a Dundie to view how to earn it.", caseX + 10, caseY + caseH - 10);
 
   // Aura shelf appears after Corporate Conundrum is complete.
+  state.annexAuraBounds = [];
   if (state.saveData.missions.kellyCorporateConundrum.completed) {
     const auraPanelX = caseX;
     const auraPanelY = caseY + caseH + 8;
@@ -8139,6 +8475,7 @@ function drawAnnexScene() {
         ctx.font = "bold 10px Trebuchet MS";
         ctx.fillText("LOCKED", slotX + 14, slotY + 39);
       }
+      state.annexAuraBounds.push({ x: slotX, y: slotY, w: 66, h: 44, id: aura.id, name: aura.name });
     }
   }
 
@@ -8896,6 +9233,25 @@ function selectAnnexByCanvasPoint(x, y) {
   }
 
   if (state.annexConversation || state.annexOutfitPrompt) return;
+
+  for (const aura of state.annexAuraBounds) {
+    if (x < aura.x || x > aura.x + aura.w || y < aura.y || y > aura.y + aura.h) continue;
+    if (!hasAuraUnlocked(aura.id)) {
+      showAnnexMessage(`Kelly: ${aura.name} is still locked. Do more dramatic things.`);
+      return;
+    }
+    const equippedAura = getEquippedAuraId();
+    if (equippedAura === aura.id) {
+      state.saveData.unlocks.equippedAura = null;
+      persistSave();
+      showAnnexMessage(`Kelly: ${aura.name} unequipped. Clean slate, clean vibe.`);
+      return;
+    }
+    state.saveData.unlocks.equippedAura = aura.id;
+    persistSave();
+    showAnnexMessage(`Kelly: ${aura.name} equipped. You're glowing with main-character energy.`);
+    return;
+  }
 
   for (const badge of state.annexAchievementBounds) {
     if (x < badge.x || x > badge.x + badge.w || y < badge.y || y > badge.y + badge.h) continue;
@@ -9683,6 +10039,8 @@ function handlePress(ev) {
         if (target) {
           if (target.id === "talk") startJimConversation();
           else if (target.id === "pam_talk") startPamConversation();
+          else if (target.id === "creed_talk") startCreedConversation();
+          else if (state.shopConversation?.actor === "creed") handleCreedConversationClick(target.id);
           else if (state.shopConversation?.actor === "pam") handlePamConversationClick(target.id);
           else handleJimConversationClick(target.id);
         }
@@ -9817,6 +10175,11 @@ function handlePress(ev) {
       else if (arrowDir === "down") state.uiFocus.settingsOption = Math.min(6, (state.uiFocus.settingsOption || 0) + 1);
       else if (arrowDir === "left") adjustSettingByIndex(state.uiFocus.settingsOption || 0, -1);
       else if (arrowDir === "right") adjustSettingByIndex(state.uiFocus.settingsOption || 0, 1);
+      return;
+    }
+    if (state.scene === "missions") {
+      if (arrowDir === "up") state.missionsScroll = Math.max(0, (state.missionsScroll || 0) - 42);
+      else if (arrowDir === "down") state.missionsScroll = Math.min(state.missionsScrollMax || 0, (state.missionsScroll || 0) + 42);
       return;
     }
     return;
@@ -9956,6 +10319,17 @@ canvas.addEventListener("pointerdown", (ev) => {
     jump();
   }
 });
+
+canvas.addEventListener(
+  "wheel",
+  (ev) => {
+    if (state.scene !== "missions") return;
+    ev.preventDefault();
+    const delta = ev.deltaY > 0 ? 36 : -36;
+    state.missionsScroll = Math.max(0, Math.min(state.missionsScrollMax || 0, (state.missionsScroll || 0) + delta));
+  },
+  { passive: false }
+);
 
 saveImportInput.addEventListener("change", async () => {
   const file = saveImportInput.files && saveImportInput.files[0];
