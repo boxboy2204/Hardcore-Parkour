@@ -24,6 +24,7 @@ const PURSUIT_END_CARD_DURATION = 3.4;
 const PURSUIT_END_TADA_PATH = "assets/freesound_community-tada-fanfare-a-6313.mp3";
 const PURSUIT_START_SIREN_PATH = "assets/11325622-police-siren-sound-effect-240674.mp3";
 const SHOP_CHACHING_PATH = "assets/chaching.mp3";
+const ENABLE_TRUE_16BIT_COLOR_PASS = true;
 const SAVE_PROFILE_VERSION = 2;
 const RUNNER_IDS = ["michael", "dwight", "andy"];
 const LOADING_SCENE_DURATION = 1.45;
@@ -152,6 +153,38 @@ const SOUL_QUIPS = {
     "Andy: This is Cornell-level athletic theater.",
   ],
 };
+
+const BAYER_4X4 = [
+  [0, 8, 2, 10],
+  [12, 4, 14, 6],
+  [3, 11, 1, 9],
+  [15, 7, 13, 5],
+];
+
+function quantize565Channel(value, bits, ditherStep = 0) {
+  const max = (1 << bits) - 1;
+  const v = Math.max(0, Math.min(255, value + ditherStep));
+  const q = Math.round((v / 255) * max);
+  return Math.round((q / max) * 255);
+}
+
+function applyTrue16BitColorPass() {
+  const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = frame.data;
+  for (let y = 0; y < canvas.height; y += 1) {
+    for (let x = 0; x < canvas.width; x += 1) {
+      const i = (y * canvas.width + x) * 4;
+      const a = data[i + 3];
+      if (a === 0) continue;
+      const d = BAYER_4X4[y & 3][x & 3] - 7.5;
+      const dither = d * 1.2;
+      data[i] = quantize565Channel(data[i], 5, dither); // R5
+      data[i + 1] = quantize565Channel(data[i + 1], 6, dither * 0.85); // G6
+      data[i + 2] = quantize565Channel(data[i + 2], 5, dither); // B5
+    }
+  }
+  ctx.putImageData(frame, 0, 0);
+}
 
 const SHOP_ITEMS = [
   {
@@ -596,6 +629,7 @@ function createDefaultSave() {
       screenShake: true,
       parkourAssist: false,
       showFps: true,
+      true16BitColor: true,
     },
     flags: {
       tutorialSeen: false,
@@ -874,6 +908,10 @@ function getSfxVolume() {
 
 function getMusicVolume() {
   return Math.max(0, Math.min(1, Number(getSettings().musicVolume ?? 0.65)));
+}
+
+function isTrue16BitColorEnabled() {
+  return Boolean(getSettings().true16BitColor ?? ENABLE_TRUE_16BIT_COLOR_PASS);
 }
 
 function playThemeSwitchCue() {
@@ -1532,6 +1570,7 @@ function adjustSettingByIndex(index, dir) {
   else if (index === 2) s.screenShake = dir > 0 ? true : dir < 0 ? false : !s.screenShake;
   else if (index === 3) s.parkourAssist = dir > 0 ? true : dir < 0 ? false : !s.parkourAssist;
   else if (index === 4) s.showFps = dir > 0 ? true : dir < 0 ? false : !s.showFps;
+  else if (index === 5) s.true16BitColor = dir > 0 ? true : dir < 0 ? false : !(s.true16BitColor ?? true);
   persistSave();
 }
 
@@ -8647,6 +8686,7 @@ function drawSettingsScene() {
     { label: "Screen Shake", value: s.screenShake ? "ON" : "OFF" },
     { label: "Parkour Assist", value: s.parkourAssist ? "ON" : "OFF" },
     { label: "Show FPS", value: s.showFps ? "ON" : "OFF" },
+    { label: "True 16-bit Color", value: isTrue16BitColorEnabled() ? "ON" : "OFF" },
     { label: "Export Save", value: "Press Enter" },
     { label: "Import Save", value: "Press Enter" },
   ];
@@ -10202,6 +10242,8 @@ function render() {
     drawWrappedTextWithCurrencyIcons(toastText, toastX + 14, revealToast ? 44 : 40, toastW - 28, revealToast ? 24 : 20, 2);
     ctx.globalAlpha = 1;
   }
+
+  if (isTrue16BitColorEnabled()) applyTrue16BitColorPass();
 }
 
 function update(dt) {
@@ -10565,11 +10607,11 @@ function handlePress(ev) {
     }
     if (state.scene === "settings") {
       const idx = state.uiFocus.settingsOption || 0;
-      if (idx <= 4) {
+      if (idx <= 5) {
         adjustSettingByIndex(idx, 0);
-      } else if (idx === 5) {
-        exportSaveToFile();
       } else if (idx === 6) {
+        exportSaveToFile();
+      } else if (idx === 7) {
         importSaveFromFile();
       }
       return;
@@ -10676,7 +10718,7 @@ function handlePress(ev) {
     }
     if (state.scene === "settings") {
       if (arrowDir === "up") state.uiFocus.settingsOption = Math.max(0, (state.uiFocus.settingsOption || 0) - 1);
-      else if (arrowDir === "down") state.uiFocus.settingsOption = Math.min(6, (state.uiFocus.settingsOption || 0) + 1);
+      else if (arrowDir === "down") state.uiFocus.settingsOption = Math.min(7, (state.uiFocus.settingsOption || 0) + 1);
       else if (arrowDir === "left") adjustSettingByIndex(state.uiFocus.settingsOption || 0, -1);
       else if (arrowDir === "right") adjustSettingByIndex(state.uiFocus.settingsOption || 0, 1);
       return;
@@ -10801,7 +10843,7 @@ canvas.addEventListener("pointerdown", (ev) => {
   }
   if (state.scene === "settings") {
     const idx = Math.floor((y - 134) / 42);
-    if (idx >= 0 && idx < 7) {
+    if (idx >= 0 && idx < 8) {
       state.uiFocus.settingsOption = idx;
       if (x > 610) adjustSettingByIndex(idx, 1);
     }
