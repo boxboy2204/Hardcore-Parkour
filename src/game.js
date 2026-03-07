@@ -379,7 +379,7 @@ const OUTFIT_VARIANTS = {
 const AURAS = [
   { id: "blue", name: "Blue Aura", color: "rgba(82, 162, 255, 0.44)" },
   { id: "stink", name: "Stink Aura", color: "rgba(126, 166, 92, 0.42)" },
-  { id: "violet", name: "Violet Aura", color: "rgba(176, 114, 255, 0.42)" },
+  { id: "twilight", name: "Twilight Aura", color: "rgba(144, 114, 255, 0.42)" },
 ];
 
 const state = {
@@ -492,6 +492,10 @@ const state = {
   annexConversation: null,
   annexOutfitPrompt: null,
   annexOutfitPromptBounds: [],
+  receptionErinBounds: null,
+  receptionTalkBounds: [],
+  receptionConversation: null,
+  receptionMessage: "Erin: Hi! Reception is mostly phones, forms, and feelings.",
   annexMessage: "Kelly: Welcome to the Annex Boutique, where confidence is mandatory and glitter is a lifestyle.",
   annexMessageLeft: 0,
   characterCards: [],
@@ -630,6 +634,13 @@ function createDefaultSave() {
         bestChain: 0,
         rewardClaimed: false,
       },
+      erinTwilight: {
+        added: false,
+        completed: false,
+        rewardClaimed: false,
+        progress: 0,
+        target: 3,
+      },
       creedMungBeans: {
         added: false,
         completed: false,
@@ -660,6 +671,7 @@ function normalizeSave(parsedInput) {
     const parsedThreatLevelMidnight = parsedMissions.threatLevelMidnight || {};
     const parsedKellyTrendEmergency = parsedMissions.kellyTrendEmergency || {};
     const parsedKellyCorporateConundrum = parsedMissions.kellyCorporateConundrum || {};
+    const parsedErinTwilight = parsedMissions.erinTwilight || {};
     const parsedCreedMungBeans = parsedMissions.creedMungBeans || {};
     const parsedUnlocks = parsed.unlocks || {};
     const parsedEquippedOutfits = parsedUnlocks.equippedOutfits || {};
@@ -685,8 +697,20 @@ function normalizeSave(parsedInput) {
         ...parsedUnlocks,
         goldenfaceTakenFromDesk: Boolean(parsedUnlocks.goldenfaceTakenFromDesk),
         topRowGelCleared: { ...defaults.unlocks.topRowGelCleared, ...(parsedUnlocks.topRowGelCleared || {}) },
-        aurasUnlocked: Array.isArray(parsedUnlocks.aurasUnlocked) ? [...parsedUnlocks.aurasUnlocked] : [],
-        equippedAura: parsedUnlocks.equippedAura || null,
+        aurasUnlocked: (() => {
+          const base = Array.isArray(parsedUnlocks.aurasUnlocked)
+            ? [...new Set(parsedUnlocks.aurasUnlocked.map((id) => (id === "violet" ? "twilight" : id)))]
+            : [];
+          // One-time migration: Erin quest reward is Twilight only.
+          if (parsedErinTwilight.rewardClaimed && !base.includes("twilight")) base.push("twilight");
+          return base;
+        })(),
+        equippedAura: (() => {
+          const aura = parsedUnlocks.equippedAura === "violet" ? "twilight" : parsedUnlocks.equippedAura || null;
+          // One-time migration: legacy Erin reward could auto-equip stink; switch to twilight.
+          if (aura === "stink" && parsedErinTwilight.rewardClaimed) return "twilight";
+          return aura;
+        })(),
         equippedOutfits: {
           ...defaults.unlocks.equippedOutfits,
           ...parsedEquippedOutfits,
@@ -714,6 +738,10 @@ function normalizeSave(parsedInput) {
         kellyCorporateConundrum: {
           ...defaults.missions.kellyCorporateConundrum,
           ...parsedKellyCorporateConundrum,
+        },
+        erinTwilight: {
+          ...defaults.missions.erinTwilight,
+          ...parsedErinTwilight,
         },
         creedMungBeans: {
           ...defaults.missions.creedMungBeans,
@@ -2370,6 +2398,21 @@ function handlePamConversationClick(choiceId) {
 
 function startCreedConversation() {
   state.shopPurchasePrompt = null;
+  const beatGame = Boolean(state.saveData?.missions?.captureStrangler?.completed);
+  if (!beatGame) {
+    const preGameLines = [
+      "Creed: I used to own this vending machine. Legally? Depends who is asking.",
+      "Creed: If you see a mung bean, no you didn't.",
+      "Creed: I once sold a toaster to a horse. Great client.",
+      "Creed: You ever been to Toronto? Me neither. Probably.",
+    ];
+    state.shopConversation = {
+      actor: "creed",
+      step: "pre_game",
+      text: preGameLines[Math.floor(Math.random() * preGameLines.length)],
+    };
+    return;
+  }
   const mission = state.saveData?.missions?.creedMungBeans;
   if (!mission) return;
   if (mission.completed) {
@@ -2415,6 +2458,10 @@ function startCreedConversation() {
 
 function handleCreedConversationClick(choiceId) {
   if (!state.shopConversation) return;
+  if (state.shopConversation.step === "pre_game") {
+    state.shopConversation = null;
+    return;
+  }
   const mission = state.saveData?.missions?.creedMungBeans;
   if (!mission) {
     state.shopConversation = null;
@@ -2480,6 +2527,141 @@ function handleCreedConversationClick(choiceId) {
 
   if (state.shopConversation.step === "complete") {
     state.shopConversation = null;
+  }
+}
+
+function startErinConversation() {
+  const erinMission = state.saveData?.missions?.erinTwilight;
+  const auraSystemReady =
+    Boolean(state.saveData?.missions?.kellyCorporateConundrum?.completed) && hasAuraUnlocked("blue");
+  if (!erinMission) return;
+
+  if (!auraSystemReady) {
+    const erinLines = [
+      "Erin: I labeled the phones by color. It made me feel powerful.",
+      "Erin: Sometimes I answer the phone with a smile. They can hear it. I think.",
+      "Erin: I alphabetized the emergency numbers. That felt... adult.",
+      "Erin: I made reception snack maps. Nobody asked, but nobody said no.",
+    ];
+    state.receptionConversation = {
+      actor: "erin",
+      step: "smalltalk",
+      text: erinLines[Math.floor(Math.random() * erinLines.length)],
+    };
+    return;
+  }
+
+  if (erinMission.completed) {
+    if (!erinMission.rewardClaimed) {
+      state.receptionConversation = {
+        actor: "erin",
+        step: "reward_ready",
+        text:
+          "Erin: You did it! The after-hours call logs are all sorted. I have a special aura surprise for you.",
+      };
+      return;
+    }
+    state.receptionConversation = {
+      actor: "erin",
+      step: "complete",
+      text: "Erin: Reception is stable. Your aura situation is now very dramatic and very twilight.",
+    };
+    return;
+  }
+
+  if (!erinMission.added) {
+    state.receptionConversation = {
+      actor: "erin",
+      step: "intro",
+      text:
+        "Erin: Hey! I have a reception mission. Night calls are out of order. Want to help me sort after-hours call logs?",
+    };
+    return;
+  }
+
+  state.receptionConversation = {
+    actor: "erin",
+    step: "active",
+    text: `Erin: Reception mission is active. Finish ${erinMission.target} successful runs with at least x4 HARDCORE. Progress: ${erinMission.progress}/${erinMission.target}.`,
+  };
+}
+
+function handleErinConversationClick(choiceId) {
+  if (!state.receptionConversation) return;
+  const erinMission = state.saveData?.missions?.erinTwilight;
+  if (!erinMission) {
+    state.receptionConversation = null;
+    return;
+  }
+
+  if (state.receptionConversation.step === "smalltalk") {
+    state.receptionConversation = null;
+    return;
+  }
+
+  if (state.receptionConversation.step === "intro") {
+    if (choiceId === "accept") {
+      erinMission.added = true;
+      persistSave();
+      showMissionToast('New Mission: "Twilight Reception"');
+      state.receptionConversation = {
+        actor: "erin",
+        step: "active",
+        text: `Erin: Yay! We just need ${erinMission.target} successful runs at x4 HARDCORE or more. Current progress: ${erinMission.progress}/${erinMission.target}.`,
+      };
+      return;
+    }
+    if (choiceId === "details") {
+      state.receptionConversation = {
+        actor: "erin",
+        step: "details",
+        text:
+          "Erin: The game is called Reception Twilight Shift. Do 3 successful runs with at least x4 HARDCORE in each run. Then come back to me.",
+      };
+      return;
+    }
+    state.receptionConversation = null;
+    return;
+  }
+
+  if (state.receptionConversation.step === "details") {
+    if (choiceId === "accept") {
+      erinMission.added = true;
+      persistSave();
+      showMissionToast('New Mission: "Twilight Reception"');
+      state.receptionConversation = {
+        actor: "erin",
+        step: "active",
+        text: `Erin: Amazing. Progress is ${erinMission.progress}/${erinMission.target}.`,
+      };
+      return;
+    }
+    state.receptionConversation = null;
+    return;
+  }
+
+  if (state.receptionConversation.step === "active") {
+    state.receptionConversation = null;
+    return;
+  }
+
+  if (state.receptionConversation.step === "reward_ready") {
+    erinMission.rewardClaimed = true;
+    if (!hasAuraUnlocked("twilight")) state.saveData.unlocks.aurasUnlocked.push("twilight");
+    state.saveData.unlocks.equippedAura = "twilight";
+    persistSave();
+    showMissionToast("Aura Unlocked: Twilight Aura");
+    state.receptionConversation = {
+      actor: "erin",
+      step: "complete",
+      text:
+        "Erin: Okay this is exciting. You got Twilight Aura. I do not fully understand it, but it feels correct.",
+    };
+    return;
+  }
+
+  if (state.receptionConversation.step === "complete") {
+    state.receptionConversation = null;
   }
 }
 
@@ -2579,6 +2761,10 @@ function switchScene(sceneId) {
     state.annexOutfitPrompt = null;
     state.annexOutfitPromptBounds = [];
   }
+  if (sceneId !== "reception") {
+    state.receptionConversation = null;
+    state.receptionTalkBounds = [];
+  }
   if (sceneId === "desk") {
     state.deskDrawerOpen = false;
     state.deskPhotoViewerOpen = false;
@@ -2604,6 +2790,7 @@ function switchScene(sceneId) {
   if (sceneId === "inventory") state.uiFocus.inventoryCard = 0;
   if (sceneId === "settings") state.uiFocus.settingsOption = 0;
   if (sceneId === "annex") state.uiFocus.annexCard = 0;
+  if (sceneId === "reception") state.receptionTalkBounds = [];
   if (sceneId === "missions") state.missionsScroll = 0;
   if (sceneId === "run") state.uiFocus.reviewButton = 0;
   if (leavingRun) stopPursuitSirenLoop();
@@ -2653,6 +2840,9 @@ function updateUiForScene() {
     startBtn.textContent = "Back To Menu";
     retryBtn.hidden = true;
   } else if (state.scene === "desk") {
+    startBtn.textContent = "Back To Menu";
+    retryBtn.hidden = true;
+  } else if (state.scene === "reception") {
     startBtn.textContent = "Back To Menu";
     retryBtn.hidden = true;
   } else {
@@ -3124,6 +3314,14 @@ function endRun(reason = "time") {
     if (state.style >= 2200 && state.bestChain >= 8) {
       maybeCompleteKellyCorporateMission();
       questEndingLine = `${questEndingLine ? `${questEndingLine} ` : ""}Mission Complete: Corporate Conundrum.`;
+    }
+  }
+  const erinTwilight = state.saveData.missions.erinTwilight;
+  if (erinTwilight?.added && !erinTwilight.completed && missionSuccess && state.bestChain >= 4) {
+    erinTwilight.progress = Math.min(erinTwilight.target || 3, (erinTwilight.progress || 0) + 1);
+    if (erinTwilight.progress >= (erinTwilight.target || 3)) {
+      erinTwilight.completed = true;
+      questEndingLine = `${questEndingLine ? `${questEndingLine} ` : ""}Mission Complete: Twilight Reception. Talk to Erin for your aura reward.`;
     }
   }
 
@@ -5692,6 +5890,7 @@ function drawWrappedTextWithCurrencyIcons(text, x, y, maxWidth, lineHeight, maxL
   };
   const lines = layoutWrappedTokens(tokens, maxWidth, maxLines, tokenWidth);
   const spaceW = ctx.measureText(" ").width;
+  const textColor = ctx.fillStyle;
 
   ctx.save();
   ctx.beginPath();
@@ -5704,9 +5903,15 @@ function drawWrappedTextWithCurrencyIcons(text, x, y, maxWidth, lineHeight, maxL
     for (let j = 0; j < row.length; j += 1) {
       const token = row[j];
       if (j > 0) cx += spaceW;
-      if (token === "[SB]") cx += drawCurrencyIcon("schrute_buck", cx, baseline - 12, 0.9);
-      else if (token === "[SN]") cx += drawCurrencyIcon("stanley_nickel", cx, baseline - 11, 0.9);
+      if (token === "[SB]") {
+        cx += drawCurrencyIcon("schrute_buck", cx, baseline - 12, 0.9);
+        ctx.fillStyle = textColor;
+      } else if (token === "[SN]") {
+        cx += drawCurrencyIcon("stanley_nickel", cx, baseline - 11, 0.9);
+        ctx.fillStyle = textColor;
+      }
       else {
+        ctx.fillStyle = textColor;
         ctx.fillText(token, cx, baseline);
         cx += ctx.measureText(token).width;
       }
@@ -6097,7 +6302,7 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
       : label === "Jim"
       ? "#2a1e16"
       : label === "Creed"
-      ? "#8e8b86"
+      ? "#636a72"
       : label === "David Wallace"
       ? "#2d1f18"
       : "#3a281d");
@@ -6108,7 +6313,7 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
       : label === "Andy"
       ? "#6d4e35"
       : label === "Creed"
-      ? "#6f6c68"
+      ? "#b6b5b2"
       : "#2b1f17");
 
   let shirtColor =
@@ -6218,6 +6423,45 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
       ctx.fillRect(x + 31 * scale, y - 50 * scale, 3 * scale, 2 * scale);
       ctx.fillRect(x + 15 * scale, y - 56 * scale + pulse * 1.5 * scale, 2 * scale, 8 * scale);
       ctx.fillRect(x + 14 * scale, y - 62 * scale + pulse * 1.5 * scale, 3 * scale, 2 * scale);
+    } else if (auraId === "twilight") {
+      const twinkle = Math.sin(state.elapsedSec * 7.2);
+      ctx.save();
+      // Keep sparkles strictly inside the outer aura bubble.
+      ctx.beginPath();
+      ctx.ellipse(x + 18 * scale, y - 30 * scale, 28 * scale, 42 * scale, 0, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.fillStyle = "rgba(236, 230, 255, 0.9)";
+      const stars = [
+        [2, -36, 0.7],
+        [10, -38, 1.0],
+        [18, -34, 0.8],
+        [26, -40, 1.2],
+        [34, -36, 0.9],
+        [6, -46, 1.1],
+        [14, -50, 0.75],
+        [22, -46, 1.15],
+        [30, -52, 0.95],
+        [0, -56, 0.85],
+        [10, -60, 1.25],
+        [18, -58, 0.9],
+        [26, -64, 1.05],
+        [34, -60, 0.8],
+        [6, -70, 1.2],
+        [14, -74, 0.7],
+        [22, -72, 1.0],
+        [30, -76, 0.9],
+        [4, -82, 1.15],
+        [18, -84, 0.85],
+        [32, -82, 1.05],
+      ];
+      for (const [sx, sy, phase] of stars) {
+        const size = twinkle * phase > 0 ? 2 : 1;
+        const px = Math.floor(x + sx * scale);
+        const py = Math.floor(y + sy * scale);
+        ctx.fillRect(px, py, size * scale, 1 * scale);
+        ctx.fillRect(px, py, 1 * scale, size * scale);
+      }
+      ctx.restore();
     }
   }
 
@@ -6256,16 +6500,9 @@ function drawHeroPortraitSprite(x, y, scale = 2, opts = {}) {
     ctx.fillRect(x + 11 * scale, y - 60 * scale, 2 * scale, 2 * scale);
     ctx.fillRect(x + 19 * scale, y - 60 * scale, 2 * scale, 2 * scale);
   } else if (isCreed) {
-    // Creed: short gray hair, strong recession at top center, thinner sides.
+    // Creed: hair only on top, attached to head with no side overhang.
     ctx.fillStyle = hairBase;
-    ctx.fillRect(x + 6 * scale, y - 63 * scale, 20 * scale, 3 * scale);
-    ctx.fillRect(x + 6 * scale, y - 60 * scale, 3 * scale, 4 * scale);
-    ctx.fillRect(x + 23 * scale, y - 60 * scale, 3 * scale, 4 * scale);
-    ctx.fillStyle = renderSkinBase;
-    ctx.fillRect(x + 11 * scale, y - 61 * scale, 10 * scale, 4 * scale);
-    ctx.fillStyle = hairShade;
-    ctx.fillRect(x + 6 * scale, y - 63 * scale, 3 * scale, 1 * scale);
-    ctx.fillRect(x + 23 * scale, y - 63 * scale, 3 * scale, 1 * scale);
+    ctx.fillRect(x + 8 * scale, y - 59 * scale, 16 * scale, 2 * scale);
   } else {
     ctx.fillStyle = hairBase;
     ctx.fillRect(x + 6 * scale + twoHeadShift, y - 63 * scale, 20 * scale, 6 * scale);
@@ -7016,30 +7253,50 @@ function drawShopScene() {
   ctx.fill();
   state.shopTalkBounds.push({ id: "talk", x: talkX, y: talkY, w: 66, h: 30 });
 
-  // Creed at a side table beside the vending machine.
+  // Creed seated at a side table beside the vending machine.
   const tableX = vmX - 116;
   const tableY = 334;
+  ctx.fillStyle = "#4e3c2b";
+  ctx.fillRect(tableX + 30, tableY - 26, 34, 18); // chair back
+  ctx.fillRect(tableX + 34, tableY - 8, 26, 5); // seat top
+  ctx.fillRect(tableX + 36, tableY - 3, 4, 32); // chair front left leg
+  ctx.fillRect(tableX + 56, tableY - 3, 4, 32); // chair front right leg
+  ctx.fillStyle = "#3a2b1d";
+  ctx.fillRect(tableX + 32, tableY - 24, 30, 2);
+  ctx.fillRect(tableX + 34, tableY - 8, 26, 1);
   ctx.fillStyle = "#6b4e34";
   ctx.fillRect(tableX, tableY, 90, 10);
   ctx.fillRect(tableX + 6, tableY + 10, 6, 38);
   ctx.fillRect(tableX + 78, tableY + 10, 6, 38);
   ctx.fillStyle = "#473422";
   ctx.fillRect(tableX + 2, tableY + 2, 86, 3);
-  const creedX = tableX + 22;
-  const creedY = 402;
+  const creedX = tableX + 24;
+  const creedY = 382;
   const creedScale = 1.55;
-  const creedW = 40 * creedScale;
-  const creedH = 70 * creedScale;
-  state.shopCreedBounds = { x: creedX, y: creedY - creedH, w: creedW, h: creedH };
+  const creedW = 24 * creedScale;
+  const creedH = 46 * creedScale;
+  state.shopCreedBounds = { x: creedX + 8, y: creedY - creedH, w: creedW, h: creedH };
   drawHeroPortraitSprite(creedX, creedY, creedScale, {
     label: "Creed",
     shirtColor: "#4a5a52",
     tieColor: "#b6a482",
-    hairBase: "#8e8b86",
-    hairShade: "#6f6c68",
+    hairBase: "#636a72",
+    hairShade: "#b6b5b2",
   });
+  // Draw table edge in front of Creed so his lower body is naturally occluded.
+  ctx.fillStyle = "#6b4e34";
+  ctx.fillRect(tableX, tableY, 90, 10);
+  ctx.fillStyle = "#473422";
+  ctx.fillRect(tableX + 2, tableY + 2, 86, 3);
+  // Resting forearms on the tabletop to sell a seated pose.
+  ctx.fillStyle = "#d3b89c";
+  ctx.fillRect(creedX + 10, tableY - 1, 8, 3);
+  ctx.fillRect(creedX + 28, tableY - 1, 8, 3);
+  ctx.fillStyle = "#8aa0a0";
+  ctx.fillRect(creedX + 10, tableY, 8, 1);
+  ctx.fillRect(creedX + 28, tableY, 8, 1);
   const creedTalkX = creedX - 4;
-  const creedTalkY = creedY - creedH - 18;
+  const creedTalkY = creedY - creedH - 44;
   ctx.fillStyle = "#ffed99";
   ctx.fillRect(creedTalkX, creedTalkY, 66, 22);
   ctx.strokeStyle = "#8b6d1e";
@@ -7419,7 +7676,8 @@ function drawShopScene() {
       state.shopTalkBounds.push(takeBtn);
     } else if (
       state.shopConversation.actor === "creed" &&
-      (state.shopConversation.step === "active" ||
+      (state.shopConversation.step === "pre_game" ||
+        state.shopConversation.step === "active" ||
         state.shopConversation.step === "reward_ready" ||
         state.shopConversation.step === "complete")
     ) {
@@ -7872,6 +8130,7 @@ function drawMissionsScene() {
   const tlm = state.saveData.missions.threatLevelMidnight;
   const kelly = state.saveData.missions.kellyTrendEmergency;
   const corporateConundrum = state.saveData.missions.kellyCorporateConundrum;
+  const erinTwilight = state.saveData.missions.erinTwilight;
   const creedMungBeans = state.saveData.missions.creedMungBeans;
   const visibleMissions = [];
   if (savePam.added || savePam.completed) {
@@ -7964,6 +8223,22 @@ function drawMissionsScene() {
       color: "#b6e38a",
     });
   }
+  if (erinTwilight.added || erinTwilight.completed) {
+    const detail = erinTwilight.completed
+      ? erinTwilight.rewardClaimed
+        ? "Reception stabilized. Erin rewarded you with Twilight Aura."
+        : "Mission done. Talk to Erin in Reception to claim your aura reward."
+      : `Twilight Reception: complete ${erinTwilight.target || 3} successful runs with at least x4 HARDCORE. Progress: ${
+          erinTwilight.progress || 0
+        }/${erinTwilight.target || 3}.`;
+    visibleMissions.push({
+      title: "Twilight Reception",
+      detail,
+      status: erinTwilight.completed ? (erinTwilight.rewardClaimed ? "Completed" : "Complete - Reward Unclaimed") : "Active",
+      done: erinTwilight.completed && erinTwilight.rewardClaimed,
+      color: "#b79dff",
+    });
+  }
 
   const baseY = 120;
   const rowStep = 78;
@@ -8033,6 +8308,221 @@ function drawMissionsScene() {
   ctx.fillStyle = "#c9ddff";
   ctx.font = "17px Trebuchet MS";
   ctx.fillText("Press M to close. Mouse wheel or Arrow Up/Down to scroll missions.", 106, 524);
+}
+
+function drawReceptionScene() {
+  const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  grad.addColorStop(0, "#e9d6b2");
+  grad.addColorStop(1, "#caa06d");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawPixelTexture(0, 0, canvas.width, canvas.height, "rgba(62,38,16,0.11)", "rgba(255,255,255,0.06)");
+
+  ctx.fillStyle = "#6f5a42";
+  ctx.fillRect(0, 306, canvas.width, 234);
+  for (let y = 310; y < 540; y += 16) {
+    ctx.fillStyle = "rgba(220,200,172,0.11)";
+    ctx.fillRect(0, y, canvas.width, 1);
+  }
+  ctx.fillStyle = "#4e3c2a";
+  for (let x = 0; x < canvas.width; x += 46) ctx.fillRect(x, 0, 2, 306);
+  ctx.fillStyle = "rgba(84,64,42,0.22)";
+  for (let y = 66; y < 306; y += 30) ctx.fillRect(0, y, canvas.width, 1);
+
+  drawTitleText("Reception", 424, 114, "bold 38px Trebuchet MS", "#ffe3a8");
+
+  // Front desk.
+  const deskX = 190;
+  const deskY = 252;
+  const deskW = 620;
+  const deskH = 128;
+  // Countertop (gray stone), dark trim, and warm wood panels.
+  ctx.fillStyle = "#7e7a70";
+  ctx.fillRect(deskX - 6, deskY - 18, deskW + 12, 28);
+  ctx.fillStyle = "#9a968a";
+  ctx.fillRect(deskX - 4, deskY - 16, deskW + 8, 6);
+  ctx.fillStyle = "#5a5750";
+  ctx.fillRect(deskX - 6, deskY + 8, deskW + 12, 4);
+  ctx.fillStyle = "#1e1c1a";
+  ctx.fillRect(deskX - 6, deskY + 10, deskW + 12, 3);
+  ctx.fillStyle = "#8f6c48";
+  ctx.fillRect(deskX, deskY + 13, deskW, deskH - 13);
+  ctx.fillStyle = "#a27a51";
+  for (let x = deskX + 12; x < deskX + deskW - 12; x += 58) ctx.fillRect(x, deskY + 14, 2, deskH - 16);
+  ctx.fillStyle = "rgba(50,30,14,0.2)";
+  for (let y = deskY + 28; y < deskY + deskH; y += 22) ctx.fillRect(deskX + 2, y, deskW - 4, 1);
+  // Left reception label strip.
+  ctx.fillStyle = "#d7dde7";
+  ctx.fillRect(deskX + 16, deskY - 6, 170, 12);
+  ctx.fillStyle = "#38495f";
+  ctx.fillRect(deskX + 22, deskY - 2, 158, 4);
+  ctx.fillStyle = "#eff5fb";
+  ctx.font = "bold 16px Trebuchet MS";
+  ctx.fillText("RECEPTION", deskX + 34, deskY + 26);
+
+  // Erin behind desk (custom seated sprite to avoid clipping/floating).
+  const erinX = deskX + 402;
+  const erinY = deskY - 28;
+  // Chair behind Erin.
+  ctx.fillStyle = "#554236";
+  ctx.fillRect(erinX - 20, erinY + 12, 48, 40);
+  ctx.fillStyle = "#3d2d22";
+  ctx.fillRect(erinX - 20, erinY + 10, 48, 3);
+
+  // Hair (behind head).
+  ctx.fillStyle = "#8f5c44";
+  ctx.fillRect(erinX - 20, erinY - 8, 40, 40);
+  ctx.fillRect(erinX - 21, erinY + 8, 6, 20);
+  ctx.fillRect(erinX + 15, erinY + 8, 6, 20);
+  // slight hairline shaping so it reads less like a flat box
+  ctx.fillStyle = "#7c4f39";
+  ctx.fillRect(erinX - 14, erinY - 8, 28, 2);
+  // Face.
+  ctx.fillStyle = "#e8c7a8";
+  ctx.fillRect(erinX - 13, erinY, 26, 23);
+  // Eyes + mouth.
+  ctx.fillStyle = "#1f2d43";
+  ctx.fillRect(erinX - 6, erinY + 8, 3, 3);
+  ctx.fillRect(erinX + 3, erinY + 8, 3, 3);
+  ctx.fillRect(erinX - 5, erinY + 15, 10, 2);
+  // Neck + shoulders/shirt visible above desk so the torso doesn't read as floating.
+  ctx.fillStyle = "#e8c7a8";
+  ctx.fillRect(erinX - 2, erinY + 21, 4, 3);
+  ctx.fillStyle = "#d6e7f5";
+  ctx.fillRect(erinX - 16, erinY + 22, 32, 18);
+  ctx.fillStyle = "#7ea2c4";
+  ctx.fillRect(erinX - 2, erinY + 22, 4, 18);
+
+  // Desk lip in front so Erin clearly sits behind it.
+  ctx.fillStyle = "#6f6b61";
+  ctx.fillRect(deskX + 2, deskY + 12, deskW - 4, 18);
+  ctx.fillStyle = "rgba(255,255,255,0.2)";
+  ctx.fillRect(deskX + 6, deskY + 13, deskW - 12, 2);
+  // Repaint desk front mask over everything below counter height.
+  ctx.fillStyle = "#8f6c48";
+  ctx.fillRect(deskX, deskY + 30, deskW, deskH - 17);
+  ctx.fillStyle = "#a27a51";
+  for (let x = deskX + 12; x < deskX + deskW - 12; x += 58) ctx.fillRect(x, deskY + 31, 2, deskH - 18);
+  ctx.fillStyle = "rgba(50,30,14,0.2)";
+  for (let y = deskY + 44; y < deskY + deskH; y += 22) ctx.fillRect(deskX + 2, y, deskW - 4, 1);
+  state.receptionErinBounds = { x: erinX - 24, y: erinY - 12, w: 52, h: 70 };
+
+  // Desk props (phone, candy bowl, glass nameplate, pen cup).
+  ctx.fillStyle = "#16181d"; // phone base
+  ctx.fillRect(deskX + 300, deskY - 12, 50, 20);
+  ctx.fillStyle = "#2f3540";
+  ctx.fillRect(deskX + 306, deskY - 10, 38, 6);
+  ctx.fillStyle = "#f4f0df"; // notepad on phone
+  ctx.fillRect(deskX + 318, deskY - 4, 20, 8);
+
+  ctx.fillStyle = "rgba(245,225,232,0.65)"; // candy bowl
+  ctx.fillRect(deskX + 244, deskY - 8, 26, 14);
+  ctx.fillStyle = "#f2a7b5";
+  ctx.fillRect(deskX + 248, deskY - 4, 4, 4);
+  ctx.fillStyle = "#ffd3b0";
+  ctx.fillRect(deskX + 254, deskY - 2, 4, 4);
+  ctx.fillStyle = "#c6f1e2";
+  ctx.fillRect(deskX + 260, deskY - 5, 4, 4);
+
+  ctx.fillStyle = "rgba(154, 222, 204, 0.45)"; // glass nameplate
+  ctx.fillRect(deskX + 468, deskY - 10, 72, 14);
+  ctx.strokeStyle = "rgba(162,244,224,0.65)";
+  ctx.strokeRect(deskX + 468, deskY - 10, 72, 14);
+  ctx.fillStyle = "#3d6e69";
+  ctx.font = "bold 10px Trebuchet MS";
+  ctx.fillText("RECEPTION", deskX + 478, deskY - 1);
+
+  ctx.fillStyle = "#8f989f"; // pen cup
+  ctx.fillRect(deskX + 554, deskY - 14, 14, 20);
+  ctx.fillStyle = "#d94f4f";
+  ctx.fillRect(deskX + 557, deskY - 22, 2, 10);
+  ctx.fillStyle = "#3f7bd1";
+  ctx.fillRect(deskX + 561, deskY - 20, 2, 8);
+  ctx.fillStyle = "#efc24e";
+  ctx.fillRect(deskX + 565, deskY - 24, 2, 12);
+
+  // Erin talk button.
+  state.receptionTalkBounds = [];
+  const talkX = erinX - 38;
+  const talkY = erinY - 38;
+  ctx.fillStyle = "#ffed99";
+  ctx.fillRect(talkX, talkY, 66, 22);
+  ctx.strokeStyle = "#8b6d1e";
+  ctx.strokeRect(talkX, talkY, 66, 22);
+  ctx.fillStyle = "#2a2618";
+  ctx.font = "bold 14px Trebuchet MS";
+  ctx.fillText("TALK", talkX + 13, talkY + 15);
+  ctx.fillStyle = "#ffed99";
+  ctx.beginPath();
+  ctx.moveTo(talkX + 28, talkY + 22);
+  ctx.lineTo(talkX + 38, talkY + 22);
+  ctx.lineTo(talkX + 33, talkY + 30);
+  ctx.closePath();
+  ctx.fill();
+  state.receptionTalkBounds.push({ id: "erin_talk", x: talkX, y: talkY, w: 66, h: 30 });
+
+  drawPixelPanel(74, 422, 876, 88, "rgba(12,20,36,0.92)", "rgba(8,14,26,0.94)", "#8bc8ff", "rgba(217,236,255,0.66)");
+  ctx.fillStyle = "#dcecff";
+  ctx.font = "18px Trebuchet MS";
+  drawWrappedText(
+    state.receptionMessage || "Erin: Hi! Reception is mostly phones, forms, and feelings.",
+    90,
+    452,
+    846,
+    22,
+    2
+  );
+
+  if (state.receptionConversation) {
+    const boxX = 92;
+    const boxY = 286;
+    const boxW = 798;
+    const boxH = 124;
+    drawPixelPanel(boxX, boxY, boxW, boxH, "rgba(14,22,38,0.92)", "rgba(8,12,22,0.94)", "#8bc8ff", "rgba(208,233,255,0.64)");
+    ctx.fillStyle = "#f5ead6";
+    ctx.font = "18px Trebuchet MS";
+    drawWrappedText(state.receptionConversation.text, boxX + 14, boxY + 30, boxW - 28, 22, 2);
+    state.receptionTalkBounds = [];
+
+    const drawBtn = (btn, label) => {
+      ctx.fillStyle = "#2f4f7a";
+      ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
+      ctx.strokeStyle = "#8bc8ff";
+      ctx.strokeRect(btn.x, btn.y, btn.w, btn.h);
+      ctx.fillStyle = "#f5ead6";
+      ctx.font = "bold 16px Trebuchet MS";
+      drawWrappedText(label, btn.x + 10, btn.y + 20, btn.w - 16, 16, 1);
+      state.receptionTalkBounds.push(btn);
+    };
+
+    if (state.receptionConversation.step === "intro") {
+      drawBtn({ id: "accept", x: boxX + 16, y: boxY + 82, w: 180, h: 30 }, "I'm in");
+      drawBtn({ id: "details", x: boxX + 212, y: boxY + 82, w: 240, h: 30 }, "What's the mission?");
+      drawBtn({ id: "leave", x: boxX + 468, y: boxY + 82, w: 150, h: 30 }, "Leave");
+    } else if (state.receptionConversation.step === "details") {
+      drawBtn({ id: "accept", x: boxX + 16, y: boxY + 82, w: 220, h: 30 }, "Accept mission");
+      drawBtn({ id: "leave", x: boxX + 252, y: boxY + 82, w: 160, h: 30 }, "Maybe later");
+    } else {
+      drawBtn({ id: "done", x: boxX + 16, y: boxY + 82, w: 150, h: 30 }, "Got it");
+    }
+  }
+}
+
+function selectReceptionByCanvasPoint(x, y) {
+  if (state.receptionTalkBounds.length > 0) {
+    for (const target of state.receptionTalkBounds) {
+      if (x < target.x || x > target.x + target.w || y < target.y || y > target.y + target.h) continue;
+      if (target.id === "erin_talk") startErinConversation();
+      else handleErinConversationClick(target.id);
+      return;
+    }
+  }
+  if (state.receptionErinBounds) {
+    const b = state.receptionErinBounds;
+    if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+      startErinConversation();
+    }
+  }
 }
 
 function drawTutorialScene() {
@@ -8301,13 +8791,16 @@ function drawAnnexScene() {
 
   drawTitleText("Annex Boutique", 372, 118, "bold 36px Trebuchet MS", "#ffe6ab");
 
-  ctx.fillStyle = "#f7edf7";
+  ctx.fillStyle = "#24314a";
   ctx.font = "18px Trebuchet MS";
   ctx.fillText(`Runner: ${runnerPreset.label}`, 64, 154);
   ctx.fillText("Wallet:", 64, 178);
   const annexSbW = drawCurrencyIcon("schrute_buck", 136, 166, 1.08);
+  ctx.fillStyle = "#24314a";
   ctx.fillText(`${state.saveData.currencies.schruteBucks}`, 136 + annexSbW + 8, 178);
+  ctx.fillStyle = "#24314a";
   ctx.fillText(`Dundies: ${Object.values(state.saveData.achievements).filter(Boolean).length}/3`, 64, 202);
+  ctx.fillStyle = "#24314a";
   drawWrappedTextWithCurrencyIcons("Kelly only accepts [SB] only.", 64, 226, 320, 18, 1);
 
   // Dundie trophy case.
@@ -9632,6 +10125,7 @@ function render() {
   else if (state.scene === "loading") drawLoadingScene();
   else if (state.scene === "run") drawRunScene();
   else if (state.scene === "shop") drawShopScene();
+  else if (state.scene === "reception") drawReceptionScene();
   else if (state.scene === "inventory") drawInventoryScene();
   else if (state.scene === "settings") drawSettingsScene();
   else if (state.scene === "desk") drawDeskScene();
@@ -10112,6 +10606,16 @@ function handlePress(ev) {
       switchScene("menu");
       return;
     }
+    if (state.scene === "reception") {
+      if (state.receptionTalkBounds.length > 0) {
+        const target = state.receptionTalkBounds[0];
+        if (target?.id === "erin_talk") startErinConversation();
+        else if (target) handleErinConversationClick(target.id);
+        return;
+      }
+      switchScene("menu");
+      return;
+    }
     if (state.scene === "characters") {
       if (state.characterCards.length > 0) {
         const idx = Math.max(0, Math.min(state.characterCards.length - 1, state.uiFocus.characterCard || 0));
@@ -10213,6 +10717,7 @@ function handlePress(ev) {
     if (ev.code === "KeyS") switchScene("shop");
     if (ev.code === "KeyA") switchScene("annex");
     if (ev.code === "KeyD") switchScene("desk");
+    if (ev.code === "KeyR") switchScene("reception");
     if (ev.code === "KeyC") switchScene("characters");
     if (ev.code === "KeyO") switchScene("settings");
     return;
@@ -10304,6 +10809,10 @@ canvas.addEventListener("pointerdown", (ev) => {
   }
   if (state.scene === "annex") {
     selectAnnexByCanvasPoint(x, y);
+    return;
+  }
+  if (state.scene === "reception") {
+    selectReceptionByCanvasPoint(x, y);
     return;
   }
   if (state.scene === "characters") {
