@@ -25,6 +25,7 @@ const PURSUIT_END_TADA_PATH = "assets/freesound_community-tada-fanfare-a-6313.mp
 const PURSUIT_START_SIREN_PATH = "assets/11325622-police-siren-sound-effect-240674.mp3";
 const SHOP_CHACHING_PATH = "assets/chaching.mp3";
 const ENABLE_TRUE_16BIT_COLOR_PASS = true;
+const SNES_PIXEL_BLOCK_SIZE = 2;
 const SAVE_PROFILE_VERSION = 2;
 const RUNNER_IDS = ["michael", "dwight", "andy"];
 const LOADING_SCENE_DURATION = 1.45;
@@ -166,6 +167,44 @@ function quantize565Channel(value, bits, ditherStep = 0) {
   const v = Math.max(0, Math.min(255, value + ditherStep));
   const q = Math.round((v / 255) * max);
   return Math.round((q / max) * 255);
+}
+
+function applySnesVisualPass() {
+  const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = frame.data;
+  const w = canvas.width;
+  const h = canvas.height;
+  const block = Math.max(1, SNES_PIXEL_BLOCK_SIZE | 0);
+
+  for (let by = 0; by < h; by += block) {
+    for (let bx = 0; bx < w; bx += block) {
+      const src = (by * w + bx) * 4;
+      const alpha = data[src + 3];
+      if (alpha === 0) continue;
+
+      const d = BAYER_4X4[by & 3][bx & 3] - 7.5;
+      const dither = d * 1.05;
+      const baseR = quantize565Channel(data[src], 5, dither);
+      const baseG = quantize565Channel(data[src + 1], 6, dither * 0.85);
+      const baseB = quantize565Channel(data[src + 2], 5, dither);
+
+      for (let oy = 0; oy < block; oy += 1) {
+        const y = by + oy;
+        if (y >= h) break;
+        const scanlineShade = y & 1 ? 0.9 : 1;
+        for (let ox = 0; ox < block; ox += 1) {
+          const x = bx + ox;
+          if (x >= w) break;
+          const i = (y * w + x) * 4;
+          data[i] = Math.max(0, Math.min(255, Math.round(baseR * scanlineShade)));
+          data[i + 1] = Math.max(0, Math.min(255, Math.round(baseG * scanlineShade)));
+          data[i + 2] = Math.max(0, Math.min(255, Math.round(baseB * scanlineShade)));
+        }
+      }
+    }
+  }
+
+  ctx.putImageData(frame, 0, 0);
 }
 
 function applyTrue16BitColorPass() {
@@ -564,6 +603,9 @@ const state = {
   reviewAnimDuration: 2.6,
   missionsScroll: 0,
   missionsScrollMax: 0,
+  settingsScroll: 0,
+  settingsScrollMax: 0,
+  settingsListRect: null,
   uiFocus: {
     menuCard: 0,
     characterCard: 0,
@@ -630,6 +672,7 @@ function createDefaultSave() {
       parkourAssist: false,
       showFps: true,
       true16BitColor: true,
+      snesVisualMode: false,
     },
     flags: {
       tutorialSeen: false,
@@ -908,6 +951,10 @@ function getSfxVolume() {
 
 function getMusicVolume() {
   return Math.max(0, Math.min(1, Number(getSettings().musicVolume ?? 0.65)));
+}
+
+function isSnesVisualModeEnabled() {
+  return Boolean(getSettings().snesVisualMode ?? false);
 }
 
 function isTrue16BitColorEnabled() {
@@ -1571,6 +1618,7 @@ function adjustSettingByIndex(index, dir) {
   else if (index === 3) s.parkourAssist = dir > 0 ? true : dir < 0 ? false : !s.parkourAssist;
   else if (index === 4) s.showFps = dir > 0 ? true : dir < 0 ? false : !s.showFps;
   else if (index === 5) s.true16BitColor = dir > 0 ? true : dir < 0 ? false : !(s.true16BitColor ?? true);
+  else if (index === 6) s.snesVisualMode = dir > 0 ? true : dir < 0 ? false : !(s.snesVisualMode ?? true);
   persistSave();
 }
 
@@ -2827,7 +2875,11 @@ function switchScene(sceneId) {
     state.uiFocus.shopPrompt = 0;
   }
   if (sceneId === "inventory") state.uiFocus.inventoryCard = 0;
-  if (sceneId === "settings") state.uiFocus.settingsOption = 0;
+  if (sceneId === "settings") {
+    state.uiFocus.settingsOption = 0;
+    state.settingsScroll = 0;
+    state.settingsScrollMax = 0;
+  }
   if (sceneId === "annex") state.uiFocus.annexCard = 0;
   if (sceneId === "reception") state.receptionTalkBounds = [];
   if (sceneId === "missions") state.missionsScroll = 0;
@@ -8687,19 +8739,40 @@ function drawSettingsScene() {
     { label: "Parkour Assist", value: s.parkourAssist ? "ON" : "OFF" },
     { label: "Show FPS", value: s.showFps ? "ON" : "OFF" },
     { label: "True 16-bit Color", value: isTrue16BitColorEnabled() ? "ON" : "OFF" },
+    { label: "SNES Visual Mode", value: isSnesVisualModeEnabled() ? "ON" : "OFF" },
     { label: "Export Save", value: "Press Enter" },
     { label: "Import Save", value: "Press Enter" },
   ];
   state.settingsOptions = options;
+  const listX = 118;
+  const listY = 134;
+  const listW = 724;
+  const listH = 286;
+  const rowStep = 42;
+  const contentHeight = options.length * rowStep;
+  state.settingsScrollMax = Math.max(0, contentHeight - listH);
+  state.settingsScroll = Math.max(0, Math.min(state.settingsScroll || 0, state.settingsScrollMax));
+  const selectedIdx = Math.max(0, Math.min(options.length - 1, state.uiFocus.settingsOption || 0));
+  const selectedTop = selectedIdx * rowStep;
+  const selectedBottom = selectedTop + rowStep;
+  if (selectedTop < state.settingsScroll) state.settingsScroll = selectedTop;
+  else if (selectedBottom > state.settingsScroll + listH) state.settingsScroll = selectedBottom - listH;
+  state.settingsScroll = Math.max(0, Math.min(state.settingsScroll, state.settingsScrollMax));
+  const scrollY = Math.floor(state.settingsScroll);
+  state.settingsListRect = { x: listX, y: listY, w: listW, h: listH, rowStep };
 
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(listX, listY, listW, listH);
+  ctx.clip();
   for (let i = 0; i < options.length; i += 1) {
-    const y = 158 + i * 42;
-    const selected = i === (state.uiFocus.settingsOption || 0);
+    const y = 158 + i * rowStep - scrollY;
+    const selected = i === selectedIdx;
     ctx.fillStyle = selected ? "rgba(255, 228, 136, 0.18)" : "rgba(255,255,255,0.05)";
-    ctx.fillRect(118, y - 24, 724, 34);
+    ctx.fillRect(listX, y - 24, listW, 34);
     if (selected) {
       ctx.strokeStyle = "#ffd56a";
-      ctx.strokeRect(118, y - 24, 724, 34);
+      ctx.strokeRect(listX, y - 24, listW, 34);
     }
     ctx.fillStyle = "#f4ead9";
     ctx.font = "bold 19px Trebuchet MS";
@@ -8708,10 +8781,26 @@ function drawSettingsScene() {
     ctx.font = "bold 18px Trebuchet MS";
     ctx.fillText(options[i].value, 670, y - 2);
   }
+  ctx.restore();
+
+  if (state.settingsScrollMax > 0) {
+    const railX = 856;
+    const railY = listY;
+    const railH = listH;
+    const thumbH = Math.max(34, Math.floor((listH / (contentHeight || 1)) * railH));
+    const thumbY = railY + Math.floor((state.settingsScroll / state.settingsScrollMax) * (railH - thumbH));
+    ctx.fillStyle = "rgba(180,210,245,0.22)";
+    ctx.fillRect(railX, railY, 8, railH);
+    ctx.fillStyle = "#9fcfff";
+    ctx.fillRect(railX, thumbY, 8, thumbH);
+    ctx.fillStyle = "#d9edff";
+    ctx.font = "bold 13px Trebuchet MS";
+    ctx.fillText("SCROLL", 800, 422);
+  }
 
   ctx.fillStyle = "#d0e6ff";
   ctx.font = "16px Trebuchet MS";
-  drawWrappedText("Left/Right: adjust values. Enter: toggle/select. Esc: back to conference room.", 120, 462, 740, 18, 2);
+  drawWrappedText("Left/Right: adjust values. Enter: toggle/select. Wheel/Up/Down: scroll. Esc: back to conference room.", 120, 446, 740, 18, 2);
 }
 
 function drawCharacterSelectScene() {
@@ -10243,7 +10332,8 @@ function render() {
     ctx.globalAlpha = 1;
   }
 
-  if (isTrue16BitColorEnabled()) applyTrue16BitColorPass();
+  if (isSnesVisualModeEnabled()) applySnesVisualPass();
+  else if (isTrue16BitColorEnabled()) applyTrue16BitColorPass();
 }
 
 function update(dt) {
@@ -10607,11 +10697,11 @@ function handlePress(ev) {
     }
     if (state.scene === "settings") {
       const idx = state.uiFocus.settingsOption || 0;
-      if (idx <= 5) {
+      if (idx <= 6) {
         adjustSettingByIndex(idx, 0);
-      } else if (idx === 6) {
-        exportSaveToFile();
       } else if (idx === 7) {
+        exportSaveToFile();
+      } else if (idx === 8) {
         importSaveFromFile();
       }
       return;
@@ -10718,7 +10808,7 @@ function handlePress(ev) {
     }
     if (state.scene === "settings") {
       if (arrowDir === "up") state.uiFocus.settingsOption = Math.max(0, (state.uiFocus.settingsOption || 0) - 1);
-      else if (arrowDir === "down") state.uiFocus.settingsOption = Math.min(7, (state.uiFocus.settingsOption || 0) + 1);
+      else if (arrowDir === "down") state.uiFocus.settingsOption = Math.min(8, (state.uiFocus.settingsOption || 0) + 1);
       else if (arrowDir === "left") adjustSettingByIndex(state.uiFocus.settingsOption || 0, -1);
       else if (arrowDir === "right") adjustSettingByIndex(state.uiFocus.settingsOption || 0, 1);
       return;
@@ -10842,10 +10932,13 @@ canvas.addEventListener("pointerdown", (ev) => {
     return;
   }
   if (state.scene === "settings") {
-    const idx = Math.floor((y - 134) / 42);
-    if (idx >= 0 && idx < 8) {
+    const list = state.settingsListRect;
+    if (!list) return;
+    if (x < list.x || x > list.x + list.w || y < list.y || y > list.y + list.h) return;
+    const idx = Math.floor((y - list.y + (state.settingsScroll || 0)) / list.rowStep);
+    if (idx >= 0 && idx < state.settingsOptions.length) {
       state.uiFocus.settingsOption = idx;
-      if (x > 610) adjustSettingByIndex(idx, 1);
+      if (x > list.x + 492) adjustSettingByIndex(idx, 1);
     }
     return;
   }
@@ -10874,10 +10967,14 @@ canvas.addEventListener("pointerdown", (ev) => {
 canvas.addEventListener(
   "wheel",
   (ev) => {
-    if (state.scene !== "missions") return;
+    if (state.scene !== "missions" && state.scene !== "settings") return;
     ev.preventDefault();
     const delta = ev.deltaY > 0 ? 36 : -36;
-    state.missionsScroll = Math.max(0, Math.min(state.missionsScrollMax || 0, (state.missionsScroll || 0) + delta));
+    if (state.scene === "missions") {
+      state.missionsScroll = Math.max(0, Math.min(state.missionsScrollMax || 0, (state.missionsScroll || 0) + delta));
+    } else if (state.scene === "settings") {
+      state.settingsScroll = Math.max(0, Math.min(state.settingsScrollMax || 0, (state.settingsScroll || 0) + delta));
+    }
   },
   { passive: false }
 );
